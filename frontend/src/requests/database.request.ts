@@ -20,5 +20,12 @@ export const databaseRequest = {
   deleteRow: (db: string, table: string, primaryKey: Record<string, unknown>) =>
     customfetch.delete(`/databases/${db}/tables/${table}/rows`, { primary_key: primaryKey }),
 
-  executeQuery: (query: string) => customfetch.post("/query", { query }),
+  dropTable: (db: string, table: string) =>
+    customfetch.delete(`/databases/${db}/tables/${table}`),
+
+  truncateTable: (db: string, table: string) =>
+    customfetch.post(`/databases/${db}/tables/${table}/truncate`, {}),
+
+  executeQuery: (query: string, database?: string) =>
+    customfetch.post("/query", { query, database }),
 };

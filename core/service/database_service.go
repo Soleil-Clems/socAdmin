@@ -105,11 +105,25 @@ func (s *DatabaseService) DeleteRow(database, table string, primaryKey map[strin
 	return s.conn.DeleteRow(database, table, primaryKey)
 }
 
-func (s *DatabaseService) ExecuteQuery(query string) (*connector.QueryResult, error) {
+func (s *DatabaseService) ExecuteQuery(database, query string) (*connector.QueryResult, error) {
 	if s.conn == nil {
 		return nil, fmt.Errorf("not connected")
 	}
-	return s.conn.ExecuteQuery(query)
+	return s.conn.ExecuteQuery(database, query)
+}
+
+func (s *DatabaseService) DropTable(database, table string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	return s.conn.DropTable(database, table)
+}
+
+func (s *DatabaseService) TruncateTable(database, table string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	return s.conn.TruncateTable(database, table)
 }
 
 func (s *DatabaseService) Disconnect() error {

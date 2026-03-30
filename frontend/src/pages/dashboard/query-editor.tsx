@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useExecuteQuery } from "@/hooks/mutations/use-execute-query";
 import { useNavigationStore } from "@/stores/navigation.store";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -20,16 +21,14 @@ type QueryResult = {
 
 export default function QueryEditor() {
   const { selectedDb } = useNavigationStore();
-  const [query, setQuery] = useState(
-    selectedDb ? `USE ${selectedDb};\n` : ""
-  );
+  const [query, setQuery] = useState("");
   const executeQuery = useExecuteQuery();
 
   const result = executeQuery.data as QueryResult | undefined;
 
   const handleExecute = () => {
     if (!query.trim()) return;
-    executeQuery.mutate(query.trim());
+    executeQuery.mutate({ query: query.trim(), database: selectedDb || undefined });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -42,11 +41,23 @@ export default function QueryEditor() {
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b border-border space-y-3">
+        <div className="flex items-center gap-2">
+          {selectedDb && (
+            <Badge variant="secondary" className="text-xs">
+              {selectedDb}
+            </Badge>
+          )}
+          <span className="text-xs text-muted-foreground">
+            {selectedDb
+              ? "Queries run in this database context"
+              : "No database selected — use USE db;"}
+          </span>
+        </div>
         <Textarea
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="SELECT * FROM ..."
+          placeholder={selectedDb ? `SELECT * FROM ${selectedDb}...` : "SELECT * FROM ..."}
           className="font-mono text-sm min-h-[120px] resize-y"
         />
         <div className="flex items-center justify-between">

@@ -12,7 +12,9 @@ type Connector interface {
 	InsertRow(database, table string, data map[string]interface{}) error
 	UpdateRow(database, table string, primaryKey map[string]interface{}, data map[string]interface{}) error
 	DeleteRow(database, table string, primaryKey map[string]interface{}) error
-	ExecuteQuery(query string) (*QueryResult, error)
+	ExecuteQuery(database, query string) (*QueryResult, error)
+	DropTable(database, table string) error
+	TruncateTable(database, table string) error
 	Close() error
 }
 

@@ -204,8 +204,36 @@ func (c *PostgresConnector) DeleteRow(database, table string, primaryKey map[str
 	return err
 }
 
-func (c *PostgresConnector) ExecuteQuery(query string) (*QueryResult, error) {
+func (c *PostgresConnector) ExecuteQuery(database, query string) (*QueryResult, error) {
+	if database != "" {
+		db, err := c.connectToDb(database)
+		if err != nil {
+			return nil, err
+		}
+		defer db.Close()
+		return scanQuery(db, query)
+	}
 	return scanQuery(c.db, query)
+}
+
+func (c *PostgresConnector) DropTable(database, table string) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec(fmt.Sprintf(`DROP TABLE "%s"`, table))
+	return err
+}
+
+func (c *PostgresConnector) TruncateTable(database, table string) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec(fmt.Sprintf(`TRUNCATE TABLE "%s"`, table))
+	return err
 }
 
 func pgBuildColsVals(data map[string]interface{}) (string, []interface{}) {

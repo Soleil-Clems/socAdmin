@@ -25,7 +25,8 @@ type ConnectRequest struct {
 }
 
 type QueryRequest struct {
-	Query string `json:"query"`
+	Database string `json:"database"`
+	Query    string `json:"query"`
 }
 
 type RowRequest struct {
@@ -134,13 +135,37 @@ func (c *DatabaseController) ExecuteQuery(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	result, err := c.dbService.ExecuteQuery(req.Query)
+	result, err := c.dbService.ExecuteQuery(req.Database, req.Query)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	jsonResponse(w, http.StatusOK, result)
+}
+
+func (c *DatabaseController) DropTable(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	if err := c.dbService.DropTable(db, table); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "dropped"})
+}
+
+func (c *DatabaseController) TruncateTable(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	if err := c.dbService.TruncateTable(db, table); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "truncated"})
 }
 
 func (c *DatabaseController) InsertRow(w http.ResponseWriter, r *http.Request) {

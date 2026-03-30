@@ -1,9 +1,13 @@
 import Sidebar from "@/components/layout/sidebar";
 import TableView from "@/pages/dashboard/table-view";
+import DatabaseView from "@/pages/dashboard/database-view";
 import QueryEditor from "@/pages/dashboard/query-editor";
+import { useNavigationStore } from "@/stores/navigation.store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function DashboardPage() {
+  const { selectedTable } = useNavigationStore();
+
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
@@ -16,7 +20,7 @@ export default function DashboardPage() {
             </TabsList>
           </div>
           <TabsContent value="data" className="flex-1 overflow-hidden m-0">
-            <TableView />
+            {selectedTable ? <TableView /> : <DatabaseView />}
           </TabsContent>
           <TabsContent value="query" className="flex-1 overflow-hidden m-0">
             <QueryEditor />

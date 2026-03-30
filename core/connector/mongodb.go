@@ -145,7 +145,7 @@ func (c *MongoConnector) GetRows(database, collection string, limit, offset int)
 }
 
 // ExecuteQuery exécute une commande JSON MongoDB (ex: {"find": "users", "filter": {"age": {"$gt": 25}}})
-func (c *MongoConnector) ExecuteQuery(query string) (*QueryResult, error) {
+func (c *MongoConnector) ExecuteQuery(database, query string) (*QueryResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -154,13 +154,16 @@ func (c *MongoConnector) ExecuteQuery(query string) (*QueryResult, error) {
 		return nil, fmt.Errorf("invalid JSON command: %w", err)
 	}
 
-	// Chercher le champ "database" dans la commande, sinon utiliser "test"
-	dbName := "test"
-	for i, elem := range cmd {
-		if elem.Key == "database" {
-			dbName = fmt.Sprintf("%v", elem.Value)
-			cmd = append(cmd[:i], cmd[i+1:]...)
-			break
+	// Utiliser la database passée en paramètre, sinon chercher dans la commande, sinon "test"
+	dbName := database
+	if dbName == "" {
+		dbName = "test"
+		for i, elem := range cmd {
+			if elem.Key == "database" {
+				dbName = fmt.Sprintf("%v", elem.Value)
+				cmd = append(cmd[:i], cmd[i+1:]...)
+				break
+			}
 		}
 	}
 
@@ -229,6 +232,19 @@ func (c *MongoConnector) DeleteRow(database, collection string, primaryKey map[s
 
 	coll := c.client.Database(database).Collection(collection)
 	_, err := coll.DeleteOne(ctx, filter)
+	return err
+}
+
+func (c *MongoConnector) DropTable(database, collection string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return c.client.Database(database).Collection(collection).Drop(ctx)
+}
+
+func (c *MongoConnector) TruncateTable(database, collection string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := c.client.Database(database).Collection(collection).DeleteMany(ctx, bson.D{})
 	return err
 }
 

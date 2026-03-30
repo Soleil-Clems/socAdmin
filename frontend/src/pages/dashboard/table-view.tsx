@@ -117,22 +117,6 @@ export default function TableView() {
     });
   };
 
-  if (!selectedDb) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-muted-foreground">
-        Select a database to get started
-      </div>
-    );
-  }
-
-  if (!selectedTable) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-muted-foreground">
-        Select a table to view its data
-      </div>
-    );
-  }
-
   const isLoading = colLoading || rowsLoading;
 
   return (

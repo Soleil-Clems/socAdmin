@@ -127,8 +127,34 @@ func (c *MySQLConnector) DeleteRow(database, table string, primaryKey map[string
 	return err
 }
 
-func (c *MySQLConnector) ExecuteQuery(query string) (*QueryResult, error) {
+func (c *MySQLConnector) ExecuteQuery(database, query string) (*QueryResult, error) {
+	if database != "" {
+		db, err := c.connectToDb(database)
+		if err != nil {
+			return nil, err
+		}
+		defer db.Close()
+		return scanQuery(db, query)
+	}
 	return scanQuery(c.db, query)
+}
+
+func (c *MySQLConnector) DropTable(database, table string) error {
+	query := fmt.Sprintf("DROP TABLE %s.%s", quoteIdentifier(database), quoteIdentifier(table))
+	_, err := c.db.Exec(query)
+	return err
+}
+
+func (c *MySQLConnector) TruncateTable(database, table string) error {
+	query := fmt.Sprintf("TRUNCATE TABLE %s.%s", quoteIdentifier(database), quoteIdentifier(table))
+	_, err := c.db.Exec(query)
+	return err
+}
+
+func (c *MySQLConnector) connectToDb(database string) (*sql.DB, error) {
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s",
+		c.config.User, c.config.Password, c.config.Host, c.config.Port, database)
+	return sql.Open("mysql", dsn)
 }
 
 func buildInsertSQL(data map[string]interface{}) (string, string, []interface{}) {
