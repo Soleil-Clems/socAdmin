@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -129,6 +130,8 @@ func (c *DatabaseController) ExecuteQuery(w http.ResponseWriter, r *http.Request
 		jsonError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+
+	fmt.Printf("[ExecuteQuery] database=%q query=%q\n", req.Database, req.Query)
 
 	if req.Query == "" {
 		jsonError(w, http.StatusBadRequest, "query is required")

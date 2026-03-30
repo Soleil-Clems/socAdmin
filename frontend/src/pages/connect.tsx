@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 
 const defaultPorts: Record<string, number> = {
-  mysql: 3306,
+  mysql: 8889,
   postgresql: 5432,
   mongodb: 27017,
 };
@@ -43,7 +43,7 @@ export default function ConnectPage() {
     resolver: zodResolver(connectSchema),
     defaultValues: {
       host: "127.0.0.1",
-      port: 3306,
+      port: 8889,
       user: "root",
       password: "",
       type: "mysql",

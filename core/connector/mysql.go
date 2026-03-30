@@ -154,7 +154,15 @@ func (c *MySQLConnector) TruncateTable(database, table string) error {
 func (c *MySQLConnector) connectToDb(database string) (*sql.DB, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s",
 		c.config.User, c.config.Password, c.config.Host, c.config.Port, database)
-	return sql.Open("mysql", dsn)
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
 }
 
 func buildInsertSQL(data map[string]interface{}) (string, string, []interface{}) {
