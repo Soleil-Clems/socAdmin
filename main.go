@@ -3,35 +3,15 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 
-	"github.com/soleilouisol/socAdmin/core/connector"
+	"github.com/soleilouisol/socAdmin/core/api"
 )
 
 func main() {
-	config := connector.MySQLConfig{
-		Host:     "127.0.0.1",
-		Port:     8889,
-		User:     "root",
-		Password: "root",
-	}
+	router := api.NewRouter()
 
-	mysql := connector.NewMySQLConnector(config)
-
-	fmt.Println("Connexion à MySQL (MAMP)...")
-	if err := mysql.Connect(); err != nil {
-		log.Fatalf("Erreur de connexion : %v", err)
-	}
-	defer mysql.Close()
-
-	fmt.Println("Connecté !")
-
-	databases, err := mysql.ListDatabases()
-	if err != nil {
-		log.Fatalf("Erreur listing databases : %v", err)
-	}
-
-	fmt.Println("Bases de données :")
-	for _, db := range databases {
-		fmt.Printf("  - %s\n", db)
-	}
+	port := 8080
+	fmt.Printf("socAdmin server running on http://localhost:%d\n", port)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), router))
 }
