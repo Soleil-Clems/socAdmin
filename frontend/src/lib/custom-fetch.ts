@@ -13,16 +13,29 @@ class CustomFetch {
     this.baseURL = baseURL;
   }
 
+  private getAuthHeader(): Record<string, string> {
+    const token = localStorage.getItem("access_token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   private async request(endpoint: string, options: RequestOptions & RequestInit = {}) {
     const { headers, ...rest } = options;
 
     const res = await fetch(`${this.baseURL}${endpoint}`, {
       headers: {
         "Content-Type": "application/json",
+        ...this.getAuthHeader(),
         ...(headers || {}),
       },
       ...rest,
     });
+
+    if (res.status === 401 && !endpoint.startsWith("/auth/")) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      window.location.reload();
+      throw new Error("Session expired");
+    }
 
     const data = await res.json();
 

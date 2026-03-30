@@ -5,3 +5,6 @@
 *.env
 node_module
 .impeccable.md
+socadmin.db
+frontend/node_modules
+frontend/dist

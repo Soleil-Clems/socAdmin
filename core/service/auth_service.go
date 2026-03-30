@@ -1,0 +1,117 @@
+package service
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/soleilouisol/socAdmin/core/auth"
+	"golang.org/x/crypto/bcrypt"
+)
+
+const maxLoginAttempts = 5
+const rateLimitWindow = 15 * time.Minute
+
+type AuthService struct {
+	repo *auth.Repository
+}
+
+func NewAuthService(repo *auth.Repository) *AuthService {
+	return &AuthService{repo: repo}
+}
+
+func (s *AuthService) Register(email, password string) (*auth.User, error) {
+	existing, err := s.repo.FindByEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, fmt.Errorf("email already registered")
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	return s.repo.CreateUser(email, string(hashed))
+}
+
+func (s *AuthService) Login(email, password string) (*auth.TokenPair, error) {
+	// Rate limiting
+	count, err := s.repo.CountRecentAttempts(email, time.Now().Add(-rateLimitWindow))
+	if err != nil {
+		return nil, err
+	}
+	if count >= maxLoginAttempts {
+		return nil, fmt.Errorf("too many login attempts, try again later")
+	}
+
+	s.repo.RecordLoginAttempt(email)
+
+	user, err := s.repo.FindByEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, fmt.Errorf("invalid email or password")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		return nil, fmt.Errorf("invalid email or password")
+	}
+
+	// Login réussi, on clear les tentatives
+	s.repo.ClearLoginAttempts(email)
+
+	return s.generateTokenPair(user)
+}
+
+func (s *AuthService) RefreshToken(refreshToken string) (*auth.TokenPair, error) {
+	userID, err := s.repo.FindRefreshToken(refreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	// Supprimer l'ancien refresh token (rotation)
+	s.repo.DeleteRefreshToken(refreshToken)
+
+	user, err := s.repo.FindByID(userID)
+	if err != nil || user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	return s.generateTokenPair(user)
+}
+
+func (s *AuthService) GetUser(userID int64) (*auth.User, error) {
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+	return user, nil
+}
+
+func (s *AuthService) generateTokenPair(user *auth.User) (*auth.TokenPair, error) {
+	accessToken, err := auth.GenerateAccessToken(user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	}
+
+	refreshToken, err := auth.GenerateRefreshToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+
+	expiresAt := time.Now().Add(auth.RefreshTokenDuration)
+	if err := s.repo.SaveRefreshToken(user.ID, refreshToken, expiresAt); err != nil {
+		return nil, fmt.Errorf("failed to save refresh token: %w", err)
+	}
+
+	return &auth.TokenPair{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	}, nil
+}

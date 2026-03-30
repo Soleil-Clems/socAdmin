@@ -1,0 +1,142 @@
+package auth
+
+import (
+	"database/sql"
+	"fmt"
+	"time"
+
+	_ "github.com/mattn/go-sqlite3"
+)
+
+type Repository struct {
+	db *sql.DB
+}
+
+func NewRepository(dbPath string) (*Repository, error) {
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	if err := migrate(db); err != nil {
+		return nil, fmt.Errorf("failed to migrate: %w", err)
+	}
+
+	return &Repository{db: db}, nil
+}
+
+func migrate(db *sql.DB) error {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			email TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE IF NOT EXISTS refresh_tokens (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			token TEXT UNIQUE NOT NULL,
+			expires_at DATETIME NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id)
+		);
+
+		CREATE TABLE IF NOT EXISTS login_attempts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			email TEXT NOT NULL,
+			attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	return err
+}
+
+func (r *Repository) CreateUser(email, hashedPassword string) (*User, error) {
+	result, err := r.db.Exec("INSERT INTO users (email, password) VALUES (?, ?)", email, hashedPassword)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	id, _ := result.LastInsertId()
+	return &User{
+		ID:        id,
+		Email:     email,
+		CreatedAt: time.Now(),
+	}, nil
+}
+
+func (r *Repository) FindByEmail(email string) (*User, error) {
+	var user User
+	err := r.db.QueryRow(
+		"SELECT id, email, password, created_at FROM users WHERE email = ?", email,
+	).Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *Repository) FindByID(id int64) (*User, error) {
+	var user User
+	err := r.db.QueryRow(
+		"SELECT id, email, password, created_at FROM users WHERE id = ?", id,
+	).Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *Repository) SaveRefreshToken(userID int64, token string, expiresAt time.Time) error {
+	_, err := r.db.Exec(
+		"INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)",
+		userID, token, expiresAt,
+	)
+	return err
+}
+
+func (r *Repository) FindRefreshToken(token string) (int64, error) {
+	var userID int64
+	err := r.db.QueryRow(
+		"SELECT user_id FROM refresh_tokens WHERE token = ? AND expires_at > CURRENT_TIMESTAMP",
+		token,
+	).Scan(&userID)
+
+	if err == sql.ErrNoRows {
+		return 0, fmt.Errorf("invalid or expired refresh token")
+	}
+	return userID, err
+}
+
+func (r *Repository) DeleteRefreshToken(token string) error {
+	_, err := r.db.Exec("DELETE FROM refresh_tokens WHERE token = ?", token)
+	return err
+}
+
+func (r *Repository) RecordLoginAttempt(email string) error {
+	_, err := r.db.Exec("INSERT INTO login_attempts (email) VALUES (?)", email)
+	return err
+}
+
+func (r *Repository) CountRecentAttempts(email string, since time.Time) (int, error) {
+	var count int
+	err := r.db.QueryRow(
+		"SELECT COUNT(*) FROM login_attempts WHERE email = ? AND attempted_at > ?",
+		email, since,
+	).Scan(&count)
+	return count, err
+}
+
+func (r *Repository) ClearLoginAttempts(email string) error {
+	_, err := r.db.Exec("DELETE FROM login_attempts WHERE email = ?", email)
+	return err
+}

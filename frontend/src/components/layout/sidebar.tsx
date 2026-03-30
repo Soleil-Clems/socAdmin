@@ -2,12 +2,14 @@ import { useDatabases } from "@/hooks/queries/use-databases";
 import { useTables } from "@/hooks/queries/use-tables";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
+import { useAuthStore } from "@/stores/auth.store";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 
 export default function Sidebar() {
   const { host, port, user, disconnect } = useConnectionStore();
+  const logout = useAuthStore((s) => s.logout);
   const { selectedDb, selectedTable, setSelectedDb, setSelectedTable } =
     useNavigationStore();
 
@@ -80,14 +82,22 @@ export default function Sidebar() {
         </div>
       </ScrollArea>
 
-      <div className="p-2 border-t border-border">
+      <div className="p-2 border-t border-border space-y-1">
         <Button
           variant="ghost"
           size="sm"
           className="w-full text-muted-foreground"
           onClick={disconnect}
         >
-          Disconnect
+          Disconnect DB
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-muted-foreground"
+          onClick={() => { disconnect(); logout(); }}
+        >
+          Logout
         </Button>
       </div>
     </aside>
