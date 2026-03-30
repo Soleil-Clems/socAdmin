@@ -1,12 +1,20 @@
-package api
+package controller
 
 import (
 	"encoding/json"
 	"net/http"
 	"strconv"
 
-	"github.com/soleilouisol/socAdmin/core/connector"
+	"github.com/soleilouisol/socAdmin/core/service"
 )
+
+type DatabaseController struct {
+	dbService *service.DatabaseService
+}
+
+func NewDatabaseController(dbService *service.DatabaseService) *DatabaseController {
+	return &DatabaseController{dbService: dbService}
+}
 
 type ConnectRequest struct {
 	Host     string `json:"host"`
@@ -19,41 +27,23 @@ type QueryRequest struct {
 	Query string `json:"query"`
 }
 
-func handleConnect(w http.ResponseWriter, r *http.Request) {
+func (c *DatabaseController) Connect(w http.ResponseWriter, r *http.Request) {
 	var req ConnectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	conn := connector.NewMySQLConnector(connector.MySQLConfig{
-		Host:     req.Host,
-		Port:     req.Port,
-		User:     req.User,
-		Password: req.Password,
-	})
-
-	if err := conn.Connect(); err != nil {
-		jsonError(w, http.StatusUnauthorized, "connection failed: "+err.Error())
+	if err := c.dbService.Connect(req.Host, req.Port, req.User, req.Password); err != nil {
+		jsonError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
-
-	// Fermer l'ancienne connexion si elle existe
-	if mysqlConn != nil {
-		mysqlConn.Close()
-	}
-	mysqlConn = conn
 
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "connected"})
 }
 
-func handleListDatabases(w http.ResponseWriter, r *http.Request) {
-	if mysqlConn == nil {
-		jsonError(w, http.StatusBadRequest, "not connected")
-		return
-	}
-
-	databases, err := mysqlConn.ListDatabases()
+func (c *DatabaseController) ListDatabases(w http.ResponseWriter, r *http.Request) {
+	databases, err := c.dbService.ListDatabases()
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -62,14 +52,10 @@ func handleListDatabases(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, databases)
 }
 
-func handleListTables(w http.ResponseWriter, r *http.Request) {
-	if mysqlConn == nil {
-		jsonError(w, http.StatusBadRequest, "not connected")
-		return
-	}
-
+func (c *DatabaseController) ListTables(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
-	tables, err := mysqlConn.ListTables(db)
+
+	tables, err := c.dbService.ListTables(db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -78,16 +64,11 @@ func handleListTables(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, tables)
 }
 
-func handleDescribeTable(w http.ResponseWriter, r *http.Request) {
-	if mysqlConn == nil {
-		jsonError(w, http.StatusBadRequest, "not connected")
-		return
-	}
-
+func (c *DatabaseController) DescribeTable(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
-	columns, err := mysqlConn.DescribeTable(db, table)
+	columns, err := c.dbService.DescribeTable(db, table)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -96,12 +77,7 @@ func handleDescribeTable(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, columns)
 }
 
-func handleGetRows(w http.ResponseWriter, r *http.Request) {
-	if mysqlConn == nil {
-		jsonError(w, http.StatusBadRequest, "not connected")
-		return
-	}
-
+func (c *DatabaseController) GetRows(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
@@ -118,7 +94,7 @@ func handleGetRows(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := mysqlConn.GetRows(db, table, limit, offset)
+	result, err := c.dbService.GetRows(db, table, limit, offset)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -127,12 +103,7 @@ func handleGetRows(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, result)
 }
 
-func handleExecuteQuery(w http.ResponseWriter, r *http.Request) {
-	if mysqlConn == nil {
-		jsonError(w, http.StatusBadRequest, "not connected")
-		return
-	}
-
+func (c *DatabaseController) ExecuteQuery(w http.ResponseWriter, r *http.Request) {
 	var req QueryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid request body")
@@ -144,11 +115,21 @@ func handleExecuteQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := mysqlConn.ExecuteQuery(req.Query)
+	result, err := c.dbService.ExecuteQuery(req.Query)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	jsonResponse(w, http.StatusOK, result)
+}
+
+func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
+}
+
+func jsonError(w http.ResponseWriter, status int, message string) {
+	jsonResponse(w, status, map[string]string{"error": message})
 }
