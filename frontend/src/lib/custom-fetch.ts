@@ -66,8 +66,12 @@ class CustomFetch {
     });
   }
 
-  delete(endpoint: string, options: RequestOptions = {}) {
-    return this.request(endpoint, { method: "DELETE", ...options });
+  delete(endpoint: string, body?: BodyData, options: RequestOptions = {}) {
+    return this.request(endpoint, {
+      method: "DELETE",
+      body: body ? JSON.stringify(body) : undefined,
+      ...options,
+    });
   }
 }
 

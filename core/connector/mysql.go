@@ -3,6 +3,7 @@ package connector
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -100,8 +101,66 @@ func (c *MySQLConnector) GetRows(database, table string, limit, offset int) (*Qu
 	return scanQuery(c.db, query)
 }
 
+func (c *MySQLConnector) InsertRow(database, table string, data map[string]interface{}) error {
+	cols, placeholders, vals := buildInsertSQL(data)
+	query := fmt.Sprintf("INSERT INTO %s.%s (%s) VALUES (%s)",
+		quoteIdentifier(database), quoteIdentifier(table), cols, placeholders)
+	_, err := c.db.Exec(query, vals...)
+	return err
+}
+
+func (c *MySQLConnector) UpdateRow(database, table string, primaryKey map[string]interface{}, data map[string]interface{}) error {
+	setClauses, setVals := buildUpdateSQL(data)
+	whereClauses, whereVals := buildWhereSQL(primaryKey)
+	query := fmt.Sprintf("UPDATE %s.%s SET %s WHERE %s",
+		quoteIdentifier(database), quoteIdentifier(table), setClauses, whereClauses)
+	vals := append(setVals, whereVals...)
+	_, err := c.db.Exec(query, vals...)
+	return err
+}
+
+func (c *MySQLConnector) DeleteRow(database, table string, primaryKey map[string]interface{}) error {
+	whereClauses, whereVals := buildWhereSQL(primaryKey)
+	query := fmt.Sprintf("DELETE FROM %s.%s WHERE %s",
+		quoteIdentifier(database), quoteIdentifier(table), whereClauses)
+	_, err := c.db.Exec(query, whereVals...)
+	return err
+}
+
 func (c *MySQLConnector) ExecuteQuery(query string) (*QueryResult, error) {
 	return scanQuery(c.db, query)
+}
+
+func buildInsertSQL(data map[string]interface{}) (string, string, []interface{}) {
+	var cols []string
+	var placeholders []string
+	var vals []interface{}
+	for k, v := range data {
+		cols = append(cols, quoteIdentifier(k))
+		placeholders = append(placeholders, "?")
+		vals = append(vals, v)
+	}
+	return strings.Join(cols, ", "), strings.Join(placeholders, ", "), vals
+}
+
+func buildUpdateSQL(data map[string]interface{}) (string, []interface{}) {
+	var clauses []string
+	var vals []interface{}
+	for k, v := range data {
+		clauses = append(clauses, quoteIdentifier(k)+" = ?")
+		vals = append(vals, v)
+	}
+	return strings.Join(clauses, ", "), vals
+}
+
+func buildWhereSQL(pk map[string]interface{}) (string, []interface{}) {
+	var clauses []string
+	var vals []interface{}
+	for k, v := range pk {
+		clauses = append(clauses, quoteIdentifier(k)+" = ?")
+		vals = append(vals, v)
+	}
+	return strings.Join(clauses, " AND "), vals
 }
 
 func (c *MySQLConnector) Close() error {

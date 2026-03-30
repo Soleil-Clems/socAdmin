@@ -84,6 +84,27 @@ func (s *DatabaseService) GetRows(database, table string, limit, offset int) (*c
 	return s.conn.GetRows(database, table, limit, offset)
 }
 
+func (s *DatabaseService) InsertRow(database, table string, data map[string]interface{}) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	return s.conn.InsertRow(database, table, data)
+}
+
+func (s *DatabaseService) UpdateRow(database, table string, primaryKey map[string]interface{}, data map[string]interface{}) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	return s.conn.UpdateRow(database, table, primaryKey, data)
+}
+
+func (s *DatabaseService) DeleteRow(database, table string, primaryKey map[string]interface{}) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	return s.conn.DeleteRow(database, table, primaryKey)
+}
+
 func (s *DatabaseService) ExecuteQuery(query string) (*connector.QueryResult, error) {
 	if s.conn == nil {
 		return nil, fmt.Errorf("not connected")

@@ -9,6 +9,9 @@ type Connector interface {
 	ListTables(database string) ([]string, error)
 	DescribeTable(database, table string) ([]Column, error)
 	GetRows(database, table string, limit, offset int) (*QueryResult, error)
+	InsertRow(database, table string, data map[string]interface{}) error
+	UpdateRow(database, table string, primaryKey map[string]interface{}, data map[string]interface{}) error
+	DeleteRow(database, table string, primaryKey map[string]interface{}) error
 	ExecuteQuery(query string) (*QueryResult, error)
 	Close() error
 }

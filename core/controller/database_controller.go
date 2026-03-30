@@ -28,6 +28,19 @@ type QueryRequest struct {
 	Query string `json:"query"`
 }
 
+type RowRequest struct {
+	Data map[string]interface{} `json:"data"`
+}
+
+type UpdateRowRequest struct {
+	PrimaryKey map[string]interface{} `json:"primary_key"`
+	Data       map[string]interface{} `json:"data"`
+}
+
+type DeleteRowRequest struct {
+	PrimaryKey map[string]interface{} `json:"primary_key"`
+}
+
 func (c *DatabaseController) Connect(w http.ResponseWriter, r *http.Request) {
 	var req ConnectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -128,6 +141,60 @@ func (c *DatabaseController) ExecuteQuery(w http.ResponseWriter, r *http.Request
 	}
 
 	jsonResponse(w, http.StatusOK, result)
+}
+
+func (c *DatabaseController) InsertRow(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req RowRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := c.dbService.InsertRow(db, table, req.Data); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusCreated, map[string]string{"status": "inserted"})
+}
+
+func (c *DatabaseController) UpdateRow(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req UpdateRowRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := c.dbService.UpdateRow(db, table, req.PrimaryKey, req.Data); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (c *DatabaseController) DeleteRow(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req DeleteRowRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := c.dbService.DeleteRow(db, table, req.PrimaryKey); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {

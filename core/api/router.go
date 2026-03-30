@@ -44,6 +44,9 @@ func NewRouter(authRepo *auth.Repository) http.Handler {
 	protected.HandleFunc("GET /api/databases/{db}/tables", dbController.ListTables)
 	protected.HandleFunc("GET /api/databases/{db}/tables/{table}/columns", dbController.DescribeTable)
 	protected.HandleFunc("GET /api/databases/{db}/tables/{table}/rows", dbController.GetRows)
+	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/rows", dbController.InsertRow)
+	protected.HandleFunc("PUT /api/databases/{db}/tables/{table}/rows", dbController.UpdateRow)
+	protected.HandleFunc("DELETE /api/databases/{db}/tables/{table}/rows", dbController.DeleteRow)
 	protected.HandleFunc("POST /api/query", dbController.ExecuteQuery)
 
 	mux.Handle("/api/", auth.AuthMiddleware(protected))

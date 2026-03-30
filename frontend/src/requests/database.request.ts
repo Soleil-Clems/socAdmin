@@ -11,5 +11,14 @@ export const databaseRequest = {
   getRows: (db: string, table: string, limit = 50, offset = 0) =>
     customfetch.get(`/databases/${db}/tables/${table}/rows?limit=${limit}&offset=${offset}`),
 
+  insertRow: (db: string, table: string, data: Record<string, unknown>) =>
+    customfetch.post(`/databases/${db}/tables/${table}/rows`, { data }),
+
+  updateRow: (db: string, table: string, primaryKey: Record<string, unknown>, data: Record<string, unknown>) =>
+    customfetch.put(`/databases/${db}/tables/${table}/rows`, { primary_key: primaryKey, data }),
+
+  deleteRow: (db: string, table: string, primaryKey: Record<string, unknown>) =>
+    customfetch.delete(`/databases/${db}/tables/${table}/rows`, { primary_key: primaryKey }),
+
   executeQuery: (query: string) => customfetch.post("/query", { query }),
 };

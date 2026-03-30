@@ -185,6 +185,53 @@ func (c *MongoConnector) ExecuteQuery(query string) (*QueryResult, error) {
 	}, nil
 }
 
+func (c *MongoConnector) InsertRow(database, collection string, data map[string]interface{}) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Supprimer _id si vide (laisser MongoDB le générer)
+	if id, ok := data["_id"]; ok {
+		if id == nil || id == "" {
+			delete(data, "_id")
+		}
+	}
+
+	coll := c.client.Database(database).Collection(collection)
+	_, err := coll.InsertOne(ctx, data)
+	return err
+}
+
+func (c *MongoConnector) UpdateRow(database, collection string, primaryKey map[string]interface{}, data map[string]interface{}) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	delete(data, "_id")
+
+	filter := bson.M{}
+	for k, v := range primaryKey {
+		filter[k] = v
+	}
+
+	update := bson.M{"$set": data}
+	coll := c.client.Database(database).Collection(collection)
+	_, err := coll.UpdateOne(ctx, filter, update)
+	return err
+}
+
+func (c *MongoConnector) DeleteRow(database, collection string, primaryKey map[string]interface{}) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	filter := bson.M{}
+	for k, v := range primaryKey {
+		filter[k] = v
+	}
+
+	coll := c.client.Database(database).Collection(collection)
+	_, err := coll.DeleteOne(ctx, filter)
+	return err
+}
+
 func (c *MongoConnector) Close() error {
 	if c.client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -3,6 +3,7 @@ package connector
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/lib/pq"
 )
@@ -142,8 +143,87 @@ func (c *PostgresConnector) GetRows(database, table string, limit, offset int) (
 	return scanQuery(db, query)
 }
 
+func (c *PostgresConnector) InsertRow(database, table string, data map[string]interface{}) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	cols, vals := pgBuildColsVals(data)
+	placeholders := pgPlaceholders(len(vals))
+	query := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s)`, table, cols, placeholders)
+	_, err = db.Exec(query, vals...)
+	return err
+}
+
+func (c *PostgresConnector) UpdateRow(database, table string, primaryKey map[string]interface{}, data map[string]interface{}) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	var setClauses []string
+	var vals []interface{}
+	i := 1
+	for k, v := range data {
+		setClauses = append(setClauses, fmt.Sprintf(`"%s" = $%d`, k, i))
+		vals = append(vals, v)
+		i++
+	}
+	var whereClauses []string
+	for k, v := range primaryKey {
+		whereClauses = append(whereClauses, fmt.Sprintf(`"%s" = $%d`, k, i))
+		vals = append(vals, v)
+		i++
+	}
+	query := fmt.Sprintf(`UPDATE "%s" SET %s WHERE %s`, table,
+		strings.Join(setClauses, ", "), strings.Join(whereClauses, " AND "))
+	_, err = db.Exec(query, vals...)
+	return err
+}
+
+func (c *PostgresConnector) DeleteRow(database, table string, primaryKey map[string]interface{}) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	var whereClauses []string
+	var vals []interface{}
+	i := 1
+	for k, v := range primaryKey {
+		whereClauses = append(whereClauses, fmt.Sprintf(`"%s" = $%d`, k, i))
+		vals = append(vals, v)
+		i++
+	}
+	query := fmt.Sprintf(`DELETE FROM "%s" WHERE %s`, table, strings.Join(whereClauses, " AND "))
+	_, err = db.Exec(query, vals...)
+	return err
+}
+
 func (c *PostgresConnector) ExecuteQuery(query string) (*QueryResult, error) {
 	return scanQuery(c.db, query)
+}
+
+func pgBuildColsVals(data map[string]interface{}) (string, []interface{}) {
+	var cols []string
+	var vals []interface{}
+	for k, v := range data {
+		cols = append(cols, fmt.Sprintf(`"%s"`, k))
+		vals = append(vals, v)
+	}
+	return strings.Join(cols, ", "), vals
+}
+
+func pgPlaceholders(n int) string {
+	var p []string
+	for i := 1; i <= n; i++ {
+		p = append(p, fmt.Sprintf("$%d", i))
+	}
+	return strings.Join(p, ", ")
 }
 
 func (c *PostgresConnector) Close() error {
