@@ -5,7 +5,7 @@ export const dbTypes = ["mysql", "postgresql", "mongodb"] as const;
 export const connectSchema = z.object({
   host: z.string().min(1, "Host is required"),
   port: z.number().min(1).max(65535),
-  user: z.string().min(1, "User is required"),
+  user: z.string(),
   password: z.string(),
   type: z.enum(dbTypes),
 });

@@ -24,8 +24,11 @@ func NewPostgresConnector(config PostgresConfig) *PostgresConnector {
 }
 
 func (c *PostgresConnector) Connect() error {
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=disable",
-		c.config.Host, c.config.Port, c.config.User, c.config.Password)
+	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=postgres sslmode=disable connect_timeout=5",
+		c.config.Host, c.config.Port, c.config.User)
+	if c.config.Password != "" {
+		dsn += fmt.Sprintf(" password=%s", c.config.Password)
+	}
 
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
@@ -151,8 +154,11 @@ func (c *PostgresConnector) Close() error {
 }
 
 func (c *PostgresConnector) connectToDb(database string) (*sql.DB, error) {
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		c.config.Host, c.config.Port, c.config.User, c.config.Password, database)
+	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=disable connect_timeout=5",
+		c.config.Host, c.config.Port, c.config.User, database)
+	if c.config.Password != "" {
+		dsn += fmt.Sprintf(" password=%s", c.config.Password)
+	}
 	return sql.Open("postgres", dsn)
 }
 

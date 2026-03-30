@@ -1,0 +1,5 @@
+- Pour up postgresql : brew services start postgresql@17
+- Le port par defaut : 5432
+
+- Pour up mongodb :  brew services start mongodb-community 
+- Le port par defaut : 27017

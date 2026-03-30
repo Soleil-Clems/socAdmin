@@ -41,7 +41,7 @@ func (c *DatabaseController) Connect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := c.dbService.Connect(req.Host, req.Port, req.User, req.Password, dbType); err != nil {
-		jsonError(w, http.StatusUnauthorized, err.Error())
+		jsonError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 
