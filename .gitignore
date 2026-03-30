@@ -1,0 +1,7 @@
+*.claude
+*.agents
+.claude
+.env
+*.env
+node_module
+.impeccable.md
