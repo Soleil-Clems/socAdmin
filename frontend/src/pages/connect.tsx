@@ -3,6 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { connectSchema, dbTypes, type ConnectFormData } from "@/schemas/connect.schema";
 import { useConnect } from "@/hooks/mutations/use-connect";
 import { useConnectionStore } from "@/stores/connection.store";
+import { useSystemInfo } from "@/hooks/queries/use-system-info";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,7 @@ const dbLabels: Record<string, string> = {
 export default function ConnectPage() {
   const connectMutation = useConnect();
   const setConnected = useConnectionStore((s) => s.setConnected);
+  const { data: systemInfo } = useSystemInfo();
 
   const {
     register,
@@ -62,8 +64,12 @@ export default function ConnectPage() {
     if (value === "mongodb") {
       setValue("user", "");
       setValue("password", "");
+    } else if (value === "postgresql") {
+      setValue("user", systemInfo?.os_user || "");
+      setValue("password", "");
     } else {
       setValue("user", "root");
+      setValue("password", "");
     }
   };
 

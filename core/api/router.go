@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
+	"os/user"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
 	"github.com/soleilouisol/socAdmin/core/controller"
@@ -18,6 +20,16 @@ func NewRouter(authRepo *auth.Repository) http.Handler {
 	// Controllers
 	authController := controller.NewAuthController(authService)
 	dbController := controller.NewDatabaseController(dbService)
+
+	// Route publique : infos système pour le formulaire de connexion
+	mux.HandleFunc("GET /api/system/info", func(w http.ResponseWriter, r *http.Request) {
+		username := ""
+		if u, err := user.Current(); err == nil {
+			username = u.Username
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"os_user": username})
+	})
 
 	// Auth routes (publiques)
 	mux.HandleFunc("POST /api/auth/register", authController.Register)
