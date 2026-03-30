@@ -1,12 +1,31 @@
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { connectSchema, type ConnectFormData } from "@/schemas/connect.schema";
+import { connectSchema, dbTypes, type ConnectFormData } from "@/schemas/connect.schema";
 import { useConnect } from "@/hooks/mutations/use-connect";
 import { useConnectionStore } from "@/stores/connection.store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const defaultPorts: Record<string, number> = {
+  mysql: 3306,
+  postgresql: 5432,
+  mongodb: 27017,
+};
+
+const dbLabels: Record<string, string> = {
+  mysql: "MySQL / MariaDB",
+  postgresql: "PostgreSQL",
+  mongodb: "MongoDB",
+};
 
 export default function ConnectPage() {
   const connectMutation = useConnect();
@@ -15,23 +34,37 @@ export default function ConnectPage() {
   const {
     register,
     handleSubmit,
+    control,
+    setValue,
     formState: { errors },
   } = useForm<ConnectFormData>({
     resolver: zodResolver(connectSchema),
     defaultValues: {
       host: "127.0.0.1",
-      port: 8889,
+      port: 3306,
       user: "root",
-      password: "root",
+      password: "",
+      type: "mysql",
     },
   });
 
   const onSubmit = (data: ConnectFormData) => {
     connectMutation.mutate(data, {
       onSuccess: () => {
-        setConnected(data.host, data.port, data.user);
+        setConnected(data.host, data.port, data.user, data.type);
       },
     });
+  };
+
+  const handleTypeChange = (value: string, onChange: (value: string) => void) => {
+    onChange(value);
+    setValue("port", defaultPorts[value] || 3306);
+    if (value === "mongodb") {
+      setValue("user", "");
+      setValue("password", "");
+    } else {
+      setValue("user", "root");
+    }
   };
 
   return (
@@ -47,6 +80,31 @@ export default function ConnectPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Database type</Label>
+              <Controller
+                name="type"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={(v) => v && handleTypeChange(v, field.onChange)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {dbTypes.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {dbLabels[t]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="host">Host</Label>

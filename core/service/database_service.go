@@ -7,32 +7,49 @@ import (
 )
 
 type DatabaseService struct {
-	conn *connector.MySQLConnector
+	conn     connector.Connector
+	dbType   string
 }
 
 func NewDatabaseService() *DatabaseService {
 	return &DatabaseService{}
 }
 
-func (s *DatabaseService) Connect(host string, port int, user, password string) error {
-	// Fermer l'ancienne connexion si elle existe
+func (s *DatabaseService) Connect(host string, port int, user, password, dbType string) error {
 	if s.conn != nil {
 		s.conn.Close()
 	}
 
-	conn := connector.NewMySQLConnector(connector.MySQLConfig{
-		Host:     host,
-		Port:     port,
-		User:     user,
-		Password: password,
-	})
+	var conn connector.Connector
+
+	switch dbType {
+	case "mysql":
+		conn = connector.NewMySQLConnector(connector.MySQLConfig{
+			Host: host, Port: port, User: user, Password: password,
+		})
+	case "postgresql":
+		conn = connector.NewPostgresConnector(connector.PostgresConfig{
+			Host: host, Port: port, User: user, Password: password,
+		})
+	case "mongodb":
+		conn = connector.NewMongoConnector(connector.MongoConfig{
+			Host: host, Port: port, User: user, Password: password,
+		})
+	default:
+		return fmt.Errorf("unsupported database type: %s", dbType)
+	}
 
 	if err := conn.Connect(); err != nil {
 		return fmt.Errorf("connection failed: %w", err)
 	}
 
 	s.conn = conn
+	s.dbType = dbType
 	return nil
+}
+
+func (s *DatabaseService) GetType() string {
+	return s.dbType
 }
 
 func (s *DatabaseService) IsConnected() bool {
@@ -78,6 +95,7 @@ func (s *DatabaseService) Disconnect() error {
 	if s.conn != nil {
 		err := s.conn.Close()
 		s.conn = nil
+		s.dbType = ""
 		return err
 	}
 	return nil

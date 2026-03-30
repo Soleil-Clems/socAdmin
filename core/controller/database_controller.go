@@ -21,6 +21,7 @@ type ConnectRequest struct {
 	Port     int    `json:"port"`
 	User     string `json:"user"`
 	Password string `json:"password"`
+	Type     string `json:"type"`
 }
 
 type QueryRequest struct {
@@ -34,12 +35,17 @@ func (c *DatabaseController) Connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := c.dbService.Connect(req.Host, req.Port, req.User, req.Password); err != nil {
+	dbType := req.Type
+	if dbType == "" {
+		dbType = "mysql"
+	}
+
+	if err := c.dbService.Connect(req.Host, req.Port, req.User, req.Password, dbType); err != nil {
 		jsonError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]string{"status": "connected"})
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "connected", "type": dbType})
 }
 
 func (c *DatabaseController) ListDatabases(w http.ResponseWriter, r *http.Request) {

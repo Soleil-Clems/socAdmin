@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 
 export default function Sidebar() {
-  const { host, port, user, disconnect } = useConnectionStore();
+  const { host, port, user, dbType, disconnect } = useConnectionStore();
   const logout = useAuthStore((s) => s.logout);
   const { selectedDb, selectedTable, setSelectedDb, setSelectedTable } =
     useNavigationStore();
@@ -21,7 +21,7 @@ export default function Sidebar() {
       <div className="p-4 border-b border-border">
         <h1 className="text-lg font-bold">socAdmin</h1>
         <p className="text-xs text-muted-foreground truncate">
-          {user}@{host}:{port}
+          {dbType?.toUpperCase()} — {user}@{host}:{port}
         </p>
       </div>
 
