@@ -1,5 +1,6 @@
 import { useConnectionStore } from "@/stores/connection.store";
 import ConnectPage from "@/pages/connect";
+import DashboardPage from "@/pages/dashboard";
 
 function App() {
   const isConnected = useConnectionStore((s) => s.isConnected);
@@ -8,11 +9,7 @@ function App() {
     return <ConnectPage />;
   }
 
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      <p className="text-muted-foreground">Connected — dashboard coming next</p>
-    </div>
-  );
+  return <DashboardPage />;
 }
 
 export default App;
