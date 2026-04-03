@@ -37,10 +37,16 @@ class CustomFetch {
       throw new Error("Session expired");
     }
 
-    const data = await res.json();
+    const text = await res.text();
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(text || `HTTP ${res.status}`);
+    }
 
     if (!res.ok) {
-      throw new Error(data.error || "An error occurred");
+      throw new Error((data.error as string) || "An error occurred");
     }
 
     return data;

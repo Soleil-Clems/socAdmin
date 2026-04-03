@@ -1,25 +1,29 @@
 # socAdmin — Makefile
 
-PID_BACK = /tmp/socadmin-back.pid
-PID_FRONT = /tmp/socadmin-front.pid
+BACK_PORT  = 8080
+FRONT_PORT = 5173
 
 # --- Start : lance tout en background ---
 start:
+	@if lsof -ti :$(BACK_PORT) >/dev/null 2>&1; then echo "Backend already running on :$(BACK_PORT)"; exit 1; fi
+	@if lsof -ti :$(FRONT_PORT) >/dev/null 2>&1; then echo "Frontend already running on :$(FRONT_PORT)"; exit 1; fi
 	@echo "Starting socAdmin..."
-	@go run main.go & echo $$! > $(PID_BACK)
-	@cd frontend && npm run dev & echo $$! > $(PID_FRONT)
-	@echo "Backend  PID: $$(cat $(PID_BACK))"
-	@echo "Frontend PID: $$(cat $(PID_FRONT))"
-	@echo "Ready → http://localhost:5173"
+	@go run main.go & disown
+	@cd frontend && npm run dev -- --port $(FRONT_PORT) & disown
+	@sleep 1
+	@echo "Backend  → http://localhost:$(BACK_PORT)"
+	@echo "Frontend → http://localhost:$(FRONT_PORT)"
 
-# --- Stop : arrête tout ---
+# --- Stop : kill par port (tue toutes les instances) ---
 stop:
 	@echo "Stopping socAdmin..."
-	@if [ -f $(PID_BACK) ]; then kill $$(cat $(PID_BACK)) 2>/dev/null; rm -f $(PID_BACK); echo "Backend stopped"; fi
-	@if [ -f $(PID_FRONT) ]; then kill $$(cat $(PID_FRONT)) 2>/dev/null; rm -f $(PID_FRONT); echo "Frontend stopped"; fi
+	@lsof -ti :$(BACK_PORT) | xargs kill -9 2>/dev/null && echo "Backend stopped  (:$(BACK_PORT))" || echo "Backend not running"
+	@lsof -ti :$(FRONT_PORT) | xargs kill -9 2>/dev/null && echo "Frontend stopped (:$(FRONT_PORT))" || echo "Frontend not running"
 
 # --- Reload : restart tout ---
-reload: stop start
+reload: stop
+	@sleep 1
+	@$(MAKE) start
 
 # --- Build ---
 build:
@@ -44,7 +48,7 @@ clean:
 
 # --- Status ---
 status:
-	@if [ -f $(PID_BACK) ] && kill -0 $$(cat $(PID_BACK)) 2>/dev/null; then echo "Backend:  running (PID $$(cat $(PID_BACK)))"; else echo "Backend:  stopped"; fi
-	@if [ -f $(PID_FRONT) ] && kill -0 $$(cat $(PID_FRONT)) 2>/dev/null; then echo "Frontend: running (PID $$(cat $(PID_FRONT)))"; else echo "Frontend: stopped"; fi
+	@if lsof -ti :$(BACK_PORT) >/dev/null 2>&1; then echo "Backend:  running (:$(BACK_PORT), PID $$(lsof -ti :$(BACK_PORT) | head -1))"; else echo "Backend:  stopped"; fi
+	@if lsof -ti :$(FRONT_PORT) >/dev/null 2>&1; then echo "Frontend: running (:$(FRONT_PORT), PID $$(lsof -ti :$(FRONT_PORT) | head -1))"; else echo "Frontend: stopped"; fi
 
 .PHONY: start stop reload build install check clean status
