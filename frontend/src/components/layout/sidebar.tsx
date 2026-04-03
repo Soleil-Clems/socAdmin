@@ -63,7 +63,7 @@ type TableDef = {
 export default function Sidebar() {
   const { host, port, user, dbType, disconnect } = useConnectionStore();
   const logout = useAuthStore((s) => s.logout);
-  const { selectedDb, selectedTable, setSelectedDb, setSelectedTable } =
+  const { selectedDb, selectedTable, setSelectedDb, setSelectedTable, reset: resetNav } =
     useNavigationStore();
 
   const { data: databases, isLoading: dbLoading } = useDatabases();
@@ -242,7 +242,7 @@ export default function Sidebar() {
           variant="ghost"
           size="sm"
           className="w-full text-muted-foreground"
-          onClick={disconnect}
+          onClick={() => { resetNav(); disconnect(); }}
         >
           Disconnect DB
         </Button>
@@ -250,7 +250,7 @@ export default function Sidebar() {
           variant="ghost"
           size="sm"
           className="w-full text-muted-foreground"
-          onClick={() => { disconnect(); logout(); }}
+          onClick={() => { resetNav(); disconnect(); logout(); }}
         >
           Logout
         </Button>

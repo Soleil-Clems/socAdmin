@@ -22,6 +22,7 @@ type NavigationState = {
   selectedTable: string;
   setSelectedDb: (db: string) => void;
   setSelectedTable: (table: string) => void;
+  reset: () => void;
 };
 
 const initial = getParamsFromURL();
@@ -38,5 +39,9 @@ export const useNavigationStore = create<NavigationState>((set) => ({
       syncURL(state.selectedDb, table);
       return { selectedTable: table };
     });
+  },
+  reset: () => {
+    syncURL("", "");
+    set({ selectedDb: "", selectedTable: "" });
   },
 }));
