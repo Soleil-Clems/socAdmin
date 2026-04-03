@@ -15,6 +15,8 @@ export const databaseRequest = {
   createDatabase: (name: string) =>
     customfetch.post("/databases", { name }),
 
+  dropDatabase: (db: string) => customfetch.delete(`/databases/${db}`),
+
   listTables: (db: string) => customfetch.get(`/databases/${db}/tables`),
 
   createTable: (db: string, name: string, columns: TableColumnDef[]) =>

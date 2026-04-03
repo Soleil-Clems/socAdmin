@@ -102,6 +102,17 @@ func (c *DatabaseController) CreateDatabase(w http.ResponseWriter, r *http.Reque
 	jsonResponse(w, http.StatusCreated, map[string]string{"status": "created"})
 }
 
+func (c *DatabaseController) DropDatabase(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	if err := c.dbService.DropDatabase(db); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "dropped"})
+}
+
 func (c *DatabaseController) CreateTable(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 

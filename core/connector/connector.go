@@ -7,6 +7,7 @@ type Connector interface {
 	Connect() error
 	ListDatabases() ([]string, error)
 	CreateDatabase(name string) error
+	DropDatabase(name string) error
 	ListTables(database string) ([]string, error)
 	CreateTable(database string, table string, columns []TableColumnDef) error
 	DescribeTable(database, table string) ([]Column, error)

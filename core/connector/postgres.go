@@ -67,6 +67,11 @@ func (c *PostgresConnector) CreateDatabase(name string) error {
 	return err
 }
 
+func (c *PostgresConnector) DropDatabase(name string) error {
+	_, err := c.db.Exec(fmt.Sprintf(`DROP DATABASE "%s"`, name))
+	return err
+}
+
 func (c *PostgresConnector) CreateTable(database string, table string, columns []TableColumnDef) error {
 	db, err := c.connectToDb(database)
 	if err != nil {

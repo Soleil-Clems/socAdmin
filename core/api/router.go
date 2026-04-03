@@ -42,6 +42,7 @@ func NewRouter(authRepo *auth.Repository) http.Handler {
 	protected.HandleFunc("POST /api/connect", dbController.Connect)
 	protected.HandleFunc("GET /api/databases", dbController.ListDatabases)
 	protected.HandleFunc("POST /api/databases", dbController.CreateDatabase)
+	protected.HandleFunc("DELETE /api/databases/{db}", dbController.DropDatabase)
 	protected.HandleFunc("GET /api/databases/{db}/tables", dbController.ListTables)
 	protected.HandleFunc("POST /api/databases/{db}/tables", dbController.CreateTable)
 	protected.HandleFunc("GET /api/databases/{db}/tables/{table}/columns", dbController.DescribeTable)

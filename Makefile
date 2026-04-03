@@ -51,4 +51,12 @@ status:
 	@if lsof -ti :$(BACK_PORT) >/dev/null 2>&1; then echo "Backend:  running (:$(BACK_PORT), PID $$(lsof -ti :$(BACK_PORT) | head -1))"; else echo "Backend:  stopped"; fi
 	@if lsof -ti :$(FRONT_PORT) >/dev/null 2>&1; then echo "Frontend: running (:$(FRONT_PORT), PID $$(lsof -ti :$(FRONT_PORT) | head -1))"; else echo "Frontend: stopped"; fi
 
-.PHONY: start stop reload build install check clean status
+# --- Push : git add, commit et push en une commande ---
+# Usage : make push m="feat: mon message de commit"
+push:
+	@if [ -z "$(m)" ]; then echo "Usage: make push m=\"your commit message\""; exit 1; fi
+	git add -A
+	git commit -m "$(m)"
+	git push
+
+.PHONY: start stop reload build install check clean status push

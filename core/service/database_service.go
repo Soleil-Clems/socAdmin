@@ -70,6 +70,13 @@ func (s *DatabaseService) CreateDatabase(name string) error {
 	return s.conn.CreateDatabase(name)
 }
 
+func (s *DatabaseService) DropDatabase(name string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	return s.conn.DropDatabase(name)
+}
+
 func (s *DatabaseService) CreateTable(database, table string, columns []connector.TableColumnDef) error {
 	if s.conn == nil {
 		return fmt.Errorf("not connected")

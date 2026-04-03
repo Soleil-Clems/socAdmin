@@ -3,6 +3,7 @@ import { useDatabases } from "@/hooks/queries/use-databases";
 import { useTables } from "@/hooks/queries/use-tables";
 import { useCreateDatabase } from "@/hooks/mutations/use-create-database";
 import { useCreateTable } from "@/hooks/mutations/use-create-table";
+import { useDropDatabase } from "@/hooks/mutations/use-drop-database";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
 import { useAuthStore } from "@/stores/auth.store";
@@ -70,6 +71,7 @@ export default function Sidebar() {
   const { data: tables, isLoading: tablesLoading } = useTables(selectedDb);
   const createDb = useCreateDatabase();
   const createTable = useCreateTable();
+  const dropDb = useDropDatabase();
 
   const [showCreateDb, setShowCreateDb] = useState(false);
   const [newDbName, setNewDbName] = useState("");
@@ -196,16 +198,33 @@ export default function Sidebar() {
 
           {databases?.map((db: string) => (
             <div key={db}>
-              <button
-                onClick={() => setSelectedDb(db)}
-                className={`w-full text-left px-2 py-1.5 rounded-md text-sm transition-colors ${
-                  selectedDb === db
-                    ? "bg-accent text-accent-foreground font-medium"
-                    : "text-foreground hover:bg-accent/50"
-                }`}
-              >
-                {db}
-              </button>
+              <div className="flex items-center group">
+                <button
+                  onClick={() => setSelectedDb(db)}
+                  className={`flex-1 text-left px-2 py-1.5 rounded-md text-sm transition-colors ${
+                    selectedDb === db
+                      ? "bg-accent text-accent-foreground font-medium"
+                      : "text-foreground hover:bg-accent/50"
+                  }`}
+                >
+                  {db}
+                </button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-xs text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  onClick={() => {
+                    if (!confirm(`Drop database "${db}"? This cannot be undone.`)) return;
+                    dropDb.mutate(db, {
+                      onSuccess: () => {
+                        if (selectedDb === db) resetNav();
+                      },
+                    });
+                  }}
+                >
+                  X
+                </Button>
+              </div>
 
               {selectedDb === db && (
                 <div className="ml-3 border-l border-border pl-2">

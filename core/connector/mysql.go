@@ -63,6 +63,11 @@ func (c *MySQLConnector) CreateDatabase(name string) error {
 	return err
 }
 
+func (c *MySQLConnector) DropDatabase(name string) error {
+	_, err := c.db.Exec("DROP DATABASE " + quoteIdentifier(name))
+	return err
+}
+
 func (c *MySQLConnector) CreateTable(database string, table string, columns []TableColumnDef) error {
 	var colDefs []string
 	var pks []string

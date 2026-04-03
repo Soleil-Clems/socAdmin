@@ -65,28 +65,65 @@ func (c *MongoConnector) ListDatabases() ([]string, error) {
 }
 
 func (c *MongoConnector) CreateDatabase(name string) error {
-	// MongoDB crée la database automatiquement quand on insère un document
-	// On crée une collection temporaire pour forcer la création
+	// MongoDB crée la database automatiquement quand on insère un document.
+	// On insère puis supprime un doc temporaire pour forcer la création de la DB
+	// sans laisser de collection parasite.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return c.client.Database(name).CreateCollection(ctx, "_init")
+
+	db := c.client.Database(name)
+
+	// Vérifier si la DB existe déjà
+	dbs, err := c.client.ListDatabaseNames(ctx, bson.M{"name": name})
+	if err == nil && len(dbs) > 0 {
+		return nil // DB existe déjà, rien à faire
+	}
+
+	// Créer une collection placeholder pour matérialiser la DB
+	coll := db.Collection("_socadmin_init")
+	_, err = coll.InsertOne(ctx, bson.M{"_created": true})
+	if err != nil {
+		return fmt.Errorf("failed to create database: %w", err)
+	}
+
+	return nil
+}
+
+func (c *MongoConnector) DropDatabase(name string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return c.client.Database(name).Drop(ctx)
 }
 
 func (c *MongoConnector) CreateTable(database string, collection string, _ []TableColumnDef) error {
 	// MongoDB est schemaless, on crée juste la collection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	// Vérifier si la collection existe déjà
+	existing, err := c.client.Database(database).ListCollectionNames(ctx, bson.M{"name": collection})
+	if err == nil && len(existing) > 0 {
+		return nil
+	}
+
 	return c.client.Database(database).CreateCollection(ctx, collection)
 }
 
-// ListTables retourne les collections d'une database
+// ListTables retourne les collections d'une database (filtre les collections internes)
 func (c *MongoConnector) ListTables(database string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	collections, err := c.client.Database(database).ListCollectionNames(ctx, bson.D{})
+	all, err := c.client.Database(database).ListCollectionNames(ctx, bson.D{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list collections: %w", err)
+	}
+
+	var collections []string
+	for _, name := range all {
+		if name != "_socadmin_init" && name != "_init" {
+			collections = append(collections, name)
+		}
 	}
 	return collections, nil
 }
