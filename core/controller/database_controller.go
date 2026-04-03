@@ -2,10 +2,10 @@ package controller
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 
+	"github.com/soleilouisol/socAdmin/core/connector"
 	"github.com/soleilouisol/socAdmin/core/service"
 )
 
@@ -43,6 +43,15 @@ type DeleteRowRequest struct {
 	PrimaryKey map[string]interface{} `json:"primary_key"`
 }
 
+type CreateDatabaseRequest struct {
+	Name string `json:"name"`
+}
+
+type CreateTableRequest struct {
+	Name    string                    `json:"name"`
+	Columns []connector.TableColumnDef `json:"columns"`
+}
+
 func (c *DatabaseController) Connect(w http.ResponseWriter, r *http.Request) {
 	var req ConnectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -71,6 +80,52 @@ func (c *DatabaseController) ListDatabases(w http.ResponseWriter, r *http.Reques
 	}
 
 	jsonResponse(w, http.StatusOK, databases)
+}
+
+func (c *DatabaseController) CreateDatabase(w http.ResponseWriter, r *http.Request) {
+	var req CreateDatabaseRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Name == "" {
+		jsonError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	if err := c.dbService.CreateDatabase(req.Name); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusCreated, map[string]string{"status": "created"})
+}
+
+func (c *DatabaseController) CreateTable(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	var req CreateTableRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Name == "" {
+		jsonError(w, http.StatusBadRequest, "table name is required")
+		return
+	}
+	if len(req.Columns) == 0 {
+		jsonError(w, http.StatusBadRequest, "at least one column is required")
+		return
+	}
+
+	if err := c.dbService.CreateTable(db, req.Name, req.Columns); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusCreated, map[string]string{"status": "created"})
 }
 
 func (c *DatabaseController) ListTables(w http.ResponseWriter, r *http.Request) {
@@ -130,8 +185,6 @@ func (c *DatabaseController) ExecuteQuery(w http.ResponseWriter, r *http.Request
 		jsonError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-
-	fmt.Printf("[ExecuteQuery] database=%q query=%q\n", req.Database, req.Query)
 
 	if req.Query == "" {
 		jsonError(w, http.StatusBadRequest, "query is required")

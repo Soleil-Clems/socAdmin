@@ -63,6 +63,20 @@ func (s *DatabaseService) ListDatabases() ([]string, error) {
 	return s.conn.ListDatabases()
 }
 
+func (s *DatabaseService) CreateDatabase(name string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	return s.conn.CreateDatabase(name)
+}
+
+func (s *DatabaseService) CreateTable(database, table string, columns []connector.TableColumnDef) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	return s.conn.CreateTable(database, table, columns)
+}
+
 func (s *DatabaseService) ListTables(database string) ([]string, error) {
 	if s.conn == nil {
 		return nil, fmt.Errorf("not connected")

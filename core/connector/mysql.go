@@ -58,6 +58,39 @@ func (c *MySQLConnector) ListDatabases() ([]string, error) {
 	return databases, nil
 }
 
+func (c *MySQLConnector) CreateDatabase(name string) error {
+	_, err := c.db.Exec("CREATE DATABASE " + quoteIdentifier(name))
+	return err
+}
+
+func (c *MySQLConnector) CreateTable(database string, table string, columns []TableColumnDef) error {
+	var colDefs []string
+	var pks []string
+	for _, col := range columns {
+		def := quoteIdentifier(col.Name) + " " + col.Type
+		if !col.Nullable {
+			def += " NOT NULL"
+		}
+		if col.AutoIncrement {
+			def += " AUTO_INCREMENT"
+		}
+		if col.DefaultValue != "" {
+			def += " DEFAULT " + col.DefaultValue
+		}
+		colDefs = append(colDefs, def)
+		if col.PrimaryKey {
+			pks = append(pks, quoteIdentifier(col.Name))
+		}
+	}
+	if len(pks) > 0 {
+		colDefs = append(colDefs, "PRIMARY KEY ("+strings.Join(pks, ", ")+")")
+	}
+	query := fmt.Sprintf("CREATE TABLE %s.%s (\n%s\n)",
+		quoteIdentifier(database), quoteIdentifier(table), strings.Join(colDefs, ",\n"))
+	_, err := c.db.Exec(query)
+	return err
+}
+
 func (c *MySQLConnector) ListTables(database string) ([]string, error) {
 	rows, err := c.db.Query("SHOW TABLES FROM " + quoteIdentifier(database))
 	if err != nil {

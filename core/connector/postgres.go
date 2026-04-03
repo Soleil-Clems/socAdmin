@@ -62,6 +62,41 @@ func (c *PostgresConnector) ListDatabases() ([]string, error) {
 	return databases, nil
 }
 
+func (c *PostgresConnector) CreateDatabase(name string) error {
+	_, err := c.db.Exec(fmt.Sprintf(`CREATE DATABASE "%s"`, name))
+	return err
+}
+
+func (c *PostgresConnector) CreateTable(database string, table string, columns []TableColumnDef) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	var colDefs []string
+	for _, col := range columns {
+		colType := col.Type
+		if col.AutoIncrement {
+			colType = "SERIAL"
+		}
+		def := fmt.Sprintf(`"%s" %s`, col.Name, colType)
+		if !col.Nullable && !col.AutoIncrement {
+			def += " NOT NULL"
+		}
+		if col.PrimaryKey {
+			def += " PRIMARY KEY"
+		}
+		if col.DefaultValue != "" && !col.AutoIncrement {
+			def += " DEFAULT " + col.DefaultValue
+		}
+		colDefs = append(colDefs, def)
+	}
+	query := fmt.Sprintf(`CREATE TABLE "%s" (%s)`, table, strings.Join(colDefs, ", "))
+	_, err = db.Exec(query)
+	return err
+}
+
 func (c *PostgresConnector) ListTables(database string) ([]string, error) {
 	// PostgreSQL nécessite une connexion à la DB spécifique
 	db, err := c.connectToDb(database)

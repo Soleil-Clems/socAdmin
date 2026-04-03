@@ -1,9 +1,24 @@
 import customfetch from "@/lib/custom-fetch";
 
+export type TableColumnDef = {
+  name: string;
+  type: string;
+  nullable: boolean;
+  primary_key: boolean;
+  auto_increment: boolean;
+  default_value: string;
+};
+
 export const databaseRequest = {
   list: () => customfetch.get("/databases"),
 
+  createDatabase: (name: string) =>
+    customfetch.post("/databases", { name }),
+
   listTables: (db: string) => customfetch.get(`/databases/${db}/tables`),
+
+  createTable: (db: string, name: string, columns: TableColumnDef[]) =>
+    customfetch.post(`/databases/${db}/tables`, { name, columns }),
 
   describeTable: (db: string, table: string) =>
     customfetch.get(`/databases/${db}/tables/${table}/columns`),

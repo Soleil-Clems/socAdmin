@@ -6,7 +6,9 @@ package connector
 type Connector interface {
 	Connect() error
 	ListDatabases() ([]string, error)
+	CreateDatabase(name string) error
 	ListTables(database string) ([]string, error)
+	CreateTable(database string, table string, columns []TableColumnDef) error
 	DescribeTable(database, table string) ([]Column, error)
 	GetRows(database, table string, limit, offset int) (*QueryResult, error)
 	InsertRow(database, table string, data map[string]interface{}) error
@@ -25,6 +27,15 @@ type Column struct {
 	Key     string
 	Default *string
 	Extra   string
+}
+
+type TableColumnDef struct {
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	Nullable      bool   `json:"nullable"`
+	PrimaryKey    bool   `json:"primary_key"`
+	AutoIncrement bool   `json:"auto_increment"`
+	DefaultValue  string `json:"default_value"`
 }
 
 type QueryResult struct {
