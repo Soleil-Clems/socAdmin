@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useExecuteQuery } from "@/hooks/mutations/use-execute-query";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { Badge } from "@/components/ui/badge";
@@ -19,16 +19,74 @@ type QueryResult = {
   Rows: Record<string, unknown>[];
 };
 
+type HistoryEntry = {
+  query: string;
+  database: string;
+  timestamp: number;
+  rowCount: number | null;
+  error: string | null;
+};
+
+const HISTORY_KEY = "socadmin_query_history";
+const MAX_HISTORY = 50;
+
+function loadHistory(): HistoryEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(history: HistoryEntry[]) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+}
+
 export default function QueryEditor() {
   const { selectedDb } = useNavigationStore();
   const [query, setQuery] = useState("");
   const executeQuery = useExecuteQuery();
+  const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
+  const [showHistory, setShowHistory] = useState(false);
 
   const result = executeQuery.data as QueryResult | undefined;
 
+  useEffect(() => {
+    saveHistory(history);
+  }, [history]);
+
   const handleExecute = () => {
     if (!query.trim()) return;
-    executeQuery.mutate({ query: query.trim(), database: selectedDb || undefined });
+    executeQuery.mutate(
+      { query: query.trim(), database: selectedDb || undefined },
+      {
+        onSuccess: (data) => {
+          const res = data as QueryResult;
+          setHistory((prev) => [
+            {
+              query: query.trim(),
+              database: selectedDb || "",
+              timestamp: Date.now(),
+              rowCount: res.Rows?.length ?? 0,
+              error: null,
+            },
+            ...prev,
+          ]);
+        },
+        onError: (err) => {
+          setHistory((prev) => [
+            {
+              query: query.trim(),
+              database: selectedDb || "",
+              timestamp: Date.now(),
+              rowCount: null,
+              error: err.message,
+            },
+            ...prev,
+          ]);
+        },
+      }
+    );
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -36,6 +94,20 @@ export default function QueryEditor() {
       e.preventDefault();
       handleExecute();
     }
+  };
+
+  const handleReplay = (entry: HistoryEntry) => {
+    setQuery(entry.query);
+    setShowHistory(false);
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+  };
+
+  const formatTime = (ts: number) => {
+    const d = new Date(ts);
+    return d.toLocaleString();
   };
 
   return (
@@ -50,20 +122,32 @@ export default function QueryEditor() {
           <span className="text-xs text-muted-foreground">
             {selectedDb
               ? "Queries run in this database context"
-              : "No database selected — use USE db;"}
+              : "No database selected \u2014 use USE db;"}
           </span>
+          <div className="ml-auto">
+            <Button
+              variant={showHistory ? "secondary" : "outline"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setShowHistory(!showHistory)}
+            >
+              History ({history.length})
+            </Button>
+          </div>
         </div>
         <Textarea
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={selectedDb ? `SELECT * FROM ${selectedDb}...` : "SELECT * FROM ..."}
+          placeholder={
+            selectedDb
+              ? `SELECT * FROM ${selectedDb}...`
+              : "SELECT * FROM ..."
+          }
           className="font-mono text-sm min-h-[120px] resize-y"
         />
         <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            Ctrl+Enter to execute
-          </p>
+          <p className="text-xs text-muted-foreground">Ctrl+Enter to execute</p>
           <Button
             onClick={handleExecute}
             disabled={executeQuery.isPending || !query.trim()}
@@ -75,6 +159,78 @@ export default function QueryEditor() {
       </div>
 
       <div className="flex-1 overflow-hidden">
+        {/* History panel */}
+        {showHistory && (
+          <div className="border-b border-border">
+            <ScrollArea className="max-h-64">
+              <div className="p-2 space-y-1">
+                {history.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">
+                    No queries yet
+                  </p>
+                )}
+                {history.map((entry, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-accent/50 group cursor-pointer"
+                    onClick={() => handleReplay(entry)}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-mono truncate">{entry.query}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatTime(entry.timestamp)}
+                        </span>
+                        {entry.database && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] h-4 px-1"
+                          >
+                            {entry.database}
+                          </Badge>
+                        )}
+                        {entry.error ? (
+                          <span className="text-[10px] text-destructive">
+                            Error
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">
+                            {entry.rowCount} rows
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs opacity-0 group-hover:opacity-100 shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReplay(entry);
+                      }}
+                    >
+                      Use
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+            {history.length > 0 && (
+              <div className="px-4 py-1 border-t border-border">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs text-destructive"
+                  onClick={clearHistory}
+                >
+                  Clear history
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Results */}
         {executeQuery.isError && (
           <div className="p-4 text-sm text-destructive">
             {executeQuery.error.message}
@@ -122,7 +278,7 @@ export default function QueryEditor() {
           </ScrollArea>
         )}
 
-        {!result && !executeQuery.isError && (
+        {!result && !executeQuery.isError && !showHistory && (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             Write a query and hit Execute
           </div>

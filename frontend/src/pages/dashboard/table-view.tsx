@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRows } from "@/hooks/queries/use-rows";
 import { useColumns } from "@/hooks/queries/use-columns";
 import { useNavigationStore } from "@/stores/navigation.store";
@@ -21,6 +21,13 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -39,6 +46,11 @@ type QueryResult = {
   Columns: string[];
   Rows: Record<string, unknown>[];
 };
+
+type SortState = {
+  column: string;
+  direction: "asc" | "desc";
+} | null;
 
 function getColumnMeta(type: string) {
   const t = type.toUpperCase();
@@ -83,8 +95,14 @@ function castValue(raw: string, kind: string): unknown {
   }
 }
 
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+
 export default function TableView() {
   const { selectedDb, selectedTable } = useNavigationStore();
+
+  // Pagination
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
 
   const { data: columns, isLoading: colLoading } = useColumns(
     selectedDb,
@@ -92,25 +110,39 @@ export default function TableView() {
   );
   const { data: rowsData, isLoading: rowsLoading } = useRows(
     selectedDb,
-    selectedTable
+    selectedTable,
+    pageSize,
+    page * pageSize
   ) as { data: QueryResult | undefined; isLoading: boolean };
 
   const insertRow = useInsertRow();
   const updateRow = useUpdateRow();
   const deleteRow = useDeleteRow();
 
+  // Search
+  const [search, setSearch] = useState("");
+
+  // Sort
+  const [sort, setSort] = useState<SortState>(null);
+
   const [showInsert, setShowInsert] = useState(false);
-  const [editingRow, setEditingRow] = useState<Record<string, unknown> | null>(null);
+  const [editingRow, setEditingRow] = useState<Record<string, unknown> | null>(
+    null
+  );
   const [formData, setFormData] = useState<Record<string, string>>({});
 
-  const primaryKeys = columns?.filter((c: Column) => c.Key === "PRI").map((c: Column) => c.Name) || [];
+  const primaryKeys =
+    columns
+      ?.filter((c: Column) => c.Key === "PRI")
+      .map((c: Column) => c.Name) || [];
 
   const columnMap = new Map<string, Column>();
   columns?.forEach((c: Column) => columnMap.set(c.Name, c));
 
   const getPrimaryKey = (row: Record<string, unknown>) => {
     const pk: Record<string, unknown> = {};
-    const keys = primaryKeys.length > 0 ? primaryKeys : rowsData?.Columns || [];
+    const keys =
+      primaryKeys.length > 0 ? primaryKeys : rowsData?.Columns || [];
     for (const k of keys) {
       pk[k] = row[k];
     }
@@ -119,6 +151,79 @@ export default function TableView() {
 
   const insertableColumns =
     columns?.filter((c: Column) => !isAutoIncrement(c)) || [];
+
+  // Filtered + sorted rows
+  const displayRows = useMemo(() => {
+    let rows = rowsData?.Rows || [];
+
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      rows = rows.filter((row) =>
+        Object.values(row).some((val) =>
+          val !== null && String(val).toLowerCase().includes(q)
+        )
+      );
+    }
+
+    // Sort
+    if (sort && rowsData?.Columns?.includes(sort.column)) {
+      const { column, direction } = sort;
+      rows = [...rows].sort((a, b) => {
+        const va = a[column];
+        const vb = b[column];
+        if (va === null && vb === null) return 0;
+        if (va === null) return 1;
+        if (vb === null) return -1;
+
+        const na = Number(va);
+        const nb = Number(vb);
+        if (!isNaN(na) && !isNaN(nb)) {
+          return direction === "asc" ? na - nb : nb - na;
+        }
+
+        const sa = String(va);
+        const sb = String(vb);
+        return direction === "asc"
+          ? sa.localeCompare(sb)
+          : sb.localeCompare(sa);
+      });
+    }
+
+    return rows;
+  }, [rowsData, search, sort]);
+
+  const handleSort = (column: string) => {
+    setSort((prev) => {
+      if (prev?.column === column) {
+        if (prev.direction === "asc") return { column, direction: "desc" };
+        return null; // third click removes sort
+      }
+      return { column, direction: "asc" };
+    });
+  };
+
+  const getSortIndicator = (column: string) => {
+    if (sort?.column !== column) return "";
+    return sort.direction === "asc" ? " \u2191" : " \u2193";
+  };
+
+  const hasNextPage = (rowsData?.Rows?.length ?? 0) === pageSize;
+  const hasPrevPage = page > 0;
+
+  const handlePageSizeChange = (size: string) => {
+    setPageSize(Number(size));
+    setPage(0);
+  };
+
+  // Reset page when table changes
+  const [prevTable, setPrevTable] = useState(selectedTable);
+  if (selectedTable !== prevTable) {
+    setPrevTable(selectedTable);
+    setPage(0);
+    setSearch("");
+    setSort(null);
+  }
 
   const handleInsertOpen = () => {
     const initial: Record<string, string> = {};
@@ -167,7 +272,12 @@ export default function TableView() {
       data[k] = castValue(v, meta?.kind || "string");
     }
     updateRow.mutate(
-      { db: selectedDb, table: selectedTable, primaryKey: getPrimaryKey(editingRow), data },
+      {
+        db: selectedDb,
+        table: selectedTable,
+        primaryKey: getPrimaryKey(editingRow),
+        data,
+      },
       { onSuccess: () => setEditingRow(null) }
     );
   };
@@ -185,35 +295,30 @@ export default function TableView() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Header */}
       <div className="p-4 border-b border-border flex items-center gap-2">
         <h2 className="text-lg font-semibold">{selectedTable}</h2>
         <Badge variant="secondary">{selectedDb}</Badge>
         {rowsData?.Rows && (
           <span className="text-xs text-muted-foreground">
             {rowsData.Rows.length} rows
+            {search && ` (${displayRows.length} filtered)`}
           </span>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search..."
+            className="h-8 w-48"
+          />
           <Button size="sm" onClick={handleInsertOpen}>
             + Add row
           </Button>
         </div>
       </div>
 
-      {columns && (
-        <div className="px-4 py-2 border-b border-border flex gap-2 flex-wrap">
-          {columns.map((col: Column) => (
-            <Badge key={col.Name} variant="outline" className="text-xs">
-              {col.Name}
-              <span className="ml-1 text-muted-foreground">{col.Type}</span>
-              {col.Key === "PRI" && (
-                <span className="ml-1 text-yellow-500">PK</span>
-              )}
-            </Badge>
-          ))}
-        </div>
-      )}
-
+      {/* Table */}
       {isLoading ? (
         <div className="p-4 space-y-2">
           {Array.from({ length: 10 }).map((_, i) => (
@@ -227,14 +332,19 @@ export default function TableView() {
               <TableRow>
                 <TableHead className="w-24">Actions</TableHead>
                 {rowsData?.Columns?.map((col) => (
-                  <TableHead key={col} className="whitespace-nowrap">
+                  <TableHead
+                    key={col}
+                    className="whitespace-nowrap cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleSort(col)}
+                  >
                     {col}
+                    {getSortIndicator(col)}
                   </TableHead>
                 ))}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rowsData?.Rows?.map((row, i) => (
+              {displayRows.map((row, i) => (
                 <TableRow key={i}>
                   <TableCell className="flex gap-1">
                     <Button
@@ -254,10 +364,12 @@ export default function TableView() {
                       Del
                     </Button>
                   </TableCell>
-                  {rowsData.Columns.map((col) => (
+                  {rowsData?.Columns?.map((col) => (
                     <TableCell key={col} className="max-w-xs truncate text-xs">
                       {row[col] === null ? (
-                        <span className="text-muted-foreground italic">NULL</span>
+                        <span className="text-muted-foreground italic">
+                          NULL
+                        </span>
                       ) : (
                         String(row[col])
                       )}
@@ -265,10 +377,65 @@ export default function TableView() {
                   ))}
                 </TableRow>
               ))}
+              {displayRows.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={(rowsData?.Columns?.length ?? 0) + 1}
+                    className="text-center text-muted-foreground py-8"
+                  >
+                    {search ? "No matching rows" : "No data"}
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </ScrollArea>
       )}
+
+      {/* Pagination */}
+      <div className="px-4 py-2 border-t border-border flex items-center justify-between text-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Rows per page</span>
+          <Select
+            value={String(pageSize)}
+            onValueChange={handlePageSizeChange}
+          >
+            <SelectTrigger className="h-7 w-20 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <SelectItem key={size} value={String(size)}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            Page {page + 1}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => setPage((p) => p - 1)}
+            disabled={!hasPrevPage}
+          >
+            Prev
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => setPage((p) => p + 1)}
+            disabled={!hasNextPage}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
 
       {/* Insert dialog */}
       <Dialog open={showInsert} onOpenChange={setShowInsert}>
@@ -366,7 +533,11 @@ export default function TableView() {
               const colDef = columnMap.get(colName);
               const meta = colDef
                 ? getColumnMeta(colDef.Type)
-                : { inputType: "text" as const, step: undefined, kind: "string" as const };
+                : ({
+                    inputType: "text" as const,
+                    step: undefined,
+                    kind: "string" as const,
+                  } as const);
               const isPK = primaryKeys.includes(colName);
               const isAI = colDef ? isAutoIncrement(colDef) : false;
 
