@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 type Props = {
   onSwitchToLogin: () => void;
@@ -63,7 +64,10 @@ export default function RegisterPage({ onSwitchToLogin }: Props) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="flex min-h-screen items-center justify-center bg-background relative">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl font-bold text-center">

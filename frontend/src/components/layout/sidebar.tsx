@@ -7,6 +7,7 @@ import { useDropDatabase } from "@/hooks/mutations/use-drop-database";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
 import { useAuthStore } from "@/stores/auth.store";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -257,6 +258,7 @@ export default function Sidebar() {
       </ScrollArea>
 
       <div className="p-2 border-t border-border space-y-1">
+        <ThemeToggle className="w-full text-muted-foreground" />
         <Button
           variant="ghost"
           size="sm"

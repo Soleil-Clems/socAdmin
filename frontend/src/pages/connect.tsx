@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const defaultPorts: Record<string, number> = {
   mysql: 8889,
@@ -74,7 +75,10 @@ export default function ConnectPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="flex min-h-screen items-center justify-center bg-background relative">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl font-bold text-center">
