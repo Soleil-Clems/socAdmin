@@ -1,10 +1,12 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useRows } from "@/hooks/queries/use-rows";
 import { useColumns } from "@/hooks/queries/use-columns";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useInsertRow } from "@/hooks/mutations/use-insert-row";
 import { useUpdateRow } from "@/hooks/mutations/use-update-row";
 import { useDeleteRow } from "@/hooks/mutations/use-delete-row";
+import { useQueryClient } from "@tanstack/react-query";
+import { databaseRequest } from "@/requests/database.request";
 import {
   Table,
   TableBody,
@@ -118,6 +120,12 @@ export default function TableView() {
   const insertRow = useInsertRow();
   const updateRow = useUpdateRow();
   const deleteRow = useDeleteRow();
+  const queryClient = useQueryClient();
+
+  // Import
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
 
   // Search
   const [search, setSearch] = useState("");
@@ -291,6 +299,53 @@ export default function TableView() {
     });
   };
 
+  const handleExport = (format: "csv" | "json" | "sql") => {
+    databaseRequest.exportTable(selectedDb, selectedTable, format);
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const content = await file.text();
+      const ext = file.name.split(".").pop()?.toLowerCase();
+
+      let result: { inserted?: number; executed?: number; errors?: string[] };
+
+      if (ext === "sql") {
+        result = await databaseRequest.importSQL(selectedDb, content);
+        setImportResult(
+          `${result.executed} statements executed` +
+            (result.errors?.length ? `, ${result.errors.length} errors` : "")
+        );
+      } else if (ext === "csv") {
+        result = await databaseRequest.importCSV(selectedDb, selectedTable, content);
+        setImportResult(
+          `${result.inserted} rows inserted` +
+            (result.errors?.length ? `, ${result.errors.length} errors` : "")
+        );
+      } else if (ext === "json") {
+        result = await databaseRequest.importJSON(selectedDb, selectedTable, content);
+        setImportResult(
+          `${result.inserted} rows inserted` +
+            (result.errors?.length ? `, ${result.errors.length} errors` : "")
+        );
+      } else {
+        setImportResult("Unsupported format. Use .sql, .csv, or .json");
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["rows"] });
+    } catch (err) {
+      setImportResult(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const isLoading = colLoading || rowsLoading;
 
   return (
@@ -305,6 +360,11 @@ export default function TableView() {
             {search && ` (${displayRows.length} filtered)`}
           </span>
         )}
+        {importResult && (
+          <span className="text-xs text-muted-foreground bg-accent px-2 py-0.5 rounded">
+            {importResult}
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Input
             value={search}
@@ -312,6 +372,31 @@ export default function TableView() {
             placeholder="Search..."
             className="h-8 w-48"
           />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.json,.sql"
+            onChange={handleImportFile}
+            className="hidden"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+          >
+            {importing ? "Importing..." : "Import"}
+          </Button>
+          <Select onValueChange={(v) => handleExport(v as "csv" | "json" | "sql")}>
+            <SelectTrigger className="h-8 w-28">
+              <SelectValue placeholder="Export" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="csv">CSV</SelectItem>
+              <SelectItem value="json">JSON</SelectItem>
+              <SelectItem value="sql">SQL</SelectItem>
+            </SelectContent>
+          </Select>
           <Button size="sm" onClick={handleInsertOpen}>
             + Add row
           </Button>

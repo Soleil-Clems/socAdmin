@@ -52,6 +52,10 @@ func NewRouter(authRepo *auth.Repository) http.Handler {
 	protected.HandleFunc("DELETE /api/databases/{db}/tables/{table}/rows", dbController.DeleteRow)
 	protected.HandleFunc("DELETE /api/databases/{db}/tables/{table}", dbController.DropTable)
 	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/truncate", dbController.TruncateTable)
+	protected.HandleFunc("GET /api/databases/{db}/tables/{table}/export", dbController.ExportTable)
+	protected.HandleFunc("POST /api/databases/{db}/import/sql", dbController.ImportSQL)
+	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/import/csv", dbController.ImportCSV)
+	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/import/json", dbController.ImportJSON)
 	protected.HandleFunc("POST /api/query", dbController.ExecuteQuery)
 
 	mux.Handle("/api/", auth.AuthMiddleware(protected))

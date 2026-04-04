@@ -45,4 +45,69 @@ export const databaseRequest = {
 
   executeQuery: (query: string, database?: string) =>
     customfetch.post("/query", { query, database }),
+
+  // Export — returns raw file content (not JSON)
+  exportTable: async (db: string, table: string, format: "csv" | "json" | "sql") => {
+    const token = localStorage.getItem("access_token");
+    const res = await fetch(`/api/databases/${db}/tables/${table}/export?format=${format}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${table}.${format}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  // Import
+  importSQL: (db: string, sql: string) => {
+    const token = localStorage.getItem("access_token");
+    return fetch(`/api/databases/${db}/import/sql`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: sql,
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      return data;
+    });
+  },
+
+  importCSV: (db: string, table: string, csv: string) => {
+    const token = localStorage.getItem("access_token");
+    return fetch(`/api/databases/${db}/tables/${table}/import/csv`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/csv",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: csv,
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      return data;
+    });
+  },
+
+  importJSON: (db: string, table: string, jsonData: string) => {
+    const token = localStorage.getItem("access_token");
+    return fetch(`/api/databases/${db}/tables/${table}/import/json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: jsonData,
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      return data;
+    });
+  },
 };
