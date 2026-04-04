@@ -9,12 +9,17 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtSecret = []byte("socadmin-dev-secret-change-in-prod")
+var jwtSecret []byte
 
 const (
 	AccessTokenDuration  = 15 * time.Minute
 	RefreshTokenDuration = 7 * 24 * time.Hour
 )
+
+// InitJWTSecret sets the JWT signing key. Must be called before generating/validating tokens.
+func InitJWTSecret(secret []byte) {
+	jwtSecret = secret
+}
 
 type Claims struct {
 	UserID int64  `json:"user_id"`

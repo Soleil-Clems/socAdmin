@@ -1,7 +1,9 @@
 package auth
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -48,7 +50,41 @@ func migrate(db *sql.DB) error {
 			email TEXT NOT NULL,
 			attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
+
+		CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		);
 	`)
+	return err
+}
+
+// GetOrCreateJWTSecret returns the JWT secret from DB, generating one on first run.
+func (r *Repository) GetOrCreateJWTSecret() ([]byte, error) {
+	var secret string
+	err := r.db.QueryRow("SELECT value FROM settings WHERE key = 'jwt_secret'").Scan(&secret)
+	if err == nil {
+		return hex.DecodeString(secret)
+	}
+
+	// Generate a new 32-byte random secret
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return nil, fmt.Errorf("failed to generate JWT secret: %w", err)
+	}
+	secret = hex.EncodeToString(bytes)
+
+	_, err = r.db.Exec("INSERT INTO settings (key, value) VALUES ('jwt_secret', ?)", secret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save JWT secret: %w", err)
+	}
+
+	return bytes, nil
+}
+
+// CleanExpiredTokens removes expired refresh tokens
+func (r *Repository) CleanExpiredTokens() error {
+	_, err := r.db.Exec("DELETE FROM refresh_tokens WHERE expires_at <= CURRENT_TIMESTAMP")
 	return err
 }
 

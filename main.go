@@ -15,6 +15,18 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
+	// Initialize JWT secret from DB (generated once, persisted)
+	secret, err := authRepo.GetOrCreateJWTSecret()
+	if err != nil {
+		log.Fatalf("Failed to initialize JWT secret: %v", err)
+	}
+	auth.InitJWTSecret(secret)
+
+	// Clean expired refresh tokens on startup
+	if err := authRepo.CleanExpiredTokens(); err != nil {
+		log.Printf("Warning: failed to clean expired tokens: %v", err)
+	}
+
 	router := api.NewRouter(authRepo)
 
 	port := 8080

@@ -61,5 +61,5 @@ func NewRouter(authRepo *auth.Repository) http.Handler {
 
 	mux.Handle("/api/", auth.AuthMiddleware(protected))
 
-	return mux
+	return SecurityHeaders(mux)
 }
