@@ -6,6 +6,43 @@ type RequestOptions = {
 
 type BodyData = Record<string, unknown>;
 
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshToken(): Promise<boolean> {
+  const refreshToken = localStorage.getItem("refresh_token");
+  if (!refreshToken) return false;
+
+  try {
+    const res = await fetch(`${API_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+
+    if (!res.ok) return false;
+
+    const data = await res.json();
+    if (data.access_token && data.refresh_token) {
+      localStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("refresh_token", data.refresh_token);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+// Deduplicate concurrent refresh attempts
+function refreshOnce(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = tryRefreshToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 class CustomFetch {
   baseURL: string;
 
@@ -18,23 +55,45 @@ class CustomFetch {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
-  private async request(endpoint: string, options: RequestOptions & RequestInit = {}) {
+  private buildFetchOptions(
+    options: RequestOptions & RequestInit
+  ): RequestInit {
     const { headers, ...rest } = options;
-
-    const res = await fetch(`${this.baseURL}${endpoint}`, {
+    return {
       headers: {
         "Content-Type": "application/json",
         ...this.getAuthHeader(),
         ...(headers || {}),
       },
       ...rest,
-    });
+    };
+  }
 
+  private async request(
+    endpoint: string,
+    options: RequestOptions & RequestInit = {}
+  ) {
+    let res = await fetch(
+      `${this.baseURL}${endpoint}`,
+      this.buildFetchOptions(options)
+    );
+
+    // On 401, try refresh then retry once
     if (res.status === 401 && !endpoint.startsWith("/auth/")) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      window.location.reload();
-      throw new Error("Session expired");
+      const refreshed = await refreshOnce();
+      if (refreshed) {
+        res = await fetch(
+          `${this.baseURL}${endpoint}`,
+          this.buildFetchOptions(options)
+        );
+      }
+
+      if (res.status === 401) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        window.location.reload();
+        throw new Error("Session expired");
+      }
     }
 
     const text = await res.text();

@@ -7,8 +7,11 @@ import (
 )
 
 type DatabaseService struct {
-	conn     connector.Connector
-	dbType   string
+	conn   connector.Connector
+	dbType string
+	host   string
+	port   int
+	user   string
 }
 
 func NewDatabaseService() *DatabaseService {
@@ -45,6 +48,9 @@ func (s *DatabaseService) Connect(host string, port int, user, password, dbType 
 
 	s.conn = conn
 	s.dbType = dbType
+	s.host = host
+	s.port = port
+	s.user = user
 	return nil
 }
 
@@ -54,6 +60,25 @@ func (s *DatabaseService) GetType() string {
 
 func (s *DatabaseService) IsConnected() bool {
 	return s.conn != nil
+}
+
+type ConnectionInfo struct {
+	Host   string `json:"host"`
+	Port   int    `json:"port"`
+	User   string `json:"user"`
+	DbType string `json:"type"`
+}
+
+func (s *DatabaseService) GetConnectionInfo() *ConnectionInfo {
+	if s.conn == nil {
+		return nil
+	}
+	return &ConnectionInfo{
+		Host:   s.host,
+		Port:   s.port,
+		User:   s.user,
+		DbType: s.dbType,
+	}
 }
 
 func (s *DatabaseService) ListDatabases() ([]string, error) {

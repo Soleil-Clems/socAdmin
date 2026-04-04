@@ -56,6 +56,23 @@ type CreateTableRequest struct {
 	Columns []connector.TableColumnDef `json:"columns"`
 }
 
+func (c *DatabaseController) ConnectionStatus(w http.ResponseWriter, r *http.Request) {
+	info := c.dbService.GetConnectionInfo()
+	if info == nil {
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"connected": false,
+		})
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"connected": true,
+		"host":      info.Host,
+		"port":      info.Port,
+		"user":      info.User,
+		"type":      info.DbType,
+	})
+}
+
 func (c *DatabaseController) Connect(w http.ResponseWriter, r *http.Request) {
 	var req ConnectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

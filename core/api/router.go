@@ -39,6 +39,7 @@ func NewRouter(authRepo *auth.Repository) http.Handler {
 	// Routes protégées
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /api/auth/me", authController.Me)
+	protected.HandleFunc("GET /api/connection/status", dbController.ConnectionStatus)
 	protected.HandleFunc("POST /api/connect", dbController.Connect)
 	protected.HandleFunc("GET /api/databases", dbController.ListDatabases)
 	protected.HandleFunc("POST /api/databases", dbController.CreateDatabase)

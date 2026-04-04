@@ -13,13 +13,9 @@ function App() {
 
   if (!isAuthenticated) {
     if (authPage === "register") {
-      return (
-        <RegisterPage onSwitchToLogin={() => setAuthPage("login")} />
-      );
+      return <RegisterPage onSwitchToLogin={() => setAuthPage("login")} />;
     }
-    return (
-      <LoginPage onSwitchToRegister={() => setAuthPage("register")} />
-    );
+    return <LoginPage onSwitchToRegister={() => setAuthPage("register")} />;
   }
 
   if (!isConnected) {
