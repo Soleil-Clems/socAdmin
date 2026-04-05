@@ -46,7 +46,26 @@ export const databaseRequest = {
   executeQuery: (query: string, database?: string) =>
     customfetch.post("/query", { query, database }),
 
+  listUsers: () => customfetch.get("/users"),
+
+  serverStatus: () => customfetch.get("/status"),
+
   // Export — returns raw file content (not JSON)
+  exportDatabase: async (db: string) => {
+    const token = localStorage.getItem("access_token");
+    const res = await fetch(`/api/databases/${db}/export`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${db}.sql`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
   exportTable: async (db: string, table: string, format: "csv" | "json" | "sql") => {
     const token = localStorage.getItem("access_token");
     const res = await fetch(`/api/databases/${db}/tables/${table}/export?format=${format}`, {

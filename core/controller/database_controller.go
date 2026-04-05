@@ -339,6 +339,33 @@ func (c *DatabaseController) ExportTable(w http.ResponseWriter, r *http.Request)
 	}
 }
 
+func (c *DatabaseController) ExportDatabase(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	w.Header().Set("Content-Type", "application/sql")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.sql"`, db))
+	if err := c.dbService.ExportDatabaseSQL(w, db); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (c *DatabaseController) ListUsers(w http.ResponseWriter, r *http.Request) {
+	result, err := c.dbService.ListUsers()
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, result)
+}
+
+func (c *DatabaseController) ServerStatus(w http.ResponseWriter, r *http.Request) {
+	result, err := c.dbService.ServerStatus()
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, result)
+}
+
 func (c *DatabaseController) ImportSQL(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 

@@ -8,6 +8,27 @@ import (
 	"strings"
 )
 
+// ExportDatabaseSQL exports all tables in a database as a single SQL file
+func (s *DatabaseService) ExportDatabaseSQL(w io.Writer, database string) error {
+	tables, err := s.conn.ListTables(database)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(w, "-- Export of database: %s\n", database)
+	fmt.Fprintf(w, "-- Tables: %d\n\n", len(tables))
+
+	for _, table := range tables {
+		if err := s.ExportSQL(w, database, table); err != nil {
+			fmt.Fprintf(w, "-- ERROR exporting table %s: %s\n\n", table, err.Error())
+			continue
+		}
+		fmt.Fprintln(w)
+	}
+
+	return nil
+}
+
 // ExportCSV writes table data as CSV to the writer
 func (s *DatabaseService) ExportCSV(w io.Writer, database, table string) error {
 	result, err := s.conn.GetRows(database, table, 100000, 0)

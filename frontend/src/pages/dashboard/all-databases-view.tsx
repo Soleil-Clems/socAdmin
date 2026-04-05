@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useDatabases } from "@/hooks/queries/use-databases";
 import { useCreateDatabase } from "@/hooks/mutations/use-create-database";
 import { useDropDatabase } from "@/hooks/mutations/use-drop-database";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
+import { databaseRequest } from "@/requests/database.request";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,14 @@ export default function AllDatabasesView() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [newDbName, setNewDbName] = useState("");
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    if (!databases) return [];
+    if (!search.trim()) return databases;
+    const q = search.toLowerCase();
+    return databases.filter((db: string) => db.toLowerCase().includes(q));
+  }, [databases, search]);
 
   const handleCreate = async () => {
     if (!newDbName.trim()) return;
@@ -43,6 +52,10 @@ export default function AllDatabasesView() {
     dropDb.mutate(db);
   };
 
+  const handleExportDb = (db: string) => {
+    databaseRequest.exportDatabase(db);
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Toolbar */}
@@ -50,8 +63,15 @@ export default function AllDatabasesView() {
         <span className="font-semibold text-sm text-foreground">Databases</span>
         <span className="text-muted-foreground">
           {dbTypeLabels[dbType || ""] || dbType} · {databases?.length ?? 0} databases
+          {search && ` (${filtered.length} match)`}
         </span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1.5">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filter databases..."
+            className="h-7 w-44 text-xs"
+          />
           <Button
             size="sm"
             className="h-7 text-xs px-3"
@@ -82,7 +102,7 @@ export default function AllDatabasesView() {
               </tr>
             </thead>
             <tbody>
-              {databases?.map((db: string) => (
+              {filtered.map((db: string) => (
                 <tr
                   key={db}
                   className="border-b border-border/50 hover:bg-accent/40 transition-colors"
@@ -104,6 +124,12 @@ export default function AllDatabasesView() {
                         Open
                       </button>
                       <button
+                        className="px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground rounded transition-colors"
+                        onClick={() => handleExportDb(db)}
+                      >
+                        Export
+                      </button>
+                      <button
                         className="px-2 py-0.5 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors"
                         onClick={() => handleDrop(db)}
                         disabled={dropDb.isPending}
@@ -114,10 +140,10 @@ export default function AllDatabasesView() {
                   </td>
                 </tr>
               ))}
-              {databases?.length === 0 && (
+              {filtered.length === 0 && (
                 <tr>
                   <td colSpan={2} className="text-center text-muted-foreground py-12 text-sm">
-                    No databases found
+                    {search ? "No matching databases" : "No databases found"}
                   </td>
                 </tr>
               )}

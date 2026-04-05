@@ -105,7 +105,16 @@ class CustomFetch {
     }
 
     if (!res.ok) {
-      throw new Error((data.error as string) || "An error occurred");
+      const errorMsg = (data.error as string) || "An error occurred";
+
+      // If backend says "not connected", clear connection state so user gets sent back to connect page
+      if (res.status === 500 && errorMsg === "not connected") {
+        sessionStorage.removeItem("socadmin_conn");
+        window.location.reload();
+        throw new Error("Database connection lost");
+      }
+
+      throw new Error(errorMsg);
     }
 
     return data;
