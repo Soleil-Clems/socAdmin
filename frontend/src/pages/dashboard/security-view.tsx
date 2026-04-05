@@ -4,6 +4,12 @@ import { securityRequest, type WhitelistResponse } from "@/requests/security.req
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 
+function ipLabel(ip: string): string | null {
+  if (ip === "127.0.0.1" || ip === "::1") return "localhost";
+  if (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.")) return "local network";
+  return null;
+}
+
 export default function SecurityView() {
   const queryClient = useQueryClient();
   const [newIP, setNewIP] = useState("");
@@ -39,7 +45,6 @@ export default function SecurityView() {
   const handleAddIP = () => {
     const trimmed = newIP.trim();
     if (!trimmed) return;
-    // Basic IP validation
     const ipv4 = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
     const ipv6 = /^[0-9a-fA-F:]+$/;
     if (!ipv4.test(trimmed) && !ipv6.test(trimmed)) {
@@ -55,7 +60,6 @@ export default function SecurityView() {
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-6 w-full" />
         <Skeleton className="h-6 w-full" />
-        <Skeleton className="h-6 w-full" />
       </div>
     );
   }
@@ -64,6 +68,8 @@ export default function SecurityView() {
   const isEnabled = whitelist?.enabled ?? false;
   const ips = whitelist?.ips ?? [];
   const clientIP = whitelist?.client_ip ?? "unknown";
+  const clientLabel = ipLabel(clientIP);
+  const clientIsWhitelisted = ips.includes(clientIP);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -75,10 +81,27 @@ export default function SecurityView() {
       <ScrollArea className="flex-1">
         <div className="p-4 max-w-2xl space-y-6">
 
-          {/* Client IP info */}
-          <div className="flex items-center gap-2 text-sm bg-muted/50 rounded px-3 py-2">
-            <span className="text-muted-foreground">Your current IP:</span>
-            <code className="font-mono text-foreground font-medium">{clientIP}</code>
+          {/* Client IP info — prominent */}
+          <div className="bg-muted/50 border border-border rounded px-4 py-3">
+            <p className="text-xs text-muted-foreground mb-1">The server sees your connection as:</p>
+            <div className="flex items-center gap-2">
+              <code className="font-mono text-base text-foreground font-semibold">{clientIP}</code>
+              {clientLabel && (
+                <span className="text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                  {clientLabel}
+                </span>
+              )}
+              {isEnabled && clientIsWhitelisted && (
+                <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">
+                  whitelisted
+                </span>
+              )}
+            </div>
+            {clientLabel === "localhost" && (
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                You're accessing socAdmin locally. In production behind a reverse proxy, this will show your real public IP.
+              </p>
+            )}
           </div>
 
           {/* Toggle */}
@@ -88,13 +111,18 @@ export default function SecurityView() {
               <p className="text-xs text-muted-foreground mt-0.5">
                 {isEnabled
                   ? "Only whitelisted IPs can access the server"
-                  : "All IPs can access the server"}
+                  : "All IPs can access the server (disabled)"}
               </p>
+              {!isEnabled && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  When enabled, your current IP will be automatically added.
+                </p>
+              )}
             </div>
             <button
               onClick={() => toggleMutation.mutate(!isEnabled)}
               disabled={toggleMutation.isPending}
-              className={`relative w-11 h-6 rounded-full transition-colors ${
+              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
                 isEnabled ? "bg-primary" : "bg-muted-foreground/30"
               }`}
             >
@@ -106,17 +134,26 @@ export default function SecurityView() {
             </button>
           </div>
 
-          {/* Warning when enabling with no IPs */}
+          {/* Warning when enabled but empty */}
           {isEnabled && ips.length === 0 && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
-              Whitelist is enabled but empty — all IPs are currently allowed. Add at least one IP to restrict access.
+              Whitelist is enabled but empty — all IPs are currently allowed. Add at least one IP to start restricting access.
             </div>
           )}
 
           {/* Warning if your IP isn't whitelisted */}
-          {isEnabled && ips.length > 0 && !ips.includes(clientIP) && (
-            <div className="bg-destructive/10 border border-destructive/30 rounded px-3 py-2 text-xs text-destructive">
-              Your current IP ({clientIP}) is not in the whitelist. You may lose access if you don't add it.
+          {isEnabled && ips.length > 0 && !clientIsWhitelisted && (
+            <div className="bg-destructive/10 border border-destructive/30 rounded px-3 py-2">
+              <p className="text-xs text-destructive font-medium">
+                Your IP ({clientIP}) is not whitelisted — you will be locked out!
+              </p>
+              <button
+                onClick={() => addMutation.mutate(clientIP)}
+                disabled={addMutation.isPending}
+                className="mt-1.5 text-xs font-medium text-destructive underline hover:no-underline"
+              >
+                Add my IP now
+              </button>
             </div>
           )}
 
@@ -131,7 +168,7 @@ export default function SecurityView() {
                 value={newIP}
                 onChange={(e) => { setNewIP(e.target.value); setError(""); }}
                 onKeyDown={(e) => e.key === "Enter" && handleAddIP()}
-                placeholder="e.g. 192.168.1.100"
+                placeholder={`e.g. ${clientIP === "::1" ? "127.0.0.1" : "192.168.1.100"}`}
                 className="flex-1 h-8 px-3 text-sm bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary font-mono"
               />
               <button
@@ -141,13 +178,16 @@ export default function SecurityView() {
               >
                 Add
               </button>
-              <button
-                onClick={() => { setNewIP(clientIP); setError(""); }}
-                className="h-8 px-3 text-xs text-muted-foreground border border-border rounded hover:bg-accent transition-colors"
-                title="Use your current IP"
-              >
-                My IP
-              </button>
+              {!clientIsWhitelisted && (
+                <button
+                  onClick={() => addMutation.mutate(clientIP)}
+                  disabled={addMutation.isPending}
+                  className="h-8 px-3 text-xs font-medium border border-primary text-primary rounded hover:bg-primary/10 transition-colors"
+                  title={`Add ${clientIP}`}
+                >
+                  + My IP
+                </button>
+              )}
             </div>
             {error && (
               <p className="text-xs text-destructive mt-1">{error}</p>
@@ -163,36 +203,44 @@ export default function SecurityView() {
               <p className="text-sm text-muted-foreground py-4">No IPs whitelisted yet.</p>
             ) : (
               <div className="border border-border rounded divide-y divide-border">
-                {ips.map((ip) => (
-                  <div
-                    key={ip}
-                    className="flex items-center justify-between px-3 py-2 hover:bg-accent/40 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <code className="font-mono text-sm">{ip}</code>
-                      {ip === clientIP && (
-                        <span className="text-[10px] font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded">
-                          you
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => removeMutation.mutate(ip)}
-                      disabled={removeMutation.isPending}
-                      className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                {ips.map((ip) => {
+                  const label = ipLabel(ip);
+                  return (
+                    <div
+                      key={ip}
+                      className="flex items-center justify-between px-3 py-2 hover:bg-accent/40 transition-colors"
                     >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex items-center gap-2">
+                        <code className="font-mono text-sm">{ip}</code>
+                        {label && (
+                          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            {label}
+                          </span>
+                        )}
+                        {ip === clientIP && (
+                          <span className="text-[10px] font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                            you
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => removeMutation.mutate(ip)}
+                        disabled={removeMutation.isPending}
+                        className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
 
           {/* Security info */}
           <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t border-border">
-            <p><strong>CSRF Protection</strong> — Double-submit cookie pattern, active on all state-changing requests</p>
-            <p><strong>Rate Limiting</strong> — 200 requests/minute per IP with sliding window</p>
+            <p><strong>CSRF Protection</strong> — Double-submit cookie, active on POST/PUT/DELETE</p>
+            <p><strong>Rate Limiting</strong> — 200 requests/minute per IP, sliding window</p>
             <p><strong>Security Headers</strong> — X-Frame-Options, CSP, X-Content-Type-Options, Referrer-Policy</p>
           </div>
 

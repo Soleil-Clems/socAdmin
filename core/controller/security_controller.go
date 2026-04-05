@@ -34,12 +34,20 @@ type WhitelistToggleRequest struct {
 	Enabled bool `json:"enabled"`
 }
 
-// ToggleWhitelist enables or disables the whitelist
+// ToggleWhitelist enables or disables the whitelist.
+// When enabling, the client's own IP is automatically added to prevent self-lockout.
 func (c *SecurityController) ToggleWhitelist(w http.ResponseWriter, r *http.Request) {
 	var req WhitelistToggleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+
+	// Auto-add current client IP when enabling to prevent self-lockout
+	if req.Enabled {
+		clientIP := security.ClientIPNormalized(r)
+		c.whitelist.AddIP(clientIP)
+		_ = c.repo.AddWhitelistedIP(clientIP)
 	}
 
 	c.whitelist.SetEnabled(req.Enabled)
@@ -49,7 +57,9 @@ func (c *SecurityController) ToggleWhitelist(w http.ResponseWriter, r *http.Requ
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
-		"enabled": req.Enabled,
+		"enabled":    req.Enabled,
+		"client_ip":  security.ClientIPNormalized(r),
+		"auto_added": req.Enabled,
 	})
 }
 
