@@ -43,6 +43,13 @@ function refreshOnce(): Promise<boolean> {
   return refreshPromise;
 }
 
+function getCSRFToken(): string {
+  const match = document.cookie
+    .split("; ")
+    .find((c) => c.startsWith("socadmin_csrf="));
+  return match ? match.split("=")[1] : "";
+}
+
 class CustomFetch {
   baseURL: string;
 
@@ -55,14 +62,22 @@ class CustomFetch {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
+  private getCSRFHeader(method: string): Record<string, string> {
+    if (method === "GET" || method === "HEAD" || method === "OPTIONS") return {};
+    const token = getCSRFToken();
+    return token ? { "X-CSRF-Token": token } : {};
+  }
+
   private buildFetchOptions(
     options: RequestOptions & RequestInit
   ): RequestInit {
     const { headers, ...rest } = options;
+    const method = (rest.method || "GET").toUpperCase();
     return {
       headers: {
         "Content-Type": "application/json",
         ...this.getAuthHeader(),
+        ...this.getCSRFHeader(method),
         ...(headers || {}),
       },
       ...rest,

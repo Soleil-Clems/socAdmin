@@ -7,6 +7,7 @@ import (
 
 	"github.com/soleilouisol/socAdmin/core/api"
 	"github.com/soleilouisol/socAdmin/core/auth"
+	"github.com/soleilouisol/socAdmin/core/security"
 )
 
 func main() {
@@ -27,7 +28,16 @@ func main() {
 		log.Printf("Warning: failed to clean expired tokens: %v", err)
 	}
 
-	router := api.NewRouter(authRepo)
+	// Initialize IP whitelist from persisted state
+	whitelist := security.NewIPWhitelist()
+	whitelist.SetEnabled(authRepo.GetIPWhitelistEnabled())
+	if ips, err := authRepo.GetWhitelistedIPs(); err == nil {
+		for _, ip := range ips {
+			whitelist.AddIP(ip)
+		}
+	}
+
+	router := api.NewRouter(authRepo, whitelist)
 
 	port := 8080
 	fmt.Printf("socAdmin server running on http://localhost:%d\n", port)

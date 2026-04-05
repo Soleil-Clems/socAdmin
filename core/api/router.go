@@ -4,13 +4,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"os/user"
+	"time"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
 	"github.com/soleilouisol/socAdmin/core/controller"
+	"github.com/soleilouisol/socAdmin/core/security"
 	"github.com/soleilouisol/socAdmin/core/service"
 )
 
-func NewRouter(authRepo *auth.Repository) http.Handler {
+func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist) http.Handler {
 	mux := http.NewServeMux()
 
 	// Services
@@ -20,6 +22,7 @@ func NewRouter(authRepo *auth.Repository) http.Handler {
 	// Controllers
 	authController := controller.NewAuthController(authService)
 	dbController := controller.NewDatabaseController(dbService)
+	secController := controller.NewSecurityController(authRepo, whitelist)
 
 	// Route publique : infos système pour le formulaire de connexion
 	mux.HandleFunc("GET /api/system/info", func(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +65,21 @@ func NewRouter(authRepo *auth.Repository) http.Handler {
 	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/import/json", dbController.ImportJSON)
 	protected.HandleFunc("POST /api/query", dbController.ExecuteQuery)
 
+	// Security / IP whitelist routes (protected)
+	protected.HandleFunc("GET /api/security/whitelist", secController.GetWhitelist)
+	protected.HandleFunc("PUT /api/security/whitelist", secController.ToggleWhitelist)
+	protected.HandleFunc("POST /api/security/whitelist/ip", secController.AddIP)
+	protected.HandleFunc("DELETE /api/security/whitelist/ip", secController.RemoveIP)
+
 	mux.Handle("/api/", auth.AuthMiddleware(protected))
 
-	return SecurityHeaders(mux)
+	// Middleware chain: IP whitelist → rate limiter → CSRF → security headers
+	rateLimiter := NewRateLimiter(200, time.Minute) // 200 req/min per IP
+	var handler http.Handler = mux
+	handler = SecurityHeaders(handler)
+	handler = CSRFProtection(handler)
+	handler = rateLimiter.Middleware(handler)
+	handler = whitelist.Middleware(handler)
+
+	return handler
 }

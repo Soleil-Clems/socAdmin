@@ -55,6 +55,10 @@ func migrate(db *sql.DB) error {
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
 		);
+
+		CREATE TABLE IF NOT EXISTS ip_whitelist (
+			ip TEXT PRIMARY KEY
+		);
 	`)
 	return err
 }
@@ -174,5 +178,50 @@ func (r *Repository) CountRecentAttempts(email string, since time.Time) (int, er
 
 func (r *Repository) ClearLoginAttempts(email string) error {
 	_, err := r.db.Exec("DELETE FROM login_attempts WHERE email = ?", email)
+	return err
+}
+
+// ── IP Whitelist persistence ───────────────────────────────────
+
+func (r *Repository) GetIPWhitelistEnabled() bool {
+	var val string
+	err := r.db.QueryRow("SELECT value FROM settings WHERE key = 'ip_whitelist_enabled'").Scan(&val)
+	return err == nil && val == "1"
+}
+
+func (r *Repository) SetIPWhitelistEnabled(enabled bool) error {
+	val := "0"
+	if enabled {
+		val = "1"
+	}
+	_, err := r.db.Exec("INSERT OR REPLACE INTO settings (key, value) VALUES ('ip_whitelist_enabled', ?)", val)
+	return err
+}
+
+func (r *Repository) GetWhitelistedIPs() ([]string, error) {
+	rows, err := r.db.Query("SELECT ip FROM ip_whitelist ORDER BY ip")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ips []string
+	for rows.Next() {
+		var ip string
+		if err := rows.Scan(&ip); err != nil {
+			return nil, err
+		}
+		ips = append(ips, ip)
+	}
+	return ips, nil
+}
+
+func (r *Repository) AddWhitelistedIP(ip string) error {
+	_, err := r.db.Exec("INSERT OR IGNORE INTO ip_whitelist (ip) VALUES (?)", ip)
+	return err
+}
+
+func (r *Repository) RemoveWhitelistedIP(ip string) error {
+	_, err := r.db.Exec("DELETE FROM ip_whitelist WHERE ip = ?", ip)
 	return err
 }

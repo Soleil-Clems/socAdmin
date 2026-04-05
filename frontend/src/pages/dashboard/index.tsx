@@ -9,6 +9,7 @@ import ImportView from "@/pages/dashboard/import-view";
 import ExportView from "@/pages/dashboard/export-view";
 import UsersView from "@/pages/dashboard/users-view";
 import StatusView from "@/pages/dashboard/status-view";
+import SecurityView from "@/pages/dashboard/security-view";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -37,6 +38,7 @@ export default function DashboardPage() {
                 <TabsTrigger value="databases" className={tabClass}>Databases</TabsTrigger>
                 <TabsTrigger value="users" className={tabClass}>Users</TabsTrigger>
                 <TabsTrigger value="status" className={tabClass}>Status</TabsTrigger>
+                <TabsTrigger value="security" className={tabClass}>Security</TabsTrigger>
               </TabsList>
             </div>
             <TabsContent value="databases" className="flex-1 overflow-hidden m-0">
@@ -47,6 +49,9 @@ export default function DashboardPage() {
             </TabsContent>
             <TabsContent value="status" className="flex-1 overflow-hidden m-0">
               <StatusView />
+            </TabsContent>
+            <TabsContent value="security" className="flex-1 overflow-hidden m-0">
+              <SecurityView />
             </TabsContent>
           </Tabs>
         </div>
@@ -78,6 +83,7 @@ export default function DashboardPage() {
               <TabsTrigger value="export" className={tabClass}>Export</TabsTrigger>
               <TabsTrigger value="users" className={tabClass}>Users</TabsTrigger>
               <TabsTrigger value="status" className={tabClass}>Status</TabsTrigger>
+              <TabsTrigger value="security" className={tabClass}>Security</TabsTrigger>
             </TabsList>
           </div>
           <TabsContent value="data" className="flex-1 overflow-hidden m-0">
@@ -102,6 +108,9 @@ export default function DashboardPage() {
           </TabsContent>
           <TabsContent value="status" className="flex-1 overflow-hidden m-0">
             <StatusView />
+          </TabsContent>
+          <TabsContent value="security" className="flex-1 overflow-hidden m-0">
+            <SecurityView />
           </TabsContent>
         </Tabs>
       </div>
