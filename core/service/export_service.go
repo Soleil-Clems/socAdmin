@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
-// ExportDatabaseSQL exports all tables in a database as a single SQL file
+// ── Database-level exports ──────────────────────────────────────────
+
+// ExportDatabaseSQL exports all tables as CREATE + INSERT SQL
 func (s *DatabaseService) ExportDatabaseSQL(w io.Writer, database string) error {
 	tables, err := s.conn.ListTables(database)
 	if err != nil {
@@ -29,7 +33,71 @@ func (s *DatabaseService) ExportDatabaseSQL(w io.Writer, database string) error 
 	return nil
 }
 
-// ExportCSV writes table data as CSV to the writer
+// ExportDatabaseJSON exports all tables as a JSON object { "table_name": [...rows] }
+func (s *DatabaseService) ExportDatabaseJSON(w io.Writer, database string) error {
+	tables, err := s.conn.ListTables(database)
+	if err != nil {
+		return err
+	}
+
+	data := make(map[string]interface{})
+	for _, table := range tables {
+		result, err := s.conn.GetRows(database, table, 100000, 0)
+		if err != nil {
+			data[table] = map[string]string{"error": err.Error()}
+			continue
+		}
+		data[table] = result.Rows
+	}
+
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(data)
+}
+
+// ExportDatabaseCSV exports all tables as CSV blocks separated by headers
+func (s *DatabaseService) ExportDatabaseCSV(w io.Writer, database string) error {
+	tables, err := s.conn.ListTables(database)
+	if err != nil {
+		return err
+	}
+
+	for i, table := range tables {
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
+		fmt.Fprintf(w, "# Table: %s\n", table)
+		if err := s.ExportCSV(w, database, table); err != nil {
+			fmt.Fprintf(w, "# ERROR: %s\n", err.Error())
+		}
+	}
+
+	return nil
+}
+
+// ExportDatabaseYAML exports all tables as YAML
+func (s *DatabaseService) ExportDatabaseYAML(w io.Writer, database string) error {
+	tables, err := s.conn.ListTables(database)
+	if err != nil {
+		return err
+	}
+
+	data := make(map[string]interface{})
+	for _, table := range tables {
+		result, err := s.conn.GetRows(database, table, 100000, 0)
+		if err != nil {
+			data[table] = map[string]string{"error": err.Error()}
+			continue
+		}
+		data[table] = result.Rows
+	}
+
+	return yaml.NewEncoder(w).Encode(data)
+}
+
+// ── Table-level exports ─────────────────────────────────────────────
+
+// ExportCSV writes table data as CSV
 func (s *DatabaseService) ExportCSV(w io.Writer, database, table string) error {
 	result, err := s.conn.GetRows(database, table, 100000, 0)
 	if err != nil {
@@ -39,12 +107,10 @@ func (s *DatabaseService) ExportCSV(w io.Writer, database, table string) error {
 	writer := csv.NewWriter(w)
 	defer writer.Flush()
 
-	// Header
 	if err := writer.Write(result.Columns); err != nil {
 		return err
 	}
 
-	// Rows
 	for _, row := range result.Rows {
 		record := make([]string, len(result.Columns))
 		for i, col := range result.Columns {
@@ -63,7 +129,7 @@ func (s *DatabaseService) ExportCSV(w io.Writer, database, table string) error {
 	return nil
 }
 
-// ExportJSON writes table data as a JSON array to the writer
+// ExportJSON writes table data as a JSON array
 func (s *DatabaseService) ExportJSON(w io.Writer, database, table string) error {
 	result, err := s.conn.GetRows(database, table, 100000, 0)
 	if err != nil {
@@ -75,7 +141,17 @@ func (s *DatabaseService) ExportJSON(w io.Writer, database, table string) error 
 	return encoder.Encode(result.Rows)
 }
 
-// ExportSQL writes table data as INSERT statements to the writer
+// ExportYAML writes table data as YAML
+func (s *DatabaseService) ExportYAML(w io.Writer, database, table string) error {
+	result, err := s.conn.GetRows(database, table, 100000, 0)
+	if err != nil {
+		return err
+	}
+
+	return yaml.NewEncoder(w).Encode(result.Rows)
+}
+
+// ExportSQL writes table data as CREATE TABLE + INSERT statements
 func (s *DatabaseService) ExportSQL(w io.Writer, database, table string) error {
 	columns, err := s.conn.DescribeTable(database, table)
 	if err != nil {
@@ -87,7 +163,6 @@ func (s *DatabaseService) ExportSQL(w io.Writer, database, table string) error {
 		return err
 	}
 
-	// CREATE TABLE statement
 	fmt.Fprintf(w, "-- Export of %s.%s\n\n", database, table)
 
 	var colDefs []string
@@ -117,7 +192,6 @@ func (s *DatabaseService) ExportSQL(w io.Writer, database, table string) error {
 		return nil
 	}
 
-	// INSERT statements
 	quotedCols := make([]string, len(result.Columns))
 	for i, col := range result.Columns {
 		quotedCols[i] = "`" + col + "`"

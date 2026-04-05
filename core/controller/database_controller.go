@@ -334,17 +334,51 @@ func (c *DatabaseController) ExportTable(w http.ResponseWriter, r *http.Request)
 		if err := c.dbService.ExportSQL(w, db, table); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
+	case "yaml":
+		w.Header().Set("Content-Type", "application/x-yaml")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.yaml"`, table))
+		if err := c.dbService.ExportYAML(w, db, table); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	default:
-		jsonError(w, http.StatusBadRequest, "format must be csv, json, or sql")
+		jsonError(w, http.StatusBadRequest, "format must be csv, json, sql, or yaml")
 	}
 }
 
 func (c *DatabaseController) ExportDatabase(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
-	w.Header().Set("Content-Type", "application/sql")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.sql"`, db))
-	if err := c.dbService.ExportDatabaseSQL(w, db); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "sql"
+	}
+
+	switch format {
+	case "sql":
+		w.Header().Set("Content-Type", "application/sql")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.sql"`, db))
+		if err := c.dbService.ExportDatabaseSQL(w, db); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	case "json":
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.json"`, db))
+		if err := c.dbService.ExportDatabaseJSON(w, db); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	case "csv":
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.csv"`, db))
+		if err := c.dbService.ExportDatabaseCSV(w, db); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	case "yaml":
+		w.Header().Set("Content-Type", "application/x-yaml")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.yaml"`, db))
+		if err := c.dbService.ExportDatabaseYAML(w, db); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	default:
+		jsonError(w, http.StatusBadRequest, "format must be csv, json, sql, or yaml")
 	}
 }
 

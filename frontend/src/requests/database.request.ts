@@ -51,9 +51,9 @@ export const databaseRequest = {
   serverStatus: () => customfetch.get("/status"),
 
   // Export — returns raw file content (not JSON)
-  exportDatabase: async (db: string) => {
+  exportDatabase: async (db: string, format: "csv" | "json" | "sql" | "yaml" = "sql") => {
     const token = localStorage.getItem("access_token");
-    const res = await fetch(`/api/databases/${db}/export`, {
+    const res = await fetch(`/api/databases/${db}/export?format=${format}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
@@ -61,12 +61,12 @@ export const databaseRequest = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${db}.sql`;
+    a.download = `${db}.${format}`;
     a.click();
     URL.revokeObjectURL(url);
   },
 
-  exportTable: async (db: string, table: string, format: "csv" | "json" | "sql") => {
+  exportTable: async (db: string, table: string, format: "csv" | "json" | "sql" | "yaml") => {
     const token = localStorage.getItem("access_token");
     const res = await fetch(`/api/databases/${db}/tables/${table}/export?format=${format}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
