@@ -28,6 +28,12 @@ func main() {
 		log.Printf("Warning: failed to clean expired tokens: %v", err)
 	}
 
+	// Initialize AES-256 encryption key for DB credentials
+	encKey, err := authRepo.GetOrCreateEncryptionKey()
+	if err != nil {
+		log.Fatalf("Failed to initialize encryption key: %v", err)
+	}
+
 	// Initialize IP whitelist from persisted state
 	whitelist := security.NewIPWhitelist()
 	whitelist.SetEnabled(authRepo.GetIPWhitelistEnabled())
@@ -37,7 +43,7 @@ func main() {
 		}
 	}
 
-	router := api.NewRouter(authRepo, whitelist)
+	router := api.NewRouter(authRepo, whitelist, encKey)
 
 	port := 8080
 	fmt.Printf("socAdmin server running on http://localhost:%d\n", port)

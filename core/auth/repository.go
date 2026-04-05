@@ -59,6 +59,19 @@ func migrate(db *sql.DB) error {
 		CREATE TABLE IF NOT EXISTS ip_whitelist (
 			ip TEXT PRIMARY KEY
 		);
+
+		CREATE TABLE IF NOT EXISTS saved_connections (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			db_type TEXT NOT NULL,
+			host TEXT NOT NULL,
+			port INTEGER NOT NULL,
+			db_user TEXT NOT NULL,
+			password_enc TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id)
+		);
 	`)
 	return err
 }
@@ -81,6 +94,29 @@ func (r *Repository) GetOrCreateJWTSecret() ([]byte, error) {
 	_, err = r.db.Exec("INSERT INTO settings (key, value) VALUES ('jwt_secret', ?)", secret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save JWT secret: %w", err)
+	}
+
+	return bytes, nil
+}
+
+// GetOrCreateEncryptionKey returns the AES-256 key from DB, generating one on first run.
+func (r *Repository) GetOrCreateEncryptionKey() ([]byte, error) {
+	var secret string
+	err := r.db.QueryRow("SELECT value FROM settings WHERE key = 'encryption_key'").Scan(&secret)
+	if err == nil {
+		return hex.DecodeString(secret)
+	}
+
+	// Generate a new 32-byte random key
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return nil, fmt.Errorf("failed to generate encryption key: %w", err)
+	}
+	secret = hex.EncodeToString(bytes)
+
+	_, err = r.db.Exec("INSERT INTO settings (key, value) VALUES ('encryption_key', ?)", secret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save encryption key: %w", err)
 	}
 
 	return bytes, nil
@@ -223,5 +259,67 @@ func (r *Repository) AddWhitelistedIP(ip string) error {
 
 func (r *Repository) RemoveWhitelistedIP(ip string) error {
 	_, err := r.db.Exec("DELETE FROM ip_whitelist WHERE ip = ?", ip)
+	return err
+}
+
+// ── Saved Connections ─────────────────────────────────────────
+
+type SavedConnection struct {
+	ID          int64  `json:"id"`
+	UserID      int64  `json:"user_id"`
+	Name        string `json:"name"`
+	DbType      string `json:"db_type"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	DbUser      string `json:"db_user"`
+	PasswordEnc string `json:"-"` // never exposed in JSON
+}
+
+func (r *Repository) SaveConnection(userID int64, name, dbType, host string, port int, dbUser, passwordEnc string) (int64, error) {
+	result, err := r.db.Exec(
+		"INSERT INTO saved_connections (user_id, name, db_type, host, port, db_user, password_enc) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		userID, name, dbType, host, port, dbUser, passwordEnc,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (r *Repository) ListConnections(userID int64) ([]SavedConnection, error) {
+	rows, err := r.db.Query(
+		"SELECT id, user_id, name, db_type, host, port, db_user, password_enc FROM saved_connections WHERE user_id = ? ORDER BY name",
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var conns []SavedConnection
+	for rows.Next() {
+		var c SavedConnection
+		if err := rows.Scan(&c.ID, &c.UserID, &c.Name, &c.DbType, &c.Host, &c.Port, &c.DbUser, &c.PasswordEnc); err != nil {
+			return nil, err
+		}
+		conns = append(conns, c)
+	}
+	return conns, nil
+}
+
+func (r *Repository) GetConnection(id, userID int64) (*SavedConnection, error) {
+	var c SavedConnection
+	err := r.db.QueryRow(
+		"SELECT id, user_id, name, db_type, host, port, db_user, password_enc FROM saved_connections WHERE id = ? AND user_id = ?",
+		id, userID,
+	).Scan(&c.ID, &c.UserID, &c.Name, &c.DbType, &c.Host, &c.Port, &c.DbUser, &c.PasswordEnc)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func (r *Repository) DeleteConnection(id, userID int64) error {
+	_, err := r.db.Exec("DELETE FROM saved_connections WHERE id = ? AND user_id = ?", id, userID)
 	return err
 }

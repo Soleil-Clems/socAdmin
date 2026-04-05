@@ -12,7 +12,7 @@ import (
 	"github.com/soleilouisol/socAdmin/core/service"
 )
 
-func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist) http.Handler {
+func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKey []byte) http.Handler {
 	mux := http.NewServeMux()
 
 	// Services
@@ -23,6 +23,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist) http.
 	authController := controller.NewAuthController(authService)
 	dbController := controller.NewDatabaseController(dbService)
 	secController := controller.NewSecurityController(authRepo, whitelist)
+	connController := controller.NewConnectionController(authRepo, dbService, encKey)
 
 	// Route publique : infos système pour le formulaire de connexion
 	mux.HandleFunc("GET /api/system/info", func(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +65,12 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist) http.
 	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/import/csv", dbController.ImportCSV)
 	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/import/json", dbController.ImportJSON)
 	protected.HandleFunc("POST /api/query", dbController.ExecuteQuery)
+
+	// Saved connections routes (protected)
+	protected.HandleFunc("GET /api/connections", connController.ListConnections)
+	protected.HandleFunc("POST /api/connections", connController.SaveConnection)
+	protected.HandleFunc("POST /api/connections/{id}/use", connController.UseSavedConnection)
+	protected.HandleFunc("DELETE /api/connections/{id}", connController.DeleteConnection)
 
 	// Security / IP whitelist routes (protected)
 	protected.HandleFunc("GET /api/security/whitelist", secController.GetWhitelist)
