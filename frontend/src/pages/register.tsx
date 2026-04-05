@@ -6,7 +6,6 @@ import { useRegister } from "@/hooks/mutations/use-register";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 type Props = {
@@ -43,97 +42,133 @@ export default function RegisterPage({ onSwitchToLogin }: Props) {
 
   if (success) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-2xl font-bold text-center">
-              Account created
-            </CardTitle>
-            <p className="text-center text-muted-foreground text-sm">
-              You can now sign in
+      <div className="flex min-h-screen items-center justify-center bg-background p-6">
+        <div className="w-full max-w-sm space-y-6 text-center">
+          <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xl">
+            ✓
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold">Account created</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              You can now sign in with your credentials
             </p>
-          </CardHeader>
-          <CardContent>
-            <Button className="w-full" onClick={onSwitchToLogin}>
-              Go to login
-            </Button>
-          </CardContent>
-        </Card>
+          </div>
+          <Button className="w-full h-9" onClick={onSwitchToLogin}>
+            Go to sign in
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background relative">
-      <div className="absolute top-4 right-4">
-        <ThemeToggle />
-      </div>
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold text-center">
-            socAdmin
-          </CardTitle>
-          <p className="text-center text-muted-foreground text-sm">
-            Create your account
+    <div className="flex min-h-screen bg-background">
+      {/* Left panel — branding */}
+      <div className="hidden lg:flex lg:w-[480px] bg-primary text-primary-foreground flex-col justify-between p-10">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">socAdmin</h1>
+          <p className="text-sm opacity-80 mt-1">Database administration</p>
+        </div>
+        <div className="space-y-4">
+          <p className="text-lg font-medium leading-snug">
+            Manage MySQL, PostgreSQL &amp; MongoDB from a single interface.
           </p>
-        </CardHeader>
-        <CardContent>
+          <p className="text-sm opacity-70 leading-relaxed">
+            Browse tables, run queries, import &amp; export data — no terminal required.
+          </p>
+        </div>
+        <p className="text-xs opacity-50">v1.0</p>
+      </div>
+
+      {/* Right panel — form */}
+      <div className="flex-1 flex items-center justify-center p-6 relative">
+        <div className="absolute top-4 right-4">
+          <ThemeToggle />
+        </div>
+
+        <div className="w-full max-w-sm space-y-8">
+          <div className="lg:hidden">
+            <h1 className="text-2xl font-bold tracking-tight text-primary">socAdmin</h1>
+            <p className="text-sm text-muted-foreground mt-1">Database administration</p>
+          </div>
+
+          <div>
+            <h2 className="text-xl font-semibold">Create account</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Set up your socAdmin credentials
+            </p>
+          </div>
+
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" {...register("email")} />
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-xs font-medium">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                className="h-9"
+                {...register("email")}
+              />
               {errors.email && (
-                <p className="text-sm text-destructive">{errors.email.message}</p>
+                <p className="text-xs text-destructive">{errors.email.message}</p>
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" {...register("password")} />
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="text-xs font-medium">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                className="h-9"
+                {...register("password")}
+              />
               {errors.password && (
-                <p className="text-sm text-destructive">{errors.password.message}</p>
+                <p className="text-xs text-destructive">{errors.password.message}</p>
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm password</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="confirmPassword" className="text-xs font-medium">Confirm password</Label>
               <Input
                 id="confirmPassword"
                 type="password"
+                placeholder="••••••••"
+                className="h-9"
                 {...register("confirmPassword")}
               />
               {errors.confirmPassword && (
-                <p className="text-sm text-destructive">
+                <p className="text-xs text-destructive">
                   {errors.confirmPassword.message}
                 </p>
               )}
             </div>
 
             {serverError && (
-              <p className="text-sm text-destructive">{serverError}</p>
+              <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-md">{serverError}</p>
             )}
 
             <Button
               type="submit"
-              className="w-full"
+              className="w-full h-9"
               disabled={registerMutation.isPending}
             >
-              {registerMutation.isPending ? "Creating account..." : "Register"}
+              {registerMutation.isPending ? "Creating account..." : "Create account"}
             </Button>
 
-            <p className="text-center text-sm text-muted-foreground">
+            <p className="text-center text-xs text-muted-foreground">
               Already have an account?{" "}
               <button
                 type="button"
                 onClick={onSwitchToLogin}
-                className="text-primary underline"
+                className="text-primary font-medium hover:underline"
               >
                 Sign in
               </button>
             </p>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

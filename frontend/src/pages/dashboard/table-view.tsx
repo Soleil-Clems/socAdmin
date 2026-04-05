@@ -7,17 +7,8 @@ import { useUpdateRow } from "@/hooks/mutations/use-update-row";
 import { useDeleteRow } from "@/hooks/mutations/use-delete-row";
 import { useQueryClient } from "@tanstack/react-query";
 import { databaseRequest } from "@/requests/database.request";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -102,7 +93,6 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 export default function TableView() {
   const { selectedDb, selectedTable } = useNavigationStore();
 
-  // Pagination
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
 
@@ -122,21 +112,15 @@ export default function TableView() {
   const deleteRow = useDeleteRow();
   const queryClient = useQueryClient();
 
-  // Import
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
 
-  // Search
   const [search, setSearch] = useState("");
-
-  // Sort
   const [sort, setSort] = useState<SortState>(null);
 
   const [showInsert, setShowInsert] = useState(false);
-  const [editingRow, setEditingRow] = useState<Record<string, unknown> | null>(
-    null
-  );
+  const [editingRow, setEditingRow] = useState<Record<string, unknown> | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
 
   const primaryKeys =
@@ -160,11 +144,9 @@ export default function TableView() {
   const insertableColumns =
     columns?.filter((c: Column) => !isAutoIncrement(c)) || [];
 
-  // Filtered + sorted rows
   const displayRows = useMemo(() => {
     let rows = rowsData?.Rows || [];
 
-    // Search filter
     if (search.trim()) {
       const q = search.toLowerCase();
       rows = rows.filter((row) =>
@@ -174,7 +156,6 @@ export default function TableView() {
       );
     }
 
-    // Sort
     if (sort && rowsData?.Columns?.includes(sort.column)) {
       const { column, direction } = sort;
       rows = [...rows].sort((a, b) => {
@@ -205,15 +186,15 @@ export default function TableView() {
     setSort((prev) => {
       if (prev?.column === column) {
         if (prev.direction === "asc") return { column, direction: "desc" };
-        return null; // third click removes sort
+        return null;
       }
       return { column, direction: "asc" };
     });
   };
 
   const getSortIndicator = (column: string) => {
-    if (sort?.column !== column) return "";
-    return sort.direction === "asc" ? " \u2191" : " \u2193";
+    if (sort?.column !== column) return " ↕";
+    return sort.direction === "asc" ? " ↑" : " ↓";
   };
 
   const hasNextPage = (rowsData?.Rows?.length ?? 0) === pageSize;
@@ -224,7 +205,6 @@ export default function TableView() {
     setPage(0);
   };
 
-  // Reset page when table changes
   const [prevTable, setPrevTable] = useState(selectedTable);
   if (selectedTable !== prevTable) {
     setPrevTable(selectedTable);
@@ -318,23 +298,23 @@ export default function TableView() {
       if (ext === "sql") {
         result = await databaseRequest.importSQL(selectedDb, content);
         setImportResult(
-          `${result.executed} statements executed` +
+          `${result.executed} statements` +
             (result.errors?.length ? `, ${result.errors.length} errors` : "")
         );
       } else if (ext === "csv") {
         result = await databaseRequest.importCSV(selectedDb, selectedTable, content);
         setImportResult(
-          `${result.inserted} rows inserted` +
+          `${result.inserted} rows` +
             (result.errors?.length ? `, ${result.errors.length} errors` : "")
         );
       } else if (ext === "json") {
         result = await databaseRequest.importJSON(selectedDb, selectedTable, content);
         setImportResult(
-          `${result.inserted} rows inserted` +
+          `${result.inserted} rows` +
             (result.errors?.length ? `, ${result.errors.length} errors` : "")
         );
       } else {
-        setImportResult("Unsupported format. Use .sql, .csv, or .json");
+        setImportResult("Unsupported format");
       }
 
       queryClient.invalidateQueries({ queryKey: ["rows"] });
@@ -350,27 +330,29 @@ export default function TableView() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="p-4 border-b border-border flex items-center gap-2">
-        <h2 className="text-lg font-semibold">{selectedTable}</h2>
-        <Badge variant="secondary">{selectedDb}</Badge>
+      {/* Toolbar */}
+      <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
+        <span className="font-semibold text-sm text-foreground">{selectedTable}</span>
+        <span className="text-muted-foreground">
+          {selectedDb}
+        </span>
         {rowsData?.Rows && (
-          <span className="text-xs text-muted-foreground">
-            {rowsData.Rows.length} rows
-            {search && ` (${displayRows.length} filtered)`}
+          <span className="text-muted-foreground">
+            · {rowsData.Rows.length} rows
+            {search && ` (${displayRows.length} match)`}
           </span>
         )}
         {importResult && (
-          <span className="text-xs text-muted-foreground bg-accent px-2 py-0.5 rounded">
+          <span className="text-primary bg-primary/10 px-2 py-0.5 rounded text-[11px] font-medium">
             {importResult}
           </span>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1.5">
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search..."
-            className="h-8 w-48"
+            placeholder="Filter rows..."
+            className="h-7 w-40 text-xs"
           />
           <input
             ref={fileInputRef}
@@ -382,13 +364,14 @@ export default function TableView() {
           <Button
             variant="outline"
             size="sm"
+            className="h-7 text-xs px-2"
             onClick={() => fileInputRef.current?.click()}
             disabled={importing}
           >
-            {importing ? "Importing..." : "Import"}
+            {importing ? "..." : "Import"}
           </Button>
           <Select onValueChange={(v) => handleExport(v as "csv" | "json" | "sql")}>
-            <SelectTrigger className="h-8 w-28">
+            <SelectTrigger className="h-7 w-24 text-xs">
               <SelectValue placeholder="Export" />
             </SelectTrigger>
             <SelectContent>
@@ -397,95 +380,98 @@ export default function TableView() {
               <SelectItem value="sql">SQL</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" onClick={handleInsertOpen}>
-            + Add row
+          <Button size="sm" className="h-7 text-xs px-3" onClick={handleInsertOpen}>
+            + Row
           </Button>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Data table — dense */}
       {isLoading ? (
-        <div className="p-4 space-y-2">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-full" />
+        <div className="p-3 space-y-1">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <Skeleton key={i} className="h-7 w-full" />
           ))}
         </div>
       ) : (
         <ScrollArea className="flex-1">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-24">Actions</TableHead>
+          <table className="w-full data-table">
+            <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
+              <tr className="border-b border-border">
+                <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-20">
+                  Actions
+                </th>
                 {rowsData?.Columns?.map((col) => (
-                  <TableHead
+                  <th
                     key={col}
-                    className="whitespace-nowrap cursor-pointer select-none hover:text-foreground transition-colors"
+                    className="px-3 py-1.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap cursor-pointer select-none hover:text-foreground transition-colors"
                     onClick={() => handleSort(col)}
                   >
                     {col}
-                    {getSortIndicator(col)}
-                  </TableHead>
+                    <span className="text-[10px] opacity-50">{getSortIndicator(col)}</span>
+                  </th>
                 ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+              </tr>
+            </thead>
+            <tbody>
               {displayRows.map((row, i) => (
-                <TableRow key={i}>
-                  <TableCell className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2 text-xs"
-                      onClick={() => handleEditOpen(row)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2 text-xs text-destructive"
-                      onClick={() => handleDelete(row)}
-                    >
-                      Del
-                    </Button>
-                  </TableCell>
+                <tr
+                  key={i}
+                  className="border-b border-border/50 hover:bg-accent/40 transition-colors"
+                >
+                  <td className="px-2 py-1">
+                    <div className="flex gap-0.5">
+                      <button
+                        onClick={() => handleEditOpen(row)}
+                        className="px-1.5 py-0.5 text-[11px] text-primary hover:bg-primary/10 rounded transition-colors"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(row)}
+                        className="px-1.5 py-0.5 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors"
+                      >
+                        Del
+                      </button>
+                    </div>
+                  </td>
                   {rowsData?.Columns?.map((col) => (
-                    <TableCell key={col} className="max-w-xs truncate text-xs">
+                    <td key={col} className="px-3 py-1 max-w-xs truncate text-[13px]">
                       {row[col] === null ? (
-                        <span className="text-muted-foreground italic">
+                        <span className="text-muted-foreground/50 italic text-[11px]">
                           NULL
                         </span>
                       ) : (
                         String(row[col])
                       )}
-                    </TableCell>
+                    </td>
                   ))}
-                </TableRow>
+                </tr>
               ))}
               {displayRows.length === 0 && (
-                <TableRow>
-                  <TableCell
+                <tr>
+                  <td
                     colSpan={(rowsData?.Columns?.length ?? 0) + 1}
-                    className="text-center text-muted-foreground py-8"
+                    className="text-center text-muted-foreground py-12 text-sm"
                   >
                     {search ? "No matching rows" : "No data"}
-                  </TableCell>
-                </TableRow>
+                  </td>
+                </tr>
               )}
-            </TableBody>
-          </Table>
+            </tbody>
+          </table>
         </ScrollArea>
       )}
 
-      {/* Pagination */}
-      <div className="px-4 py-2 border-t border-border flex items-center justify-between text-sm">
+      {/* Pagination bar */}
+      <div className="px-3 py-1.5 border-t border-border bg-card flex items-center justify-between text-xs">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Rows per page</span>
+          <span className="text-muted-foreground">Rows/page</span>
           <Select
             value={String(pageSize)}
             onValueChange={handlePageSizeChange}
           >
-            <SelectTrigger className="h-7 w-20 text-xs">
+            <SelectTrigger className="h-6 w-16 text-[11px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -497,14 +483,14 @@ export default function TableView() {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground">
             Page {page + 1}
           </span>
           <Button
             variant="outline"
             size="sm"
-            className="h-7 px-2 text-xs"
+            className="h-6 px-2 text-[11px]"
             onClick={() => setPage((p) => p - 1)}
             disabled={!hasPrevPage}
           >
@@ -513,7 +499,7 @@ export default function TableView() {
           <Button
             variant="outline"
             size="sm"
-            className="h-7 px-2 text-xs"
+            className="h-6 px-2 text-[11px]"
             onClick={() => setPage((p) => p + 1)}
             disabled={!hasNextPage}
           >
@@ -526,26 +512,22 @@ export default function TableView() {
       <Dialog open={showInsert} onOpenChange={setShowInsert}>
         <DialogContent className="max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Insert row into {selectedTable}</DialogTitle>
+            <DialogTitle className="text-base">Insert into {selectedTable}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             {insertableColumns.map((col: Column) => {
               const meta = getColumnMeta(col.Type);
               return (
                 <div key={col.Name} className="space-y-1">
-                  <label className="text-sm font-medium">
+                  <label className="text-xs font-medium flex items-baseline gap-2">
                     {col.Name}
-                    <span className="ml-2 text-xs text-muted-foreground">
+                    <span className="text-[11px] text-muted-foreground font-normal">
                       {col.Type}
+                      {col.Null === "YES" && " · nullable"}
                     </span>
-                    {col.Null === "YES" && (
-                      <span className="ml-1 text-xs text-muted-foreground">
-                        nullable
-                      </span>
-                    )}
                   </label>
                   {meta.inputType === "checkbox" ? (
-                    <div className="flex items-center gap-2 h-9">
+                    <div className="flex items-center gap-2 h-8">
                       <Checkbox
                         checked={formData[col.Name] === "true"}
                         onCheckedChange={(v) =>
@@ -555,7 +537,7 @@ export default function TableView() {
                           })
                         }
                       />
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {formData[col.Name] === "true" ? "TRUE" : "FALSE"}
                       </span>
                     </div>
@@ -570,6 +552,7 @@ export default function TableView() {
                       }
                       placeholder="NULL"
                       rows={3}
+                      className="text-sm"
                     />
                   ) : (
                     <Input
@@ -583,20 +566,21 @@ export default function TableView() {
                         })
                       }
                       placeholder="NULL"
+                      className="h-8 text-sm"
                     />
                   )}
                 </div>
               );
             })}
             <Button
-              className="w-full"
+              className="w-full h-8"
               onClick={handleInsertSubmit}
               disabled={insertRow.isPending}
             >
               {insertRow.isPending ? "Inserting..." : "Insert"}
             </Button>
             {insertRow.isError && (
-              <p className="text-sm text-destructive">
+              <p className="text-xs text-destructive">
                 {insertRow.error.message}
               </p>
             )}
@@ -611,7 +595,7 @@ export default function TableView() {
       >
         <DialogContent className="max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit row</DialogTitle>
+            <DialogTitle className="text-base">Edit row</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             {rowsData?.Columns?.map((colName) => {
@@ -628,22 +612,16 @@ export default function TableView() {
 
               return (
                 <div key={colName} className="space-y-1">
-                  <label className="text-sm font-medium">
+                  <label className="text-xs font-medium flex items-baseline gap-2">
                     {colName}
-                    {colDef && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {colDef.Type}
-                      </span>
-                    )}
-                    {isPK && (
-                      <span className="ml-1 text-yellow-500 text-xs">PK</span>
-                    )}
-                    {isAI && (
-                      <span className="ml-1 text-blue-500 text-xs">AI</span>
-                    )}
+                    <span className="text-[11px] text-muted-foreground font-normal">
+                      {colDef?.Type}
+                      {isPK && " · PK"}
+                      {isAI && " · AI"}
+                    </span>
                   </label>
                   {meta.kind === "boolean" ? (
-                    <div className="flex items-center gap-2 h-9">
+                    <div className="flex items-center gap-2 h-8">
                       <Checkbox
                         checked={formData[colName] === "true"}
                         onCheckedChange={(v) =>
@@ -654,7 +632,7 @@ export default function TableView() {
                         }
                         disabled={isPK}
                       />
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {formData[colName] === "true" ? "TRUE" : "FALSE"}
                       </span>
                     </div>
@@ -670,6 +648,7 @@ export default function TableView() {
                       disabled={isPK}
                       placeholder="NULL"
                       rows={3}
+                      className="text-sm"
                     />
                   ) : (
                     <Input
@@ -684,20 +663,21 @@ export default function TableView() {
                       }
                       disabled={isPK}
                       placeholder="NULL"
+                      className="h-8 text-sm"
                     />
                   )}
                 </div>
               );
             })}
             <Button
-              className="w-full"
+              className="w-full h-8"
               onClick={handleUpdateSubmit}
               disabled={updateRow.isPending}
             >
               {updateRow.isPending ? "Updating..." : "Update"}
             </Button>
             {updateRow.isError && (
-              <p className="text-sm text-destructive">
+              <p className="text-xs text-destructive">
                 {updateRow.error.message}
               </p>
             )}

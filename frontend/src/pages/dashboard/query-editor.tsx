@@ -1,17 +1,8 @@
 import { useState, useEffect } from "react";
 import { useExecuteQuery } from "@/hooks/mutations/use-execute-query";
 import { useNavigationStore } from "@/stores/navigation.store";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 type QueryResult = {
@@ -112,27 +103,27 @@ export default function QueryEditor() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-border space-y-3">
-        <div className="flex items-center gap-2">
-          {selectedDb && (
-            <Badge variant="secondary" className="text-xs">
+      {/* Editor area */}
+      <div className="p-3 border-b border-border bg-card space-y-2">
+        <div className="flex items-center gap-2 text-xs">
+          {selectedDb ? (
+            <span className="text-primary bg-primary/10 px-2 py-0.5 rounded font-medium">
               {selectedDb}
-            </Badge>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">No DB selected — use USE db;</span>
           )}
-          <span className="text-xs text-muted-foreground">
-            {selectedDb
-              ? "Queries run in this database context"
-              : "No database selected \u2014 use USE db;"}
-          </span>
           <div className="ml-auto">
-            <Button
-              variant={showHistory ? "secondary" : "outline"}
-              size="sm"
-              className="h-7 text-xs"
+            <button
+              className={`text-xs px-2 py-1 rounded transition-colors ${
+                showHistory
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
               onClick={() => setShowHistory(!showHistory)}
             >
               History ({history.length})
-            </Button>
+            </button>
           </div>
         </div>
         <Textarea
@@ -144,14 +135,17 @@ export default function QueryEditor() {
               ? `SELECT * FROM ${selectedDb}...`
               : "SELECT * FROM ..."
           }
-          className="font-mono text-sm min-h-[120px] resize-y"
+          className="font-mono text-sm min-h-[100px] resize-y bg-background"
         />
         <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">Ctrl+Enter to execute</p>
+          <p className="text-[11px] text-muted-foreground">
+            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to run
+          </p>
           <Button
             onClick={handleExecute}
             disabled={executeQuery.isPending || !query.trim()}
             size="sm"
+            className="h-7 text-xs px-4"
           >
             {executeQuery.isPending ? "Running..." : "Execute"}
           </Button>
@@ -161,18 +155,18 @@ export default function QueryEditor() {
       <div className="flex-1 overflow-hidden">
         {/* History panel */}
         {showHistory && (
-          <div className="border-b border-border">
-            <ScrollArea className="max-h-64">
-              <div className="p-2 space-y-1">
+          <div className="border-b border-border bg-card">
+            <ScrollArea className="max-h-56">
+              <div className="p-2 space-y-0.5">
                 {history.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-4">
+                  <p className="text-xs text-muted-foreground text-center py-6">
                     No queries yet
                   </p>
                 )}
                 {history.map((entry, i) => (
-                  <div
+                  <button
                     key={i}
-                    className="flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-accent/50 group cursor-pointer"
+                    className="w-full text-left flex items-start gap-2 px-2 py-1.5 rounded hover:bg-accent/50 group transition-colors"
                     onClick={() => handleReplay(entry)}
                   >
                     <div className="flex-1 min-w-0">
@@ -182,17 +176,12 @@ export default function QueryEditor() {
                           {formatTime(entry.timestamp)}
                         </span>
                         {entry.database && (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] h-4 px-1"
-                          >
+                          <span className="text-[10px] text-primary/70">
                             {entry.database}
-                          </Badge>
+                          </span>
                         )}
                         {entry.error ? (
-                          <span className="text-[10px] text-destructive">
-                            Error
-                          </span>
+                          <span className="text-[10px] text-destructive">Error</span>
                         ) : (
                           <span className="text-[10px] text-muted-foreground">
                             {entry.rowCount} rows
@@ -200,80 +189,71 @@ export default function QueryEditor() {
                         )}
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2 text-xs opacity-0 group-hover:opacity-100 shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleReplay(entry);
-                      }}
-                    >
-                      Use
-                    </Button>
-                  </div>
+                  </button>
                 ))}
               </div>
             </ScrollArea>
             {history.length > 0 && (
-              <div className="px-4 py-1 border-t border-border">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-xs text-destructive"
+              <div className="px-3 py-1 border-t border-border">
+                <button
+                  className="text-[11px] text-destructive hover:underline"
                   onClick={clearHistory}
                 >
                   Clear history
-                </Button>
+                </button>
               </div>
             )}
           </div>
         )}
 
-        {/* Results */}
+        {/* Error */}
         {executeQuery.isError && (
-          <div className="p-4 text-sm text-destructive">
+          <div className="px-3 py-2 text-xs text-destructive bg-destructive/5 border-b border-destructive/20">
             {executeQuery.error.message}
           </div>
         )}
 
+        {/* Results table */}
         {result && (
           <ScrollArea className="h-full">
-            <div className="p-4">
-              <p className="text-xs text-muted-foreground mb-2">
+            <div className="p-3">
+              <p className="text-[11px] text-muted-foreground mb-2">
                 {result.Rows?.length ?? 0} rows returned
               </p>
-              <Table>
-                <TableHeader>
-                  <TableRow>
+              <table className="w-full data-table">
+                <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
+                  <tr className="border-b border-border">
                     {result.Columns?.map((col) => (
-                      <TableHead key={col} className="whitespace-nowrap">
+                      <th
+                        key={col}
+                        className="px-3 py-1.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap"
+                      >
                         {col}
-                      </TableHead>
+                      </th>
                     ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+                  </tr>
+                </thead>
+                <tbody>
                   {result.Rows?.map((row, i) => (
-                    <TableRow key={i}>
+                    <tr key={i} className="border-b border-border/50 hover:bg-accent/40 transition-colors">
                       {result.Columns.map((col) => (
-                        <TableCell
+                        <td
                           key={col}
-                          className="max-w-xs truncate text-xs"
+                          className="px-3 py-1 max-w-xs truncate text-[13px]"
                         >
                           {row[col] === null ? (
-                            <span className="text-muted-foreground italic">
+                            <span className="text-muted-foreground/50 italic text-[11px]">
                               NULL
                             </span>
                           ) : (
                             String(row[col])
                           )}
-                        </TableCell>
+                        </td>
                       ))}
-                    </TableRow>
+                    </tr>
                   ))}
-                </TableBody>
-              </Table>
+                </tbody>
+              </table>
             </div>
           </ScrollArea>
         )}

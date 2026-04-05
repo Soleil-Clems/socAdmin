@@ -62,6 +62,12 @@ type TableDef = {
   columns: TableColumnDef[];
 };
 
+const dbTypeLabels: Record<string, string> = {
+  mysql: "MySQL",
+  postgresql: "PostgreSQL",
+  mongodb: "MongoDB",
+};
+
 export default function Sidebar() {
   const { host, port, user, dbType, disconnect } = useConnectionStore();
   const logout = useAuthStore((s) => s.logout);
@@ -165,34 +171,41 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="w-64 border-r border-border bg-card flex flex-col h-screen">
-      <div className="p-4 border-b border-border">
-        <h1 className="text-lg font-bold">socAdmin</h1>
-        <p className="text-xs text-muted-foreground truncate">
-          {dbType?.toUpperCase()} — {user}@{host}:{port}
-        </p>
+    <aside className="w-60 bg-sidebar text-sidebar-foreground flex flex-col h-screen border-r border-sidebar-border">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-sidebar-border">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground text-xs font-bold shrink-0">
+            sA
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold truncate">socAdmin</p>
+            <p className="text-[11px] text-sidebar-foreground/50 truncate">
+              {dbTypeLabels[dbType || ""] || dbType} · {user}@{host}:{port}
+            </p>
+          </div>
+        </div>
       </div>
 
+      {/* Database list */}
       <ScrollArea className="flex-1">
         <div className="p-2">
-          <div className="flex items-center justify-between px-2 py-1">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <div className="flex items-center justify-between px-2 mb-1">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
               Databases
             </p>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs"
+            <button
               onClick={openCreateDb}
+              className="text-[10px] font-medium text-sidebar-primary hover:text-sidebar-primary/80 transition-colors"
             >
               + New
-            </Button>
+            </button>
           </div>
 
           {dbLoading && (
-            <div className="space-y-2 p-2">
+            <div className="space-y-1 p-1">
               {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-8 w-full" />
+                <Skeleton key={i} className="h-7 w-full bg-sidebar-accent/50" />
               ))}
             </div>
           )}
@@ -202,18 +215,19 @@ export default function Sidebar() {
               <div className="flex items-center group">
                 <button
                   onClick={() => setSelectedDb(db)}
-                  className={`flex-1 text-left px-2 py-1.5 rounded-md text-sm transition-colors ${
+                  className={`flex-1 text-left px-2 py-1 rounded text-[13px] transition-colors truncate ${
                     selectedDb === db
-                      ? "bg-accent text-accent-foreground font-medium"
-                      : "text-foreground hover:bg-accent/50"
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                   }`}
                 >
+                  <span className="inline-block w-4 text-center mr-1.5 text-sidebar-foreground/30">
+                    {selectedDb === db ? "▾" : "▸"}
+                  </span>
                   {db}
                 </button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 text-xs text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                <button
+                  className="w-5 h-5 flex items-center justify-center text-[10px] text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0 rounded hover:bg-destructive/10"
                   onClick={() => {
                     if (!confirm(`Drop database "${db}"? This cannot be undone.`)) return;
                     dropDb.mutate(db, {
@@ -223,16 +237,16 @@ export default function Sidebar() {
                     });
                   }}
                 >
-                  X
-                </Button>
+                  ×
+                </button>
               </div>
 
               {selectedDb === db && (
-                <div className="ml-3 border-l border-border pl-2">
+                <div className="ml-4 border-l border-sidebar-border pl-2 mt-0.5 mb-1">
                   {tablesLoading && (
-                    <div className="space-y-1 py-1">
+                    <div className="space-y-0.5 py-0.5">
                       {Array.from({ length: 3 }).map((_, i) => (
-                        <Skeleton key={i} className="h-6 w-full" />
+                        <Skeleton key={i} className="h-6 w-full bg-sidebar-accent/30" />
                       ))}
                     </div>
                   )}
@@ -241,15 +255,21 @@ export default function Sidebar() {
                     <button
                       key={table}
                       onClick={() => setSelectedTable(table)}
-                      className={`w-full text-left px-2 py-1 rounded-md text-xs transition-colors ${
+                      className={`w-full text-left px-2 py-0.5 rounded text-[12px] transition-colors truncate ${
                         selectedTable === table
-                          ? "bg-primary text-primary-foreground font-medium"
-                          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
+                          : "text-sidebar-foreground/50 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/80"
                       }`}
                     >
                       {table}
                     </button>
                   ))}
+
+                  {tables?.length === 0 && (
+                    <p className="text-[11px] text-sidebar-foreground/30 px-2 py-1">
+                      No tables
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -257,26 +277,28 @@ export default function Sidebar() {
         </div>
       </ScrollArea>
 
-      <div className="p-2 border-t border-border space-y-1">
-        <ThemeToggle className="w-full text-muted-foreground" />
+      {/* Footer */}
+      <div className="p-2 border-t border-sidebar-border space-y-0.5">
+        <ThemeToggle className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50" />
         <Button
           variant="ghost"
           size="sm"
-          className="w-full text-muted-foreground"
+          className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 h-8 text-xs"
           onClick={() => { resetNav(); disconnect(); }}
         >
-          Disconnect DB
+          Disconnect
         </Button>
         <Button
           variant="ghost"
           size="sm"
-          className="w-full text-muted-foreground"
+          className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 h-8 text-xs"
           onClick={() => { resetNav(); disconnect(); logout(); }}
         >
           Logout
         </Button>
       </div>
 
+      {/* Create DB dialog */}
       <Dialog open={showCreateDb} onOpenChange={setShowCreateDb}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -287,16 +309,16 @@ export default function Sidebar() {
               value={newDbName}
               onChange={(e) => setNewDbName(e.target.value)}
               placeholder="Database name"
+              className="h-9"
               onKeyDown={(e) =>
                 e.key === "Enter" && tableDefs.length === 0 && handleCreateDb()
               }
             />
 
-            {/* Tables section */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Tables (optional)</p>
-                <Button variant="outline" size="sm" onClick={addTableDef}>
+                <p className="text-xs font-medium text-muted-foreground">Tables (optional)</p>
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addTableDef}>
                   + Add table
                 </Button>
               </div>
@@ -304,26 +326,26 @@ export default function Sidebar() {
               {tableDefs.map((tbl, ti) => (
                 <div
                   key={ti}
-                  className="border border-border rounded-lg p-3 space-y-2"
+                  className="border border-border rounded-md p-3 space-y-2"
                 >
                   <div className="flex items-center gap-2">
                     <Input
                       value={tbl.name}
                       onChange={(e) => updateTableName(ti, e.target.value)}
                       placeholder="Table name"
-                      className="flex-1"
+                      className="flex-1 h-8 text-sm"
                     />
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-destructive"
+                      className="text-destructive h-8 px-2 text-xs"
                       onClick={() => removeTableDef(ti)}
                     >
                       Remove
                     </Button>
                   </div>
 
-                  <p className="text-xs font-medium text-muted-foreground">
+                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
                     Columns
                   </p>
                   {tbl.columns.map((col, ci) => (
@@ -334,7 +356,7 @@ export default function Sidebar() {
                           updateTableColumn(ti, ci, "name", e.target.value)
                         }
                         placeholder="Column name"
-                        className="flex-1"
+                        className="flex-1 h-8 text-sm"
                       />
                       {dbType === "mongodb" ? (
                         <Input
@@ -343,7 +365,7 @@ export default function Sidebar() {
                             updateTableColumn(ti, ci, "type", e.target.value)
                           }
                           placeholder="Type"
-                          className="flex-1"
+                          className="flex-1 h-8 text-sm"
                         />
                       ) : (
                         <Select
@@ -352,7 +374,7 @@ export default function Sidebar() {
                             v && updateTableColumn(ti, ci, "type", v)
                           }
                         >
-                          <SelectTrigger className="flex-1">
+                          <SelectTrigger className="flex-1 h-8 text-sm">
                             <SelectValue placeholder="Type" />
                           </SelectTrigger>
                           <SelectContent>
@@ -364,7 +386,7 @@ export default function Sidebar() {
                           </SelectContent>
                         </Select>
                       )}
-                      <label className="flex items-center gap-1 text-xs whitespace-nowrap">
+                      <label className="flex items-center gap-1 text-[11px] whitespace-nowrap">
                         <Checkbox
                           checked={col.primary_key}
                           onCheckedChange={(v) =>
@@ -373,7 +395,7 @@ export default function Sidebar() {
                         />
                         PK
                       </label>
-                      <label className="flex items-center gap-1 text-xs whitespace-nowrap">
+                      <label className="flex items-center gap-1 text-[11px] whitespace-nowrap">
                         <Checkbox
                           checked={col.auto_increment}
                           onCheckedChange={(v) =>
@@ -382,7 +404,7 @@ export default function Sidebar() {
                         />
                         AI
                       </label>
-                      <label className="flex items-center gap-1 text-xs whitespace-nowrap">
+                      <label className="flex items-center gap-1 text-[11px] whitespace-nowrap">
                         <Checkbox
                           checked={col.nullable}
                           onCheckedChange={(v) =>
@@ -395,10 +417,10 @@ export default function Sidebar() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 px-2 text-destructive"
+                          className="h-7 px-2 text-destructive text-xs"
                           onClick={() => removeColumnFromDef(ti, ci)}
                         >
-                          X
+                          ×
                         </Button>
                       )}
                     </div>
@@ -406,6 +428,7 @@ export default function Sidebar() {
                   <Button
                     variant="outline"
                     size="sm"
+                    className="h-7 text-xs"
                     onClick={() => addColumnToDef(ti)}
                   >
                     + Add column
@@ -415,7 +438,7 @@ export default function Sidebar() {
             </div>
 
             <Button
-              className="w-full"
+              className="w-full h-9"
               onClick={handleCreateDb}
               disabled={isCreating || !newDbName.trim()}
             >
@@ -426,7 +449,7 @@ export default function Sidebar() {
                   : "Create database"}
             </Button>
             {createDb.isError && (
-              <p className="text-sm text-destructive">
+              <p className="text-xs text-destructive">
                 {createDb.error.message}
               </p>
             )}

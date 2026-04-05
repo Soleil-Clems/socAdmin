@@ -6,7 +6,6 @@ import DatabaseView from "@/pages/dashboard/database-view";
 import QueryEditor from "@/pages/dashboard/query-editor";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
   const { selectedTable } = useNavigationStore();
@@ -17,21 +16,34 @@ export default function DashboardPage() {
       {sidebarOpen && <Sidebar />}
       <div className="flex-1 flex flex-col overflow-hidden">
         <Tabs defaultValue="data" className="flex-1 flex flex-col overflow-hidden">
-          <div className="border-b border-border px-4 flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 shrink-0"
+          <div className="border-b border-border bg-card px-1 flex items-center">
+            <button
+              className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 rounded"
               onClick={() => setSidebarOpen(!sidebarOpen)}
             >
-              {sidebarOpen ? "\u2190" : "\u2192"}
-            </Button>
-            <TabsList className="h-10">
-              <TabsTrigger value="data">Data</TabsTrigger>
+              {sidebarOpen ? "◀" : "▶"}
+            </button>
+            <TabsList className="h-9 bg-transparent border-0 p-0 gap-0">
+              <TabsTrigger
+                value="data"
+                className="h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs font-medium px-4"
+              >
+                Data
+              </TabsTrigger>
               {selectedTable && (
-                <TabsTrigger value="structure">Structure</TabsTrigger>
+                <TabsTrigger
+                  value="structure"
+                  className="h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs font-medium px-4"
+                >
+                  Structure
+                </TabsTrigger>
               )}
-              <TabsTrigger value="query">SQL Query</TabsTrigger>
+              <TabsTrigger
+                value="query"
+                className="h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs font-medium px-4"
+              >
+                SQL
+              </TabsTrigger>
             </TabsList>
           </div>
           <TabsContent value="data" className="flex-1 overflow-hidden m-0">
