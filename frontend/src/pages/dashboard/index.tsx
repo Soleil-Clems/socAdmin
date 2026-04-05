@@ -10,6 +10,7 @@ import ExportView from "@/pages/dashboard/export-view";
 import UsersView from "@/pages/dashboard/users-view";
 import StatusView from "@/pages/dashboard/status-view";
 import SecurityView from "@/pages/dashboard/security-view";
+import AccountsView from "@/pages/dashboard/accounts-view";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -41,6 +42,9 @@ export default function DashboardPage() {
                 <TabsTrigger value="users" className={tabClass}>Users</TabsTrigger>
                 <TabsTrigger value="status" className={tabClass}>Status</TabsTrigger>
                 {isAdmin && (
+                  <TabsTrigger value="accounts" className={tabClass}>Accounts</TabsTrigger>
+                )}
+                {isAdmin && (
                   <TabsTrigger value="security" className={tabClass}>Security</TabsTrigger>
                 )}
               </TabsList>
@@ -54,6 +58,11 @@ export default function DashboardPage() {
             <TabsContent value="status" className="flex-1 overflow-hidden m-0">
               <StatusView />
             </TabsContent>
+            {isAdmin && (
+              <TabsContent value="accounts" className="flex-1 overflow-hidden m-0">
+                <AccountsView />
+              </TabsContent>
+            )}
             {isAdmin && (
               <TabsContent value="security" className="flex-1 overflow-hidden m-0">
                 <SecurityView />
@@ -94,6 +103,9 @@ export default function DashboardPage() {
               <TabsTrigger value="users" className={tabClass}>Users</TabsTrigger>
               <TabsTrigger value="status" className={tabClass}>Status</TabsTrigger>
               {isAdmin && (
+                <TabsTrigger value="accounts" className={tabClass}>Accounts</TabsTrigger>
+              )}
+              {isAdmin && (
                 <TabsTrigger value="security" className={tabClass}>Security</TabsTrigger>
               )}
             </TabsList>
@@ -125,6 +137,11 @@ export default function DashboardPage() {
           <TabsContent value="status" className="flex-1 overflow-hidden m-0">
             <StatusView />
           </TabsContent>
+          {isAdmin && (
+            <TabsContent value="accounts" className="flex-1 overflow-hidden m-0">
+              <AccountsView />
+            </TabsContent>
+          )}
           {isAdmin && (
             <TabsContent value="security" className="flex-1 overflow-hidden m-0">
               <SecurityView />

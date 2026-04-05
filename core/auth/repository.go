@@ -158,6 +158,40 @@ func (r *Repository) UserCount() (int, error) {
 	return count, err
 }
 
+// ListUsers returns every registered app user, ordered by id.
+func (r *Repository) ListUsers() ([]User, error) {
+	rows, err := r.db.Query("SELECT id, email, role, created_at FROM users ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Email, &u.Role, &u.CreatedAt); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
+
+// UpdateUserRole updates the role of a given user.
+func (r *Repository) UpdateUserRole(id int64, role string) error {
+	_, err := r.db.Exec("UPDATE users SET role = ? WHERE id = ?", role, id)
+	return err
+}
+
+// DeleteUser removes a user and their refresh tokens.
+func (r *Repository) DeleteUser(id int64) error {
+	if _, err := r.db.Exec("DELETE FROM refresh_tokens WHERE user_id = ?", id); err != nil {
+		return err
+	}
+	_, err := r.db.Exec("DELETE FROM users WHERE id = ?", id)
+	return err
+}
+
 func (r *Repository) FindByEmail(email string) (*User, error) {
 	var user User
 	err := r.db.QueryRow(

@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
 	"github.com/soleilouisol/socAdmin/core/logger"
@@ -113,4 +114,67 @@ func (c *AuthController) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, user)
+}
+
+// ListAppUsers returns every registered socAdmin user (admin only).
+func (c *AuthController) ListAppUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := c.authService.ListUsers()
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if users == nil {
+		users = []auth.User{}
+	}
+	jsonResponse(w, http.StatusOK, users)
+}
+
+type updateRoleRequest struct {
+	Role string `json:"role"`
+}
+
+// UpdateAppUserRole changes a user's role (admin only).
+func (c *AuthController) UpdateAppUserRole(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	var req updateRoleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := c.authService.UpdateUserRole(id, req.Role); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "user_role_update", strconv.FormatInt(id, 10)+"->"+req.Role)
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// DeleteAppUser removes a user (admin only).
+func (c *AuthController) DeleteAppUser(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	callerID := requestUserID(r)
+	if callerID == id {
+		jsonError(w, http.StatusBadRequest, "cannot delete your own account")
+		return
+	}
+
+	if err := c.authService.DeleteUser(id); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	logger.Admin(callerID, requestIP(r), "user_delete", strconv.FormatInt(id, 10))
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }

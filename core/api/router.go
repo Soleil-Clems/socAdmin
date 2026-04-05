@@ -77,6 +77,11 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("POST /api/connections", auth.RequireAdmin(connController.SaveConnection))
 	protected.HandleFunc("DELETE /api/connections/{id}", auth.RequireAdmin(connController.DeleteConnection))
 
+	// App users management — admin only
+	protected.HandleFunc("GET /api/users/app", auth.RequireAdmin(authController.ListAppUsers))
+	protected.HandleFunc("PUT /api/users/app/{id}/role", auth.RequireAdmin(authController.UpdateAppUserRole))
+	protected.HandleFunc("DELETE /api/users/app/{id}", auth.RequireAdmin(authController.DeleteAppUser))
+
 	// Security — admin only
 	protected.HandleFunc("PUT /api/security/whitelist", auth.RequireAdmin(secController.ToggleWhitelist))
 	protected.HandleFunc("POST /api/security/whitelist/ip", auth.RequireAdmin(secController.AddIP))

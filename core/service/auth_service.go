@@ -90,6 +90,58 @@ func (s *AuthService) RefreshToken(refreshToken string) (*auth.TokenPair, error)
 	return s.generateTokenPair(user)
 }
 
+func (s *AuthService) ListUsers() ([]auth.User, error) {
+	return s.repo.ListUsers()
+}
+
+func (s *AuthService) UpdateUserRole(id int64, role string) error {
+	if role != auth.RoleAdmin && role != auth.RoleReadonly {
+		return fmt.Errorf("invalid role: %s", role)
+	}
+	// Prevent removing the last admin
+	if role != auth.RoleAdmin {
+		users, err := s.repo.ListUsers()
+		if err != nil {
+			return err
+		}
+		admins := 0
+		var targetIsAdmin bool
+		for _, u := range users {
+			if u.Role == auth.RoleAdmin {
+				admins++
+				if u.ID == id {
+					targetIsAdmin = true
+				}
+			}
+		}
+		if targetIsAdmin && admins <= 1 {
+			return fmt.Errorf("cannot demote the last admin")
+		}
+	}
+	return s.repo.UpdateUserRole(id, role)
+}
+
+func (s *AuthService) DeleteUser(id int64) error {
+	users, err := s.repo.ListUsers()
+	if err != nil {
+		return err
+	}
+	admins := 0
+	var targetIsAdmin bool
+	for _, u := range users {
+		if u.Role == auth.RoleAdmin {
+			admins++
+			if u.ID == id {
+				targetIsAdmin = true
+			}
+		}
+	}
+	if targetIsAdmin && admins <= 1 {
+		return fmt.Errorf("cannot delete the last admin")
+	}
+	return s.repo.DeleteUser(id)
+}
+
 func (s *AuthService) GetUser(userID int64) (*auth.User, error) {
 	user, err := s.repo.FindByID(userID)
 	if err != nil {
