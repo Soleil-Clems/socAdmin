@@ -2,9 +2,11 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
+	"github.com/soleilouisol/socAdmin/core/logger"
 	"github.com/soleilouisol/socAdmin/core/security"
 )
 
@@ -56,6 +58,8 @@ func (c *SecurityController) ToggleWhitelist(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	logger.Security(requestUserID(r), requestIP(r), "whitelist_toggle", fmt.Sprintf("enabled=%v", req.Enabled))
+
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"enabled":    req.Enabled,
 		"client_ip":  security.ClientIPNormalized(r),
@@ -85,6 +89,7 @@ func (c *SecurityController) AddIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Security(requestUserID(r), requestIP(r), "whitelist_add_ip", req.IP)
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "added", "ip": req.IP})
 }
 
@@ -106,5 +111,6 @@ func (c *SecurityController) RemoveIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Security(requestUserID(r), requestIP(r), "whitelist_remove_ip", req.IP)
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "removed", "ip": req.IP})
 }

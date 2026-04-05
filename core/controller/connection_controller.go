@@ -2,10 +2,12 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
+	"github.com/soleilouisol/socAdmin/core/logger"
 	"github.com/soleilouisol/socAdmin/core/security"
 	"github.com/soleilouisol/socAdmin/core/service"
 )
@@ -117,10 +119,12 @@ func (c *ConnectionController) UseSavedConnection(w http.ResponseWriter, r *http
 
 	// Connect
 	if err := c.dbService.Connect(conn.Host, conn.Port, conn.DbUser, password, conn.DbType); err != nil {
+		logger.Connect(claims.UserID, requestIP(r), conn.DbType, conn.Host, conn.Port, false)
 		jsonError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 
+	logger.Connect(claims.UserID, requestIP(r), conn.DbType, conn.Host, conn.Port, true)
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "connected", "type": conn.DbType})
 }
 
@@ -140,5 +144,6 @@ func (c *ConnectionController) DeleteConnection(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	logger.Security(claims.UserID, requestIP(r), "delete_saved_connection", fmt.Sprintf("id=%d", id))
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "deleted"})
 }

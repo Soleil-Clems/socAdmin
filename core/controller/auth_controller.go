@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
+	"github.com/soleilouisol/socAdmin/core/logger"
 	"github.com/soleilouisol/socAdmin/core/service"
 )
 
@@ -49,10 +50,12 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 
 	user, err := c.authService.Register(req.Email, req.Password)
 	if err != nil {
+		logger.AuthFail("register", requestIP(r))
 		jsonError(w, http.StatusConflict, err.Error())
 		return
 	}
 
+	logger.Auth("register", user.ID, requestIP(r))
 	jsonResponse(w, http.StatusCreated, user)
 }
 
@@ -70,10 +73,12 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 
 	tokens, err := c.authService.Login(req.Email, req.Password)
 	if err != nil {
+		logger.AuthFail("login", requestIP(r))
 		jsonError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
+	logger.Auth("login", 0, requestIP(r))
 	jsonResponse(w, http.StatusOK, tokens)
 }
 

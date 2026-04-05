@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/soleilouisol/socAdmin/core/connector"
+	"github.com/soleilouisol/socAdmin/core/logger"
 	"github.com/soleilouisol/socAdmin/core/service"
 )
 
@@ -86,10 +88,12 @@ func (c *DatabaseController) Connect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := c.dbService.Connect(req.Host, req.Port, req.User, req.Password, dbType); err != nil {
+		logger.Connect(requestUserID(r), requestIP(r), dbType, req.Host, req.Port, false)
 		jsonError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 
+	logger.Connect(requestUserID(r), requestIP(r), dbType, req.Host, req.Port, true)
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "connected", "type": dbType})
 }
 
@@ -120,6 +124,7 @@ func (c *DatabaseController) CreateDatabase(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	logger.Admin(requestUserID(r), requestIP(r), "create_database", req.Name)
 	jsonResponse(w, http.StatusCreated, map[string]string{"status": "created"})
 }
 
@@ -131,6 +136,7 @@ func (c *DatabaseController) DropDatabase(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	logger.Admin(requestUserID(r), requestIP(r), "drop_database", db)
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "dropped"})
 }
 
@@ -223,12 +229,21 @@ func (c *DatabaseController) ExecuteQuery(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	start := time.Now()
 	result, err := c.dbService.ExecuteQuery(req.Database, req.Query)
+	duration := time.Since(start)
+
 	if err != nil {
+		logger.Query(requestUserID(r), requestIP(r), req.Database, duration, 0, true)
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	rowCount := 0
+	if result != nil {
+		rowCount = len(result.Rows)
+	}
+	logger.Query(requestUserID(r), requestIP(r), req.Database, duration, rowCount, false)
 	jsonResponse(w, http.StatusOK, result)
 }
 
@@ -241,6 +256,7 @@ func (c *DatabaseController) DropTable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Admin(requestUserID(r), requestIP(r), "drop_table", fmt.Sprintf("%s.%s", db, table))
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "dropped"})
 }
 
@@ -253,6 +269,7 @@ func (c *DatabaseController) TruncateTable(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	logger.Admin(requestUserID(r), requestIP(r), "truncate_table", fmt.Sprintf("%s.%s", db, table))
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "truncated"})
 }
 
@@ -315,6 +332,8 @@ func (c *DatabaseController) ExportTable(w http.ResponseWriter, r *http.Request)
 	table := r.PathValue("table")
 	format := r.URL.Query().Get("format")
 
+	logger.Export(requestUserID(r), requestIP(r), db, table, format)
+
 	switch format {
 	case "csv":
 		w.Header().Set("Content-Type", "text/csv")
@@ -351,6 +370,8 @@ func (c *DatabaseController) ExportDatabase(w http.ResponseWriter, r *http.Reque
 	if format == "" {
 		format = "sql"
 	}
+
+	logger.Export(requestUserID(r), requestIP(r), db, "", format)
 
 	switch format {
 	case "sql":
@@ -426,6 +447,8 @@ func (c *DatabaseController) ImportSQL(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	logger.Import(requestUserID(r), requestIP(r), db, "", "sql", executed)
+
 	result := map[string]interface{}{
 		"executed": executed,
 		"errors":   errors,
@@ -478,6 +501,8 @@ func (c *DatabaseController) ImportCSV(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	logger.Import(requestUserID(r), requestIP(r), db, table, "csv", inserted)
+
 	result := map[string]interface{}{
 		"inserted": inserted,
 		"errors":   errors,
@@ -505,6 +530,8 @@ func (c *DatabaseController) ImportJSON(w http.ResponseWriter, r *http.Request) 
 			inserted++
 		}
 	}
+
+	logger.Import(requestUserID(r), requestIP(r), db, table, "json", inserted)
 
 	result := map[string]interface{}{
 		"inserted": inserted,
