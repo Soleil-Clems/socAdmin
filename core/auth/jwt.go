@@ -24,6 +24,7 @@ func InitJWTSecret(secret []byte) {
 type Claims struct {
 	UserID int64  `json:"user_id"`
 	Email  string `json:"email"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -31,6 +32,7 @@ func GenerateAccessToken(user *User) (string, error) {
 	claims := Claims{
 		UserID: user.ID,
 		Email:  user.Email,
+		Role:   user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenDuration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

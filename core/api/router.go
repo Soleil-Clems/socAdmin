@@ -40,43 +40,47 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	mux.HandleFunc("POST /api/auth/login", authController.Login)
 	mux.HandleFunc("POST /api/auth/refresh", authController.Refresh)
 
-	// Routes protégées
+	// Routes protégées — tout le monde (admin + readonly)
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /api/auth/me", authController.Me)
 	protected.HandleFunc("GET /api/connection/status", dbController.ConnectionStatus)
 	protected.HandleFunc("POST /api/connect", dbController.Connect)
 	protected.HandleFunc("GET /api/databases", dbController.ListDatabases)
-	protected.HandleFunc("POST /api/databases", dbController.CreateDatabase)
-	protected.HandleFunc("DELETE /api/databases/{db}", dbController.DropDatabase)
 	protected.HandleFunc("GET /api/databases/{db}/tables", dbController.ListTables)
-	protected.HandleFunc("POST /api/databases/{db}/tables", dbController.CreateTable)
 	protected.HandleFunc("GET /api/databases/{db}/tables/{table}/columns", dbController.DescribeTable)
 	protected.HandleFunc("GET /api/databases/{db}/tables/{table}/rows", dbController.GetRows)
-	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/rows", dbController.InsertRow)
-	protected.HandleFunc("PUT /api/databases/{db}/tables/{table}/rows", dbController.UpdateRow)
-	protected.HandleFunc("DELETE /api/databases/{db}/tables/{table}/rows", dbController.DeleteRow)
-	protected.HandleFunc("DELETE /api/databases/{db}/tables/{table}", dbController.DropTable)
-	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/truncate", dbController.TruncateTable)
 	protected.HandleFunc("GET /api/databases/{db}/tables/{table}/export", dbController.ExportTable)
 	protected.HandleFunc("GET /api/databases/{db}/export", dbController.ExportDatabase)
 	protected.HandleFunc("GET /api/users", dbController.ListUsers)
 	protected.HandleFunc("GET /api/status", dbController.ServerStatus)
-	protected.HandleFunc("POST /api/databases/{db}/import/sql", dbController.ImportSQL)
-	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/import/csv", dbController.ImportCSV)
-	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/import/json", dbController.ImportJSON)
-	protected.HandleFunc("POST /api/query", dbController.ExecuteQuery)
-
-	// Saved connections routes (protected)
-	protected.HandleFunc("GET /api/connections", connController.ListConnections)
-	protected.HandleFunc("POST /api/connections", connController.SaveConnection)
-	protected.HandleFunc("POST /api/connections/{id}/use", connController.UseSavedConnection)
-	protected.HandleFunc("DELETE /api/connections/{id}", connController.DeleteConnection)
-
-	// Security / IP whitelist routes (protected)
 	protected.HandleFunc("GET /api/security/whitelist", secController.GetWhitelist)
-	protected.HandleFunc("PUT /api/security/whitelist", secController.ToggleWhitelist)
-	protected.HandleFunc("POST /api/security/whitelist/ip", secController.AddIP)
-	protected.HandleFunc("DELETE /api/security/whitelist/ip", secController.RemoveIP)
+
+	// Saved connections — tout le monde peut lister et utiliser
+	protected.HandleFunc("GET /api/connections", connController.ListConnections)
+	protected.HandleFunc("POST /api/connections/{id}/use", connController.UseSavedConnection)
+
+	// Routes admin only — écriture, modification, suppression
+	protected.HandleFunc("POST /api/databases", auth.RequireAdmin(dbController.CreateDatabase))
+	protected.HandleFunc("DELETE /api/databases/{db}", auth.RequireAdmin(dbController.DropDatabase))
+	protected.HandleFunc("POST /api/databases/{db}/tables", auth.RequireAdmin(dbController.CreateTable))
+	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/rows", auth.RequireAdmin(dbController.InsertRow))
+	protected.HandleFunc("PUT /api/databases/{db}/tables/{table}/rows", auth.RequireAdmin(dbController.UpdateRow))
+	protected.HandleFunc("DELETE /api/databases/{db}/tables/{table}/rows", auth.RequireAdmin(dbController.DeleteRow))
+	protected.HandleFunc("DELETE /api/databases/{db}/tables/{table}", auth.RequireAdmin(dbController.DropTable))
+	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/truncate", auth.RequireAdmin(dbController.TruncateTable))
+	protected.HandleFunc("POST /api/databases/{db}/import/sql", auth.RequireAdmin(dbController.ImportSQL))
+	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/import/csv", auth.RequireAdmin(dbController.ImportCSV))
+	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/import/json", auth.RequireAdmin(dbController.ImportJSON))
+	protected.HandleFunc("POST /api/query", auth.RequireAdmin(dbController.ExecuteQuery))
+
+	// Saved connections — admin only pour save/delete
+	protected.HandleFunc("POST /api/connections", auth.RequireAdmin(connController.SaveConnection))
+	protected.HandleFunc("DELETE /api/connections/{id}", auth.RequireAdmin(connController.DeleteConnection))
+
+	// Security — admin only
+	protected.HandleFunc("PUT /api/security/whitelist", auth.RequireAdmin(secController.ToggleWhitelist))
+	protected.HandleFunc("POST /api/security/whitelist/ip", auth.RequireAdmin(secController.AddIP))
+	protected.HandleFunc("DELETE /api/security/whitelist/ip", auth.RequireAdmin(secController.RemoveIP))
 
 	mux.Handle("/api/", auth.AuthMiddleware(protected))
 

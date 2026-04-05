@@ -24,6 +24,11 @@ func NewRepository(dbPath string) (*Repository, error) {
 		return nil, fmt.Errorf("failed to migrate: %w", err)
 	}
 
+	// Add role column if missing (for existing databases)
+	db.Exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'readonly'")
+	// First user ever created should be admin
+	db.Exec("UPDATE users SET role = 'admin' WHERE id = (SELECT MIN(id) FROM users) AND role = 'readonly'")
+
 	return &Repository{db: db}, nil
 }
 
@@ -55,6 +60,9 @@ func migrate(db *sql.DB) error {
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
 		);
+
+		-- Add role column if missing (migration for existing DBs)
+		-- SQLite doesn't support IF NOT EXISTS for ALTER TABLE, handled below
 
 		CREATE TABLE IF NOT EXISTS ip_whitelist (
 			ip TEXT PRIMARY KEY
@@ -128,8 +136,8 @@ func (r *Repository) CleanExpiredTokens() error {
 	return err
 }
 
-func (r *Repository) CreateUser(email, hashedPassword string) (*User, error) {
-	result, err := r.db.Exec("INSERT INTO users (email, password) VALUES (?, ?)", email, hashedPassword)
+func (r *Repository) CreateUser(email, hashedPassword, role string) (*User, error) {
+	result, err := r.db.Exec("INSERT INTO users (email, password, role) VALUES (?, ?, ?)", email, hashedPassword, role)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
@@ -138,15 +146,23 @@ func (r *Repository) CreateUser(email, hashedPassword string) (*User, error) {
 	return &User{
 		ID:        id,
 		Email:     email,
+		Role:      role,
 		CreatedAt: time.Now(),
 	}, nil
+}
+
+// UserCount returns the total number of registered users.
+func (r *Repository) UserCount() (int, error) {
+	var count int
+	err := r.db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+	return count, err
 }
 
 func (r *Repository) FindByEmail(email string) (*User, error) {
 	var user User
 	err := r.db.QueryRow(
-		"SELECT id, email, password, created_at FROM users WHERE email = ?", email,
-	).Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt)
+		"SELECT id, email, password, role, created_at FROM users WHERE email = ?", email,
+	).Scan(&user.ID, &user.Email, &user.Password, &user.Role, &user.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -160,8 +176,8 @@ func (r *Repository) FindByEmail(email string) (*User, error) {
 func (r *Repository) FindByID(id int64) (*User, error) {
 	var user User
 	err := r.db.QueryRow(
-		"SELECT id, email, password, created_at FROM users WHERE id = ?", id,
-	).Scan(&user.ID, &user.Email, &user.Password, &user.CreatedAt)
+		"SELECT id, email, password, role, created_at FROM users WHERE id = ?", id,
+	).Scan(&user.ID, &user.Email, &user.Password, &user.Role, &user.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil

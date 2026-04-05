@@ -11,6 +11,7 @@ import UsersView from "@/pages/dashboard/users-view";
 import StatusView from "@/pages/dashboard/status-view";
 import SecurityView from "@/pages/dashboard/security-view";
 import { useNavigationStore } from "@/stores/navigation.store";
+import { useAuthStore } from "@/stores/auth.store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const tabClass =
@@ -18,6 +19,7 @@ const tabClass =
 
 export default function DashboardPage() {
   const { selectedDb, selectedTable, showAllDatabases } = useNavigationStore();
+  const isAdmin = useAuthStore((s) => s.isAdmin);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // Global tabs when showing all databases
@@ -38,7 +40,9 @@ export default function DashboardPage() {
                 <TabsTrigger value="databases" className={tabClass}>Databases</TabsTrigger>
                 <TabsTrigger value="users" className={tabClass}>Users</TabsTrigger>
                 <TabsTrigger value="status" className={tabClass}>Status</TabsTrigger>
-                <TabsTrigger value="security" className={tabClass}>Security</TabsTrigger>
+                {isAdmin && (
+                  <TabsTrigger value="security" className={tabClass}>Security</TabsTrigger>
+                )}
               </TabsList>
             </div>
             <TabsContent value="databases" className="flex-1 overflow-hidden m-0">
@@ -50,9 +54,11 @@ export default function DashboardPage() {
             <TabsContent value="status" className="flex-1 overflow-hidden m-0">
               <StatusView />
             </TabsContent>
-            <TabsContent value="security" className="flex-1 overflow-hidden m-0">
-              <SecurityView />
-            </TabsContent>
+            {isAdmin && (
+              <TabsContent value="security" className="flex-1 overflow-hidden m-0">
+                <SecurityView />
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       </div>
@@ -78,12 +84,18 @@ export default function DashboardPage() {
               {selectedTable && (
                 <TabsTrigger value="structure" className={tabClass}>Structure</TabsTrigger>
               )}
-              <TabsTrigger value="query" className={tabClass}>SQL</TabsTrigger>
-              <TabsTrigger value="import" className={tabClass}>Import</TabsTrigger>
+              {isAdmin && (
+                <TabsTrigger value="query" className={tabClass}>SQL</TabsTrigger>
+              )}
+              {isAdmin && (
+                <TabsTrigger value="import" className={tabClass}>Import</TabsTrigger>
+              )}
               <TabsTrigger value="export" className={tabClass}>Export</TabsTrigger>
               <TabsTrigger value="users" className={tabClass}>Users</TabsTrigger>
               <TabsTrigger value="status" className={tabClass}>Status</TabsTrigger>
-              <TabsTrigger value="security" className={tabClass}>Security</TabsTrigger>
+              {isAdmin && (
+                <TabsTrigger value="security" className={tabClass}>Security</TabsTrigger>
+              )}
             </TabsList>
           </div>
           <TabsContent value="data" className="flex-1 overflow-hidden m-0">
@@ -94,12 +106,16 @@ export default function DashboardPage() {
               <StructureView />
             </TabsContent>
           )}
-          <TabsContent value="query" className="flex-1 overflow-hidden m-0">
-            <QueryEditor />
-          </TabsContent>
-          <TabsContent value="import" className="flex-1 overflow-hidden m-0">
-            <ImportView />
-          </TabsContent>
+          {isAdmin && (
+            <TabsContent value="query" className="flex-1 overflow-hidden m-0">
+              <QueryEditor />
+            </TabsContent>
+          )}
+          {isAdmin && (
+            <TabsContent value="import" className="flex-1 overflow-hidden m-0">
+              <ImportView />
+            </TabsContent>
+          )}
           <TabsContent value="export" className="flex-1 overflow-hidden m-0">
             <ExportView />
           </TabsContent>
@@ -109,9 +125,11 @@ export default function DashboardPage() {
           <TabsContent value="status" className="flex-1 overflow-hidden m-0">
             <StatusView />
           </TabsContent>
-          <TabsContent value="security" className="flex-1 overflow-hidden m-0">
-            <SecurityView />
-          </TabsContent>
+          {isAdmin && (
+            <TabsContent value="security" className="flex-1 overflow-hidden m-0">
+              <SecurityView />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </div>

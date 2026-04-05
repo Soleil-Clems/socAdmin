@@ -4,6 +4,7 @@ import { useCreateDatabase } from "@/hooks/mutations/use-create-database";
 import { useDropDatabase } from "@/hooks/mutations/use-drop-database";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
+import { useAuthStore } from "@/stores/auth.store";
 import { databaseRequest } from "@/requests/database.request";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,6 +29,7 @@ export default function AllDatabasesView() {
   const dropDb = useDropDatabase();
   const { setSelectedDb } = useNavigationStore();
   const dbType = useConnectionStore((s) => s.dbType);
+  const isAdmin = useAuthStore((s) => s.isAdmin);
 
   const [showCreate, setShowCreate] = useState(false);
   const [newDbName, setNewDbName] = useState("");
@@ -72,13 +74,15 @@ export default function AllDatabasesView() {
             placeholder="Filter databases..."
             className="h-7 w-44 text-xs"
           />
-          <Button
-            size="sm"
-            className="h-7 text-xs px-3"
-            onClick={() => { setNewDbName(""); setShowCreate(true); }}
-          >
-            + Database
-          </Button>
+          {isAdmin && (
+            <Button
+              size="sm"
+              className="h-7 text-xs px-3"
+              onClick={() => { setNewDbName(""); setShowCreate(true); }}
+            >
+              + Database
+            </Button>
+          )}
         </div>
       </div>
 
@@ -129,13 +133,15 @@ export default function AllDatabasesView() {
                       >
                         Export
                       </button>
-                      <button
-                        className="px-2 py-0.5 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors"
-                        onClick={() => handleDrop(db)}
-                        disabled={dropDb.isPending}
-                      >
-                        Drop
-                      </button>
+                      {isAdmin && (
+                        <button
+                          className="px-2 py-0.5 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors"
+                          onClick={() => handleDrop(db)}
+                          disabled={dropDb.isPending}
+                        >
+                          Drop
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

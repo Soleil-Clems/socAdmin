@@ -24,6 +24,8 @@ const dbTypeLabels: Record<string, string> = {
 export default function Sidebar() {
   const { host, port, user, dbType, disconnect } = useConnectionStore();
   const logout = useAuthStore((s) => s.logout);
+  const isAdmin = useAuthStore((s) => s.isAdmin);
+  const role = useAuthStore((s) => s.role);
   const {
     selectedDb,
     selectedTable,
@@ -139,6 +141,18 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="p-2 border-t border-sidebar-border space-y-0.5">
+        {role && (
+          <div className="px-2 py-1 flex items-center gap-1.5">
+            <span
+              className={`inline-block w-1.5 h-1.5 rounded-full ${
+                isAdmin ? "bg-emerald-500" : "bg-amber-500"
+              }`}
+            />
+            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/50">
+              {isAdmin ? "Admin" : "Read-only"}
+            </span>
+          </div>
+        )}
         <ThemeToggle className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50" />
         <Button
           variant="ghost"

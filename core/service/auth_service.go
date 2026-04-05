@@ -33,7 +33,14 @@ func (s *AuthService) Register(email, password string) (*auth.User, error) {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	return s.repo.CreateUser(email, string(hashed))
+	// First user ever registered becomes admin
+	role := auth.RoleReadonly
+	count, err := s.repo.UserCount()
+	if err == nil && count == 0 {
+		role = auth.RoleAdmin
+	}
+
+	return s.repo.CreateUser(email, string(hashed), role)
 }
 
 func (s *AuthService) Login(email, password string) (*auth.TokenPair, error) {

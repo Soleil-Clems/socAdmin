@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useRows } from "@/hooks/queries/use-rows";
 import { useColumns } from "@/hooks/queries/use-columns";
 import { useNavigationStore } from "@/stores/navigation.store";
+import { useAuthStore } from "@/stores/auth.store";
 import { useInsertRow } from "@/hooks/mutations/use-insert-row";
 import { useUpdateRow } from "@/hooks/mutations/use-update-row";
 import { useDeleteRow } from "@/hooks/mutations/use-delete-row";
@@ -90,6 +91,7 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 
 export default function TableView() {
   const { selectedDb, selectedTable } = useNavigationStore();
+  const isAdmin = useAuthStore((s) => s.isAdmin);
 
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
@@ -295,9 +297,11 @@ export default function TableView() {
             placeholder="Filter rows..."
             className="h-7 w-40 text-xs"
           />
-          <Button size="sm" className="h-7 text-xs px-3" onClick={handleInsertOpen}>
-            + Row
-          </Button>
+          {isAdmin && (
+            <Button size="sm" className="h-7 text-xs px-3" onClick={handleInsertOpen}>
+              + Row
+            </Button>
+          )}
         </div>
       </div>
 
@@ -335,20 +339,24 @@ export default function TableView() {
                   className="border-b border-border/50 hover:bg-accent/40 transition-colors"
                 >
                   <td className="px-2 py-1">
-                    <div className="flex gap-0.5">
-                      <button
-                        onClick={() => handleEditOpen(row)}
-                        className="px-1.5 py-0.5 text-[11px] text-primary hover:bg-primary/10 rounded transition-colors"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(row)}
-                        className="px-1.5 py-0.5 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors"
-                      >
-                        Del
-                      </button>
-                    </div>
+                    {isAdmin ? (
+                      <div className="flex gap-0.5">
+                        <button
+                          onClick={() => handleEditOpen(row)}
+                          className="px-1.5 py-0.5 text-[11px] text-primary hover:bg-primary/10 rounded transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(row)}
+                          className="px-1.5 py-0.5 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors"
+                        >
+                          Del
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-muted-foreground/40">—</span>
+                    )}
                   </td>
                   {rowsData?.Columns?.map((col) => (
                     <td key={col} className="px-3 py-1 max-w-xs truncate text-[13px]">

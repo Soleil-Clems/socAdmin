@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTables } from "@/hooks/queries/use-tables";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
+import { useAuthStore } from "@/stores/auth.store";
 import { useDropTable } from "@/hooks/mutations/use-drop-table";
 import { useTruncateTable } from "@/hooks/mutations/use-truncate-table";
 import { useCreateTable } from "@/hooks/mutations/use-create-table";
@@ -57,6 +58,7 @@ const emptyColumn = (): TableColumnDef => ({
 export default function DatabaseView() {
   const { selectedDb, setSelectedTable } = useNavigationStore();
   const dbType = useConnectionStore((s) => s.dbType);
+  const isAdmin = useAuthStore((s) => s.isAdmin);
   const { data: tables, isLoading } = useTables(selectedDb);
   const dropTable = useDropTable();
   const truncateTable = useTruncateTable();
@@ -164,7 +166,7 @@ export default function DatabaseView() {
       <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">{selectedDb}</span>
         <span className="text-muted-foreground">{tables?.length ?? 0} tables</span>
-        {selected.size > 0 && (
+        {selected.size > 0 && isAdmin && (
           <>
             <span className="text-primary font-medium">{selected.size} selected</span>
             <Button
@@ -188,9 +190,11 @@ export default function DatabaseView() {
           </>
         )}
         <div className="ml-auto">
-          <Button size="sm" className="h-7 text-xs px-3" onClick={openCreateTable}>
-            + Table
-          </Button>
+          {isAdmin && (
+            <Button size="sm" className="h-7 text-xs px-3" onClick={openCreateTable}>
+              + Table
+            </Button>
+          )}
         </div>
       </div>
 
@@ -244,20 +248,24 @@ export default function DatabaseView() {
                       >
                         Browse
                       </button>
-                      <button
-                        className="px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground rounded transition-colors"
-                        onClick={() => handleTruncate(table)}
-                        disabled={truncateTable.isPending}
-                      >
-                        Truncate
-                      </button>
-                      <button
-                        className="px-2 py-0.5 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors"
-                        onClick={() => handleDrop(table)}
-                        disabled={dropTable.isPending}
-                      >
-                        Drop
-                      </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            className="px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground rounded transition-colors"
+                            onClick={() => handleTruncate(table)}
+                            disabled={truncateTable.isPending}
+                          >
+                            Truncate
+                          </button>
+                          <button
+                            className="px-2 py-0.5 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors"
+                            onClick={() => handleDrop(table)}
+                            disabled={dropTable.isPending}
+                          >
+                            Drop
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
