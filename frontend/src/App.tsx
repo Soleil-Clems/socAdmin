@@ -5,11 +5,14 @@ import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import ConnectPage from "@/pages/connect";
 import DashboardPage from "@/pages/dashboard";
+import AdminSettingsPage from "@/pages/admin-settings";
 
 function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isAdmin = useAuthStore((s) => s.isAdmin);
   const isConnected = useConnectionStore((s) => s.isConnected);
   const [authPage, setAuthPage] = useState<"login" | "register">("login");
+  const [showAdminSettings, setShowAdminSettings] = useState(false);
 
   if (!isAuthenticated) {
     if (authPage === "register") {
@@ -19,7 +22,10 @@ function App() {
   }
 
   if (!isConnected) {
-    return <ConnectPage />;
+    if (showAdminSettings && isAdmin) {
+      return <AdminSettingsPage onBack={() => setShowAdminSettings(false)} />;
+    }
+    return <ConnectPage onOpenAdmin={isAdmin ? () => setShowAdminSettings(true) : undefined} />;
   }
 
   return <DashboardPage />;

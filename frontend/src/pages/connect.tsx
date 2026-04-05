@@ -30,7 +30,11 @@ const dbIcons: Record<string, string> = {
   mongodb: "M",
 };
 
-export default function ConnectPage() {
+type Props = {
+  onOpenAdmin?: () => void;
+};
+
+export default function ConnectPage({ onOpenAdmin }: Props = {}) {
   const connectMutation = useConnect();
   const setConnected = useConnectionStore((s) => s.setConnected);
   const { data: systemInfo } = useSystemInfo();
@@ -143,7 +147,18 @@ export default function ConnectPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6 relative">
-      <div className="absolute top-4 right-4">
+      <div className="absolute top-4 right-4 flex items-center gap-1">
+        {onOpenAdmin && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onOpenAdmin}
+            className="h-8 text-xs gap-1.5"
+          >
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            Admin settings
+          </Button>
+        )}
         <ThemeToggle />
       </div>
 
