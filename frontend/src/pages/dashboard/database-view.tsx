@@ -1,12 +1,11 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useTables } from "@/hooks/queries/use-tables";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
 import { useDropTable } from "@/hooks/mutations/use-drop-table";
 import { useTruncateTable } from "@/hooks/mutations/use-truncate-table";
 import { useCreateTable } from "@/hooks/mutations/use-create-table";
-import { useQueryClient } from "@tanstack/react-query";
-import { databaseRequest, type TableColumnDef } from "@/requests/database.request";
+import type { TableColumnDef } from "@/requests/database.request";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -62,37 +61,11 @@ export default function DatabaseView() {
   const dropTable = useDropTable();
   const truncateTable = useTruncateTable();
   const createTable = useCreateTable();
-  const queryClient = useQueryClient();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showCreateTable, setShowCreateTable] = useState(false);
   const [tableName, setTableName] = useState("");
   const [columns, setColumns] = useState<TableColumnDef[]>([emptyColumn()]);
-
-  const sqlFileRef = useRef<HTMLInputElement>(null);
-  const [importingSQL, setImportingSQL] = useState(false);
-  const [sqlImportResult, setSqlImportResult] = useState<string | null>(null);
-
-  const handleImportSQL = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedDb) return;
-    setImportingSQL(true);
-    setSqlImportResult(null);
-    try {
-      const content = await file.text();
-      const result = await databaseRequest.importSQL(selectedDb, content);
-      setSqlImportResult(
-        `${result.executed} statements` +
-          (result.errors?.length ? `, ${result.errors.length} errors` : "")
-      );
-      queryClient.invalidateQueries({ queryKey: ["tables"] });
-    } catch (err) {
-      setSqlImportResult(err instanceof Error ? err.message : "Import failed");
-    } finally {
-      setImportingSQL(false);
-      if (sqlFileRef.current) sqlFileRef.current.value = "";
-    }
-  };
 
   const typeOptions = dbType === "postgresql" ? PG_TYPES : MYSQL_TYPES;
 
@@ -214,28 +187,7 @@ export default function DatabaseView() {
             </Button>
           </>
         )}
-        {sqlImportResult && (
-          <span className="text-primary bg-primary/10 px-2 py-0.5 rounded text-[11px] font-medium">
-            {sqlImportResult}
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-1.5">
-          <input
-            ref={sqlFileRef}
-            type="file"
-            accept=".sql"
-            onChange={handleImportSQL}
-            className="hidden"
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs px-2"
-            onClick={() => sqlFileRef.current?.click()}
-            disabled={importingSQL}
-          >
-            {importingSQL ? "..." : "Import SQL"}
-          </Button>
+        <div className="ml-auto">
           <Button size="sm" className="h-7 text-xs px-3" onClick={openCreateTable}>
             + Table
           </Button>

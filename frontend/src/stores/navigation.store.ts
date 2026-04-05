@@ -20,8 +20,10 @@ function syncURL(db: string, table: string) {
 type NavigationState = {
   selectedDb: string;
   selectedTable: string;
+  showAllDatabases: boolean;
   setSelectedDb: (db: string) => void;
   setSelectedTable: (table: string) => void;
+  setShowAllDatabases: (show: boolean) => void;
   reset: () => void;
 };
 
@@ -30,18 +32,27 @@ const initial = getParamsFromURL();
 export const useNavigationStore = create<NavigationState>((set) => ({
   selectedDb: initial.db,
   selectedTable: initial.table,
+  showAllDatabases: !initial.db,
   setSelectedDb: (db) => {
     syncURL(db, "");
-    set({ selectedDb: db, selectedTable: "" });
+    set({ selectedDb: db, selectedTable: "", showAllDatabases: false });
   },
   setSelectedTable: (table) => {
     set((state) => {
       syncURL(state.selectedDb, table);
-      return { selectedTable: table };
+      return { selectedTable: table, showAllDatabases: false };
     });
+  },
+  setShowAllDatabases: (show) => {
+    if (show) {
+      syncURL("", "");
+      set({ showAllDatabases: true, selectedDb: "", selectedTable: "" });
+    } else {
+      set({ showAllDatabases: show });
+    }
   },
   reset: () => {
     syncURL("", "");
-    set({ selectedDb: "", selectedTable: "" });
+    set({ selectedDb: "", selectedTable: "", showAllDatabases: true });
   },
 }));

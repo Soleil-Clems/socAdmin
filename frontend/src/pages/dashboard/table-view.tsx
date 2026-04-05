@@ -1,12 +1,10 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useRows } from "@/hooks/queries/use-rows";
 import { useColumns } from "@/hooks/queries/use-columns";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useInsertRow } from "@/hooks/mutations/use-insert-row";
 import { useUpdateRow } from "@/hooks/mutations/use-update-row";
 import { useDeleteRow } from "@/hooks/mutations/use-delete-row";
-import { useQueryClient } from "@tanstack/react-query";
-import { databaseRequest } from "@/requests/database.request";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -110,11 +108,6 @@ export default function TableView() {
   const insertRow = useInsertRow();
   const updateRow = useUpdateRow();
   const deleteRow = useDeleteRow();
-  const queryClient = useQueryClient();
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortState>(null);
@@ -279,53 +272,6 @@ export default function TableView() {
     });
   };
 
-  const handleExport = (format: "csv" | "json" | "sql") => {
-    databaseRequest.exportTable(selectedDb, selectedTable, format);
-  };
-
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setImporting(true);
-    setImportResult(null);
-    try {
-      const content = await file.text();
-      const ext = file.name.split(".").pop()?.toLowerCase();
-
-      let result: { inserted?: number; executed?: number; errors?: string[] };
-
-      if (ext === "sql") {
-        result = await databaseRequest.importSQL(selectedDb, content);
-        setImportResult(
-          `${result.executed} statements` +
-            (result.errors?.length ? `, ${result.errors.length} errors` : "")
-        );
-      } else if (ext === "csv") {
-        result = await databaseRequest.importCSV(selectedDb, selectedTable, content);
-        setImportResult(
-          `${result.inserted} rows` +
-            (result.errors?.length ? `, ${result.errors.length} errors` : "")
-        );
-      } else if (ext === "json") {
-        result = await databaseRequest.importJSON(selectedDb, selectedTable, content);
-        setImportResult(
-          `${result.inserted} rows` +
-            (result.errors?.length ? `, ${result.errors.length} errors` : "")
-        );
-      } else {
-        setImportResult("Unsupported format");
-      }
-
-      queryClient.invalidateQueries({ queryKey: ["rows"] });
-    } catch (err) {
-      setImportResult(err instanceof Error ? err.message : "Import failed");
-    } finally {
-      setImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
-
   const isLoading = colLoading || rowsLoading;
 
   return (
@@ -342,11 +288,6 @@ export default function TableView() {
             {search && ` (${displayRows.length} match)`}
           </span>
         )}
-        {importResult && (
-          <span className="text-primary bg-primary/10 px-2 py-0.5 rounded text-[11px] font-medium">
-            {importResult}
-          </span>
-        )}
         <div className="ml-auto flex items-center gap-1.5">
           <Input
             value={search}
@@ -354,32 +295,6 @@ export default function TableView() {
             placeholder="Filter rows..."
             className="h-7 w-40 text-xs"
           />
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.json,.sql"
-            onChange={handleImportFile}
-            className="hidden"
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs px-2"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-          >
-            {importing ? "..." : "Import"}
-          </Button>
-          <Select onValueChange={(v) => handleExport(v as "csv" | "json" | "sql")}>
-            <SelectTrigger className="h-7 w-24 text-xs">
-              <SelectValue placeholder="Export" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="csv">CSV</SelectItem>
-              <SelectItem value="json">JSON</SelectItem>
-              <SelectItem value="sql">SQL</SelectItem>
-            </SelectContent>
-          </Select>
           <Button size="sm" className="h-7 text-xs px-3" onClick={handleInsertOpen}>
             + Row
           </Button>
