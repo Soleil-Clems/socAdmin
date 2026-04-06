@@ -96,7 +96,8 @@ class CustomFetch {
       );
     } catch {
       // Network error (connection refused, DB stopped, server down)
-      if (!endpoint.startsWith("/auth/")) {
+      // Only auto-disconnect if user has an active DB session
+      if (!endpoint.startsWith("/auth/") && sessionStorage.getItem("socadmin_conn")) {
         this.handleConnectionLost();
       }
       throw new Error("Connection lost — server unreachable");
@@ -131,10 +132,12 @@ class CustomFetch {
     if (!res.ok) {
       const errorMsg = (data.error as string) || "An error occurred";
 
-      // If backend says "not connected" or connection failed, disconnect the user
+      // If backend says "not connected" or connection failed while user has active session, disconnect
       if (errorMsg === "not connected" || errorMsg.includes("connection refused") || errorMsg.includes("failed to ping")) {
-        this.handleConnectionLost();
-        throw new Error("Database connection lost");
+        if (sessionStorage.getItem("socadmin_conn")) {
+          this.handleConnectionLost();
+          throw new Error("Database connection lost");
+        }
       }
 
       throw new Error(errorMsg);
