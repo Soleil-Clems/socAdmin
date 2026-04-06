@@ -240,6 +240,126 @@ func (c *MongoConnector) ExecuteQuery(database, query string) (*QueryResult, err
 	}, nil
 }
 
+// ListUsers returns MongoDB users as a clean QueryResult table
+func (c *MongoConnector) ListUsers() (*QueryResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result bson.M
+	err := c.client.Database("admin").RunCommand(ctx, bson.D{{Key: "usersInfo", Value: 1}}).Decode(&result)
+	if err != nil {
+		return nil, fmt.Errorf("usersInfo failed: %w", err)
+	}
+
+	users, ok := result["users"].(bson.A)
+	if !ok || len(users) == 0 {
+		return &QueryResult{
+			Columns: []string{"User", "Database", "Roles"},
+			Rows:    []map[string]interface{}{},
+		}, nil
+	}
+
+	var rows []map[string]interface{}
+	for _, u := range users {
+		doc, ok := u.(bson.M)
+		if !ok {
+			continue
+		}
+		user := fmt.Sprintf("%v", doc["user"])
+		db := fmt.Sprintf("%v", doc["db"])
+		roles := ""
+		if r, ok := doc["roles"].(bson.A); ok {
+			for i, role := range r {
+				if rd, ok := role.(bson.M); ok {
+					if i > 0 {
+						roles += ", "
+					}
+					roles += fmt.Sprintf("%v@%v", rd["role"], rd["db"])
+				}
+			}
+		}
+		rows = append(rows, map[string]interface{}{
+			"User":     user,
+			"Database": db,
+			"Roles":    roles,
+		})
+	}
+
+	return &QueryResult{
+		Columns: []string{"User", "Database", "Roles"},
+		Rows:    rows,
+	}, nil
+}
+
+// ServerStatus returns key MongoDB server metrics as a clean Variable/Value table
+func (c *MongoConnector) ServerStatus() (*QueryResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result bson.M
+	err := c.client.Database("admin").RunCommand(ctx, bson.D{{Key: "serverStatus", Value: 1}}).Decode(&result)
+	if err != nil {
+		return nil, fmt.Errorf("serverStatus failed: %w", err)
+	}
+
+	var rows []map[string]interface{}
+	add := func(name string, value interface{}) {
+		rows = append(rows, map[string]interface{}{
+			"Variable_name": name,
+			"Value":         fmt.Sprintf("%v", value),
+		})
+	}
+
+	add("version", result["version"])
+	add("uptime", result["uptime"])
+	add("host", result["host"])
+
+	if conn, ok := result["connections"].(bson.M); ok {
+		add("connections.current", conn["current"])
+		add("connections.available", conn["available"])
+		add("connections.totalCreated", conn["totalCreated"])
+	}
+
+	if mem, ok := result["mem"].(bson.M); ok {
+		add("mem.resident_mb", mem["resident"])
+		add("mem.virtual_mb", mem["virtual"])
+	}
+
+	if gl, ok := result["globalLock"].(bson.M); ok {
+		add("globalLock.totalTime_us", gl["totalTime"])
+		if q, ok := gl["currentQueue"].(bson.M); ok {
+			add("globalLock.queue.total", q["total"])
+		}
+		if a, ok := gl["activeClients"].(bson.M); ok {
+			add("globalLock.activeClients.total", a["total"])
+		}
+	}
+
+	if net, ok := result["network"].(bson.M); ok {
+		add("network.bytesIn", net["bytesIn"])
+		add("network.bytesOut", net["bytesOut"])
+		add("network.numRequests", net["numRequests"])
+	}
+
+	if ops, ok := result["opcounters"].(bson.M); ok {
+		add("ops.insert", ops["insert"])
+		add("ops.query", ops["query"])
+		add("ops.update", ops["update"])
+		add("ops.delete", ops["delete"])
+		add("ops.command", ops["command"])
+	}
+
+	if cat, ok := result["catalogStats"].(bson.M); ok {
+		add("collections", cat["collections"])
+		add("views", cat["views"])
+	}
+
+	return &QueryResult{
+		Columns: []string{"Variable_name", "Value"},
+		Rows:    rows,
+	}, nil
+}
+
 func (c *MongoConnector) InsertRow(database, collection string, data map[string]interface{}) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
