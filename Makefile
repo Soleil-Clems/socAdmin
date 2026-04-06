@@ -14,26 +14,22 @@ all: build manager
 	@echo "Launching socAdmin Manager..."
 	@open "manager/build/bin/socAdmin Manager.app" 2>/dev/null || manager/build/bin/socadmin-manager 2>/dev/null || echo "Run: open \"manager/build/bin/socAdmin Manager.app\""
 
-# --- Start : lance tout en background ---
+# --- Start : lance le Manager (qui gère tout) ---
 start:
-	@if lsof -ti :$(BACK_PORT) >/dev/null 2>&1; then echo "Backend already running on :$(BACK_PORT)"; exit 1; fi
-	@if lsof -ti :$(FRONT_PORT) >/dev/null 2>&1; then echo "Frontend already running on :$(FRONT_PORT)"; exit 1; fi
-	@echo "Starting socAdmin..."
-	@go run . & disown
-	@cd frontend && npm run dev -- --port $(FRONT_PORT) & disown
-	@sleep 1
-	@echo "Backend  → http://localhost:$(BACK_PORT)"
-	@echo "Frontend → http://localhost:$(FRONT_PORT)"
+	@echo "Launching socAdmin Manager..."
+	@open "manager/build/bin/socAdmin Manager.app" 2>/dev/null || manager/build/bin/socadmin-manager 2>/dev/null || echo "Manager not built. Run: make all"
 
-# --- Stop : kill par port (tue toutes les instances) ---
+# --- Stop : kill backend + ferme le Manager ---
 stop:
 	@echo "Stopping socAdmin..."
 	@lsof -ti :$(BACK_PORT) | xargs kill -9 2>/dev/null && echo "Backend stopped  (:$(BACK_PORT))" || echo "Backend not running"
-	@lsof -ti :$(FRONT_PORT) | xargs kill -9 2>/dev/null && echo "Frontend stopped (:$(FRONT_PORT))" || echo "Frontend not running"
+	@pkill -f "socadmin-manager" 2>/dev/null && echo "Manager stopped" || echo "Manager not running"
 
-# --- Reload : restart tout ---
+# --- Reload : stop tout + rebuild + relance le Manager ---
 reload: stop
 	@sleep 1
+	@$(MAKE) build
+	@$(MAKE) manager
 	@$(MAKE) start
 
 # --- Build : compile socAdmin (backend + frontend embed) ---

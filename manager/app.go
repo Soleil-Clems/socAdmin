@@ -66,9 +66,11 @@ type App struct {
 
 // Extra paths where SGBD binaries live (MAMP, Homebrew, etc.)
 var extraSearchPaths = []string{
+	// MAMP MySQL
 	"/Applications/MAMP/Library/bin/mysql80/bin",
 	"/Applications/MAMP/Library/bin/mysql57/bin",
 	"/Applications/MAMP/Library/bin",
+	// Homebrew (arm64)
 	"/opt/homebrew/bin",
 	"/opt/homebrew/opt/mysql/bin",
 	"/opt/homebrew/opt/postgresql@17/bin",
@@ -76,6 +78,7 @@ var extraSearchPaths = []string{
 	"/opt/homebrew/opt/postgresql@15/bin",
 	"/opt/homebrew/opt/postgresql/bin",
 	"/opt/homebrew/opt/mongodb-community/bin",
+	// Homebrew (Intel)
 	"/usr/local/bin",
 	"/usr/local/opt/mysql/bin",
 	"/usr/local/opt/postgresql/bin",
@@ -197,52 +200,26 @@ func (a *App) StopServer() ServerStatus {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	stopped := false
-
-	// If we own the process, kill it
-	if a.serverProc != nil {
-		a.serverProc.Signal(os.Interrupt)
-		// Give it a moment to shut down gracefully, then force kill
-		done := make(chan struct{})
-		go func() {
-			a.serverProc.Wait()
-			close(done)
-		}()
-		select {
-		case <-done:
-		case <-time.After(2 * time.Second):
-			a.serverProc.Kill()
-			a.serverProc.Wait()
+	// Kill by PID on port — works whether we started it or not
+	pid := findPIDOnPort(a.port)
+	if pid > 0 {
+		// SIGKILL immediately — Go HTTP servers don't handle SIGINT gracefully by default
+		if proc, err := os.FindProcess(pid); err == nil {
+			proc.Kill()
 		}
+	}
+
+	// Also kill our tracked process if any
+	if a.serverProc != nil {
+		a.serverProc.Kill()
+		// Wait in background to avoid zombie
+		go a.serverProc.Wait()
 		a.serverProc = nil
 		a.startedAt = time.Time{}
-		stopped = true
 	}
 
-	// Also kill anything still holding the port (externally started, or zombie)
-	if isPortOpen(a.port) {
-		pid := findPIDOnPort(a.port)
-		if pid > 0 {
-			if proc, err := os.FindProcess(pid); err == nil {
-				proc.Signal(os.Interrupt)
-				time.Sleep(500 * time.Millisecond)
-				if isPortOpen(a.port) {
-					proc.Kill()
-				}
-			}
-		}
-		stopped = true
-	}
-
-	// Wait for the port to actually free up
-	if stopped {
-		for i := 0; i < 10; i++ {
-			if !isPortOpen(a.port) {
-				break
-			}
-			time.Sleep(200 * time.Millisecond)
-		}
-	}
+	// Wait for port to actually close
+	a.waitForPortClosed(a.port)
 
 	wailsRuntime.EventsEmit(a.ctx, "server:stopped", nil)
 	return ServerStatus{Running: false, Port: a.port}
@@ -353,18 +330,24 @@ func (a *App) SetServicePort(name string, port int) error {
 // ─── MySQL ───────────────────────────────────────────────────────
 
 func (a *App) startMySQL() error {
+	// 1. Homebrew
 	if ok := brewServiceAction("start", "mysql"); ok {
 		a.emitEvent("service:started", "MySQL")
 		return nil
 	}
 
-	// MAMP
-	if _, err := os.Stat("/Applications/MAMP/bin/start.sh"); err == nil {
-		exec.Command("/Applications/MAMP/bin/start.sh").CombinedOutput()
-		a.emitEvent("service:started", "MySQL")
+	// 2. MAMP — use the dedicated MySQL start script (not start.sh which also launches Apache)
+	if _, err := os.Stat("/Applications/MAMP/bin/startMysql.sh"); err == nil {
+		out, err := exec.Command("/bin/sh", "/Applications/MAMP/bin/startMysql.sh").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("MAMP startMysql.sh failed: %s", string(out))
+		}
+		// Wait for MySQL to be ready
+		go a.waitForPort(a.mysqlPort, "service:started", nil)
 		return nil
 	}
 
+	// 3. mysql.server (standalone installs)
 	if path := findBin("mysql.server"); path != "" {
 		if out, err := exec.Command(path, "start").CombinedOutput(); err != nil {
 			return fmt.Errorf("mysql.server start failed: %s", string(out))
@@ -373,6 +356,17 @@ func (a *App) startMySQL() error {
 		return nil
 	}
 
+	// 4. Direct mysqld (MAMP or standalone)
+	if path := findBin("mysqld_safe"); path != "" {
+		cmd := exec.Command(path, fmt.Sprintf("--port=%d", a.mysqlPort))
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("mysqld_safe start failed: %v", err)
+		}
+		go a.waitForPort(a.mysqlPort, "service:started", nil)
+		return nil
+	}
 	if path := findBin("mysqld"); path != "" {
 		cmd := exec.Command(path, fmt.Sprintf("--port=%d", a.mysqlPort))
 		cmd.Stdout = os.Stdout
@@ -380,7 +374,7 @@ func (a *App) startMySQL() error {
 		if err := cmd.Start(); err != nil {
 			return fmt.Errorf("mysqld start failed: %v", err)
 		}
-		a.emitEvent("service:started", "MySQL")
+		go a.waitForPort(a.mysqlPort, "service:started", nil)
 		return nil
 	}
 
@@ -388,17 +382,29 @@ func (a *App) startMySQL() error {
 }
 
 func (a *App) stopMySQL() error {
+	// 1. Homebrew
 	if ok := brewServiceAction("stop", "mysql"); ok {
 		a.emitEvent("service:stopped", "MySQL")
 		return nil
 	}
 
-	if _, err := os.Stat("/Applications/MAMP/bin/stop.sh"); err == nil {
-		exec.Command("/Applications/MAMP/bin/stop.sh").CombinedOutput()
+	// 2. MAMP stop script
+	if _, err := os.Stat("/Applications/MAMP/bin/stopMysql.sh"); err == nil {
+		exec.Command("/bin/sh", "/Applications/MAMP/bin/stopMysql.sh").CombinedOutput()
+		a.waitForPortClosed(a.mysqlPort)
 		a.emitEvent("service:stopped", "MySQL")
 		return nil
 	}
 
+	// 3. mysqladmin shutdown (works for MAMP and standalone)
+	if path := findBin("mysqladmin"); path != "" {
+		exec.Command(path, "-u", "root", "-proot", fmt.Sprintf("--port=%d", a.mysqlPort), "shutdown").CombinedOutput()
+		a.waitForPortClosed(a.mysqlPort)
+		a.emitEvent("service:stopped", "MySQL")
+		return nil
+	}
+
+	// 4. mysql.server stop
 	if path := findBin("mysql.server"); path != "" {
 		if out, err := exec.Command(path, "stop").CombinedOutput(); err != nil {
 			return fmt.Errorf("mysql.server stop failed: %s", string(out))
@@ -407,8 +413,15 @@ func (a *App) stopMySQL() error {
 		return nil
 	}
 
-	if path := findBin("mysqladmin"); path != "" {
-		exec.Command(path, "-u", "root", "shutdown").CombinedOutput()
+	// 5. Last resort: kill by port
+	if pid := findPIDOnPort(a.mysqlPort); pid > 0 {
+		if proc, err := os.FindProcess(pid); err == nil {
+			proc.Signal(os.Interrupt)
+			a.waitForPortClosed(a.mysqlPort)
+			if isPortOpen(a.mysqlPort) {
+				proc.Kill()
+			}
+		}
 		a.emitEvent("service:stopped", "MySQL")
 		return nil
 	}
@@ -705,6 +718,15 @@ func (a *App) waitForPort(port int, event string, onReady func()) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	a.emitError(fmt.Sprintf("Port %d not reachable after 6s", port))
+}
+
+func (a *App) waitForPortClosed(port int) {
+	for i := 0; i < 20; i++ {
+		if !isPortOpen(port) {
+			return
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
 }
 
 func (a *App) emitError(msg string) {
