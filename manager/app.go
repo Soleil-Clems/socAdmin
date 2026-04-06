@@ -37,12 +37,13 @@ type ServerStatus struct {
 }
 
 type AppConfig struct {
-	Port        int  `json:"port"`
-	AutoStart   bool `json:"autoStart"`
-	OpenOnStart bool `json:"openOnStart"`
-	MysqlPort   int  `json:"mysqlPort"`
-	PgPort      int  `json:"pgPort"`
-	MongoPort   int  `json:"mongoPort"`
+	Port        int    `json:"port"`
+	AutoStart   bool   `json:"autoStart"`
+	OpenOnStart bool   `json:"openOnStart"`
+	MysqlPort   int    `json:"mysqlPort"`
+	PgPort      int    `json:"pgPort"`
+	MongoPort   int    `json:"mongoPort"`
+	ProjectDir  string `json:"projectDir"`
 }
 
 // ─── App ─────────────────────────────────────────────────────────
@@ -56,12 +57,29 @@ type App struct {
 	openOnStart bool
 	startedAt   time.Time
 	configDir   string
-	projectDir  string // path to the socAdmin project root
+	projectDir  string
 
-	// SGBD port config
 	mysqlPort int
 	pgPort    int
 	mongoPort int
+}
+
+// Extra paths where SGBD binaries live (MAMP, Homebrew, etc.)
+var extraSearchPaths = []string{
+	"/Applications/MAMP/Library/bin/mysql80/bin",
+	"/Applications/MAMP/Library/bin/mysql57/bin",
+	"/Applications/MAMP/Library/bin",
+	"/opt/homebrew/bin",
+	"/opt/homebrew/opt/mysql/bin",
+	"/opt/homebrew/opt/postgresql@17/bin",
+	"/opt/homebrew/opt/postgresql@16/bin",
+	"/opt/homebrew/opt/postgresql@15/bin",
+	"/opt/homebrew/opt/postgresql/bin",
+	"/opt/homebrew/opt/mongodb-community/bin",
+	"/usr/local/bin",
+	"/usr/local/opt/mysql/bin",
+	"/usr/local/opt/postgresql/bin",
+	"/usr/local/opt/mongodb-community/bin",
 }
 
 func NewApp() *App {
@@ -69,45 +87,47 @@ func NewApp() *App {
 	configDir := filepath.Join(home, ".socadmin")
 	os.MkdirAll(configDir, 0755)
 
-	// Detect project directory (where bin/socadmin lives)
-	projectDir := detectProjectDir()
-
 	a := &App{
 		port:        8080,
 		autoStart:   false,
 		openOnStart: true,
 		configDir:   configDir,
-		projectDir:  projectDir,
-		mysqlPort:   8889, // MAMP default
+		mysqlPort:   8889,
 		pgPort:      5432,
 		mongoPort:   27017,
 	}
 	a.loadConfig()
+
+	// Auto-detect project dir if not saved
+	if a.projectDir == "" {
+		a.projectDir = detectProjectDir()
+		if a.projectDir != "" {
+			a.saveConfig()
+		}
+	}
+
 	return a
 }
 
 func detectProjectDir() string {
-	// From executable path (inside .app bundle or direct)
 	execPath, _ := os.Executable()
 	execDir := filepath.Dir(execPath)
-
-	// .app bundle: Contents/MacOS/binary → go up to find project
-	candidates := []string{
-		filepath.Join(execDir, "..", "..", "..", "..", ".."), // inside .app
-		filepath.Join(execDir, ".."),                         // direct run from manager/
-	}
-
-	// From CWD
 	cwd, _ := os.Getwd()
-	candidates = append(candidates, cwd, filepath.Join(cwd, ".."))
+
+	candidates := []string{
+		filepath.Join(execDir, "..", "..", "..", "..", ".."), // .app bundle
+		filepath.Join(execDir, ".."),                         // manager/ dir
+		cwd,
+		filepath.Join(cwd, ".."),
+	}
 
 	for _, c := range candidates {
 		abs, _ := filepath.Abs(c)
-		if _, err := os.Stat(filepath.Join(abs, "bin", "socadmin")); err == nil {
-			return abs
-		}
+		// Project root has main.go + core/ directory
 		if _, err := os.Stat(filepath.Join(abs, "main.go")); err == nil {
-			return abs
+			if _, err := os.Stat(filepath.Join(abs, "core")); err == nil {
+				return abs
+			}
 		}
 	}
 	return ""
@@ -133,18 +153,24 @@ func (a *App) StartServer() ServerStatus {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	// Already managed by us
 	if a.serverProc != nil {
 		return a.serverStatusLocked()
 	}
 
+	// Already running externally (e.g. make start)
+	if isPortOpen(a.port) {
+		pid := findPIDOnPort(a.port)
+		return ServerStatus{Running: true, Port: a.port, PID: pid, URL: fmt.Sprintf("http://localhost:%d", a.port)}
+	}
+
 	binPath := a.findBinary()
 	if binPath == "" {
-		a.emitError("socAdmin binary not found. Run 'make build' first.")
+		a.emitError(fmt.Sprintf("socAdmin binary not found. Run 'make build' in the project root.\nSearched projectDir: %s", a.projectDir))
 		return ServerStatus{Running: false, Port: a.port}
 	}
 
 	cmd := exec.Command(binPath)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("SOCADMIN_PORT=%d", a.port))
 	cmd.Dir = filepath.Dir(binPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -170,16 +196,28 @@ func (a *App) StopServer() ServerStatus {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if a.serverProc == nil {
+	// If we own the process, kill it
+	if a.serverProc != nil {
+		a.serverProc.Kill()
+		a.serverProc.Wait()
+		a.serverProc = nil
+		a.startedAt = time.Time{}
+		wailsRuntime.EventsEmit(a.ctx, "server:stopped", nil)
 		return ServerStatus{Running: false, Port: a.port}
 	}
 
-	a.serverProc.Kill()
-	a.serverProc.Wait()
-	a.serverProc = nil
-	a.startedAt = time.Time{}
+	// If running externally, kill by port
+	if isPortOpen(a.port) {
+		pid := findPIDOnPort(a.port)
+		if pid > 0 {
+			proc, err := os.FindProcess(pid)
+			if err == nil {
+				proc.Kill()
+			}
+		}
+		wailsRuntime.EventsEmit(a.ctx, "server:stopped", nil)
+	}
 
-	wailsRuntime.EventsEmit(a.ctx, "server:stopped", nil)
 	return ServerStatus{Running: false, Port: a.port}
 }
 
@@ -189,38 +227,29 @@ func (a *App) GetServerStatus() ServerStatus {
 	return a.serverStatusLocked()
 }
 
+// serverStatusLocked returns status without acquiring the mutex (caller must hold it).
 func (a *App) serverStatusLocked() ServerStatus {
-	running := a.serverProc != nil
+	running := isPortOpen(a.port)
 	s := ServerStatus{
 		Running: running,
 		Port:    a.port,
 		URL:     fmt.Sprintf("http://localhost:%d", a.port),
 	}
 	if running {
-		s.PID = a.serverProc.Pid
-		s.Uptime = formatDuration(time.Since(a.startedAt))
+		s.PID = findPIDOnPort(a.port)
+		if a.serverProc != nil && !a.startedAt.IsZero() {
+			s.Uptime = formatDuration(time.Since(a.startedAt))
+		}
+	} else {
+		if a.serverProc != nil {
+			a.serverProc = nil
+			a.startedAt = time.Time{}
+		}
 	}
 	return s
 }
 
 // ─── SGBD Service control ────────────────────────────────────────
-
-// Extra paths where SGBD binaries might live (MAMP, Homebrew, etc.)
-var extraSearchPaths = []string{
-	// MAMP MySQL
-	"/Applications/MAMP/Library/bin/mysql80/bin",
-	"/Applications/MAMP/Library/bin/mysql57/bin",
-	"/Applications/MAMP/Library/bin",
-	// Homebrew (Apple Silicon + Intel)
-	"/opt/homebrew/bin",
-	"/opt/homebrew/opt/mysql/bin",
-	"/opt/homebrew/opt/postgresql/bin",
-	"/opt/homebrew/opt/mongodb-community/bin",
-	"/usr/local/bin",
-	"/usr/local/opt/mysql/bin",
-	"/usr/local/opt/postgresql/bin",
-	"/usr/local/opt/mongodb-community/bin",
-}
 
 func (a *App) GetAllServices() []ServiceStatus {
 	return []ServiceStatus{
@@ -233,49 +262,21 @@ func (a *App) GetAllServices() []ServiceStatus {
 func (a *App) detectService(name string, port int, binaries []string, versionArgs []string) ServiceStatus {
 	s := ServiceStatus{Name: name, Port: port}
 
-	// Check if installed — first try PATH, then extra locations
 	for _, bin := range binaries {
-		// Try system PATH
-		if path, err := exec.LookPath(bin); err == nil {
+		if path := findBin(bin); path != "" {
 			s.Installed = true
 			s.Path = path
 			s.Version = getVersion(path, versionArgs)
 			break
 		}
-		// Try extra paths
-		for _, dir := range extraSearchPaths {
-			fullPath := filepath.Join(dir, bin)
-			if _, err := os.Stat(fullPath); err == nil {
-				s.Installed = true
-				s.Path = fullPath
-				s.Version = getVersion(fullPath, versionArgs)
-				break
-			}
-		}
-		if s.Installed {
-			break
-		}
 	}
 
-	// Check if running on port
 	s.Running = isPortOpen(port)
 	if s.Running {
-		s.PID = a.findPIDOnPort(port)
+		s.PID = findPIDOnPort(port)
 	}
 
 	return s
-}
-
-func getVersion(path string, args []string) string {
-	out, err := exec.Command(path, args...).CombinedOutput()
-	if err != nil {
-		return ""
-	}
-	ver := strings.TrimSpace(string(out))
-	if idx := strings.IndexByte(ver, '\n'); idx > 0 {
-		ver = ver[:idx]
-	}
-	return ver
 }
 
 func (a *App) StartService(name string) error {
@@ -322,55 +323,29 @@ func (a *App) SetServicePort(name string, port int) error {
 	return nil
 }
 
-// ──��� MySQL ───────────────────────────────────────────────────────
-
-// findBin searches PATH then extra paths for a binary.
-func findBin(name string) string {
-	if p, err := exec.LookPath(name); err == nil {
-		return p
-	}
-	for _, dir := range extraSearchPaths {
-		full := filepath.Join(dir, name)
-		if _, err := os.Stat(full); err == nil {
-			return full
-		}
-	}
-	return ""
-}
+// ─── MySQL ───────────────────────────────────────────────────────
 
 func (a *App) startMySQL() error {
+	if ok := brewServiceAction("start", "mysql"); ok {
+		a.emitEvent("service:started", "MySQL")
+		return nil
+	}
+
 	// MAMP
-	mampCtl := "/Applications/MAMP/bin/start.sh"
-	if _, err := os.Stat(mampCtl); err == nil {
-		cmd := exec.Command(mampCtl)
-		if _, err := cmd.CombinedOutput(); err == nil {
-			a.emitEvent("service:started", "MySQL")
-			return nil
-		}
+	if _, err := os.Stat("/Applications/MAMP/bin/start.sh"); err == nil {
+		exec.Command("/Applications/MAMP/bin/start.sh").CombinedOutput()
+		a.emitEvent("service:started", "MySQL")
+		return nil
 	}
 
-	// brew services
-	if runtime.GOOS == "darwin" {
-		if _, err := exec.LookPath("brew"); err == nil {
-			cmd := exec.Command("brew", "services", "start", "mysql")
-			if _, err := cmd.CombinedOutput(); err == nil {
-				a.emitEvent("service:started", "MySQL")
-				return nil
-			}
-		}
-	}
-
-	// mysql.server
 	if path := findBin("mysql.server"); path != "" {
-		cmd := exec.Command(path, "start")
-		if out, err := cmd.CombinedOutput(); err != nil {
+		if out, err := exec.Command(path, "start").CombinedOutput(); err != nil {
 			return fmt.Errorf("mysql.server start failed: %s", string(out))
 		}
 		a.emitEvent("service:started", "MySQL")
 		return nil
 	}
 
-	// mysqld directly
 	if path := findBin("mysqld"); path != "" {
 		cmd := exec.Command(path, fmt.Sprintf("--port=%d", a.mysqlPort))
 		cmd.Stdout = os.Stdout
@@ -382,34 +357,23 @@ func (a *App) startMySQL() error {
 		return nil
 	}
 
-	return fmt.Errorf("MySQL not found. Install it via Homebrew or MAMP")
+	return fmt.Errorf("MySQL not found. Install via Homebrew or MAMP")
 }
 
 func (a *App) stopMySQL() error {
-	// MAMP
-	mampCtl := "/Applications/MAMP/bin/stop.sh"
-	if _, err := os.Stat(mampCtl); err == nil {
-		cmd := exec.Command(mampCtl)
-		if _, err := cmd.CombinedOutput(); err == nil {
-			a.emitEvent("service:stopped", "MySQL")
-			return nil
-		}
+	if ok := brewServiceAction("stop", "mysql"); ok {
+		a.emitEvent("service:stopped", "MySQL")
+		return nil
 	}
 
-	// brew services
-	if runtime.GOOS == "darwin" {
-		if _, err := exec.LookPath("brew"); err == nil {
-			cmd := exec.Command("brew", "services", "stop", "mysql")
-			if _, err := cmd.CombinedOutput(); err == nil {
-				a.emitEvent("service:stopped", "MySQL")
-				return nil
-			}
-		}
+	if _, err := os.Stat("/Applications/MAMP/bin/stop.sh"); err == nil {
+		exec.Command("/Applications/MAMP/bin/stop.sh").CombinedOutput()
+		a.emitEvent("service:stopped", "MySQL")
+		return nil
 	}
 
 	if path := findBin("mysql.server"); path != "" {
-		cmd := exec.Command(path, "stop")
-		if out, err := cmd.CombinedOutput(); err != nil {
+		if out, err := exec.Command(path, "stop").CombinedOutput(); err != nil {
 			return fmt.Errorf("mysql.server stop failed: %s", string(out))
 		}
 		a.emitEvent("service:stopped", "MySQL")
@@ -417,29 +381,21 @@ func (a *App) stopMySQL() error {
 	}
 
 	if path := findBin("mysqladmin"); path != "" {
-		cmd := exec.Command(path, "-u", "root", "shutdown")
-		if _, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("mysqladmin shutdown failed: %v", err)
-		}
+		exec.Command(path, "-u", "root", "shutdown").CombinedOutput()
 		a.emitEvent("service:stopped", "MySQL")
 		return nil
 	}
 
-	return fmt.Errorf("could not stop MySQL — no control binary found")
+	return fmt.Errorf("could not stop MySQL")
 }
 
 // ─── PostgreSQL ──────────────────────────────────────────────────
 
 func (a *App) startPostgreSQL() error {
-	if runtime.GOOS == "darwin" {
-		if _, err := exec.LookPath("brew"); err == nil {
-			for _, formula := range []string{"postgresql", "postgresql@17", "postgresql@16", "postgresql@15", "postgresql@14"} {
-				cmd := exec.Command("brew", "services", "start", formula)
-				if _, err := cmd.CombinedOutput(); err == nil {
-					a.emitEvent("service:started", "PostgreSQL")
-					return nil
-				}
-			}
+	for _, formula := range []string{"postgresql@17", "postgresql@16", "postgresql@15", "postgresql@14", "postgresql"} {
+		if brewServiceAction("start", formula) {
+			a.emitEvent("service:started", "PostgreSQL")
+			return nil
 		}
 	}
 
@@ -448,8 +404,8 @@ func (a *App) startPostgreSQL() error {
 		if dataDir == "" {
 			return fmt.Errorf("PostgreSQL data directory not found")
 		}
-		cmd := exec.Command(path, "start", "-D", dataDir, "-o", fmt.Sprintf("-p %d", a.pgPort), "-l", filepath.Join(a.configDir, "pg.log"))
-		if out, err := cmd.CombinedOutput(); err != nil {
+		out, err := exec.Command(path, "start", "-D", dataDir, "-o", fmt.Sprintf("-p %d", a.pgPort), "-l", filepath.Join(a.configDir, "pg.log")).CombinedOutput()
+		if err != nil {
 			return fmt.Errorf("pg_ctl start failed: %s", string(out))
 		}
 		a.emitEvent("service:started", "PostgreSQL")
@@ -460,23 +416,18 @@ func (a *App) startPostgreSQL() error {
 }
 
 func (a *App) stopPostgreSQL() error {
-	if runtime.GOOS == "darwin" {
-		if _, err := exec.LookPath("brew"); err == nil {
-			for _, formula := range []string{"postgresql", "postgresql@17", "postgresql@16", "postgresql@15", "postgresql@14"} {
-				cmd := exec.Command("brew", "services", "stop", formula)
-				if _, err := cmd.CombinedOutput(); err == nil {
-					a.emitEvent("service:stopped", "PostgreSQL")
-					return nil
-				}
-			}
+	for _, formula := range []string{"postgresql@17", "postgresql@16", "postgresql@15", "postgresql@14", "postgresql"} {
+		if brewServiceAction("stop", formula) {
+			a.emitEvent("service:stopped", "PostgreSQL")
+			return nil
 		}
 	}
 
 	if path := findBin("pg_ctl"); path != "" {
 		dataDir := a.findPgDataDir()
 		if dataDir != "" {
-			cmd := exec.Command(path, "stop", "-D", dataDir)
-			if out, err := cmd.CombinedOutput(); err != nil {
+			out, err := exec.Command(path, "stop", "-D", dataDir).CombinedOutput()
+			if err != nil {
 				return fmt.Errorf("pg_ctl stop failed: %s", string(out))
 			}
 			a.emitEvent("service:stopped", "PostgreSQL")
@@ -484,11 +435,10 @@ func (a *App) stopPostgreSQL() error {
 		}
 	}
 
-	return fmt.Errorf("could not stop PostgreSQL — no control binary found")
+	return fmt.Errorf("could not stop PostgreSQL")
 }
 
 func (a *App) findPgDataDir() string {
-	// Common locations
 	home, _ := os.UserHomeDir()
 	candidates := []string{
 		"/opt/homebrew/var/postgresql@17",
@@ -511,16 +461,10 @@ func (a *App) findPgDataDir() string {
 // ─── MongoDB ─────────────────────────────────────────────────────
 
 func (a *App) startMongoDB() error {
-	if runtime.GOOS == "darwin" {
-		if _, err := exec.LookPath("brew"); err == nil {
-			// Try community edition first, then regular
-			for _, formula := range []string{"mongodb-community", "mongodb/brew/mongodb-community", "mongosh"} {
-				cmd := exec.Command("brew", "services", "start", formula)
-				if _, err := cmd.CombinedOutput(); err == nil {
-					a.emitEvent("service:started", "MongoDB")
-					return nil
-				}
-			}
+	for _, formula := range []string{"mongodb-community", "mongodb/brew/mongodb-community"} {
+		if brewServiceAction("start", formula) {
+			a.emitEvent("service:started", "MongoDB")
+			return nil
 		}
 	}
 
@@ -528,14 +472,8 @@ func (a *App) startMongoDB() error {
 		dbPath := filepath.Join(a.configDir, "mongo-data")
 		os.MkdirAll(dbPath, 0755)
 		logPath := filepath.Join(a.configDir, "mongod.log")
-
-		cmd := exec.Command(path,
-			"--port", strconv.Itoa(a.mongoPort),
-			"--dbpath", dbPath,
-			"--logpath", logPath,
-			"--fork",
-		)
-		if out, err := cmd.CombinedOutput(); err != nil {
+		out, err := exec.Command(path, "--port", strconv.Itoa(a.mongoPort), "--dbpath", dbPath, "--logpath", logPath, "--fork").CombinedOutput()
+		if err != nil {
 			return fmt.Errorf("mongod start failed: %s", string(out))
 		}
 		a.emitEvent("service:started", "MongoDB")
@@ -546,37 +484,46 @@ func (a *App) startMongoDB() error {
 }
 
 func (a *App) stopMongoDB() error {
-	if runtime.GOOS == "darwin" {
-		if _, err := exec.LookPath("brew"); err == nil {
-			for _, formula := range []string{"mongodb-community", "mongodb/brew/mongodb-community"} {
-				cmd := exec.Command("brew", "services", "stop", formula)
-				if _, err := cmd.CombinedOutput(); err == nil {
-					a.emitEvent("service:stopped", "MongoDB")
-					return nil
-				}
-			}
-		}
-	}
-
-	// mongod --shutdown or kill
-	if path := findBin("mongod"); path != "" {
-		dbPath := filepath.Join(a.configDir, "mongo-data")
-		cmd := exec.Command(path, "--shutdown", "--dbpath", dbPath)
-		if _, err := cmd.CombinedOutput(); err == nil {
+	for _, formula := range []string{"mongodb-community", "mongodb/brew/mongodb-community"} {
+		if brewServiceAction("stop", formula) {
 			a.emitEvent("service:stopped", "MongoDB")
 			return nil
 		}
 	}
 
-	// Try mongosh
+	if path := findBin("mongod"); path != "" {
+		dbPath := filepath.Join(a.configDir, "mongo-data")
+		exec.Command(path, "--shutdown", "--dbpath", dbPath).CombinedOutput()
+		a.emitEvent("service:stopped", "MongoDB")
+		return nil
+	}
+
 	if path := findBin("mongosh"); path != "" {
-		cmd := exec.Command(path, "--eval", "db.adminCommand({shutdown: 1})", "--quiet")
-		cmd.CombinedOutput()
+		exec.Command(path, "--eval", "db.adminCommand({shutdown: 1})", "--quiet").CombinedOutput()
 		a.emitEvent("service:stopped", "MongoDB")
 		return nil
 	}
 
 	return fmt.Errorf("could not stop MongoDB")
+}
+
+// ─── Brew helper ─────────────────────────────────────────────────
+
+// brewServiceAction runs `brew services start/stop <formula>` and returns true
+// only if it actually succeeded (checks output for "Successfully").
+func brewServiceAction(action, formula string) bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	if _, err := exec.LookPath("brew"); err != nil {
+		return false
+	}
+	out, err := exec.Command("brew", "services", action, formula).CombinedOutput()
+	if err != nil {
+		return false
+	}
+	output := string(out)
+	return strings.Contains(output, "Successfully")
 }
 
 // ─── Config ──────────────────────────────────────────────────────
@@ -589,6 +536,7 @@ func (a *App) GetConfig() AppConfig {
 		MysqlPort:   a.mysqlPort,
 		PgPort:      a.pgPort,
 		MongoPort:   a.mongoPort,
+		ProjectDir:  a.projectDir,
 	}
 }
 
@@ -617,6 +565,16 @@ func (a *App) SetOpenOnStart(enabled bool) {
 	a.saveConfig()
 }
 
+// SetProjectDir allows the user to manually set the project path from the UI.
+func (a *App) SetProjectDir(dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, "main.go")); err != nil {
+		return fmt.Errorf("not a valid socAdmin project directory (main.go not found)")
+	}
+	a.projectDir = dir
+	a.saveConfig()
+	return nil
+}
+
 // ─── Browser ─────────────────────────────────────────────────────
 
 func (a *App) OpenBrowser() {
@@ -639,19 +597,44 @@ func (a *App) openBrowserInternal() {
 
 func (a *App) GetSystemInfo() map[string]string {
 	return map[string]string{
-		"os":        runtime.GOOS,
-		"arch":      runtime.GOARCH,
-		"goVer":     runtime.Version(),
-		"configDir": a.configDir,
+		"os":         runtime.GOOS,
+		"arch":       runtime.GOARCH,
+		"goVer":      runtime.Version(),
+		"configDir":  a.configDir,
+		"projectDir": a.projectDir,
 	}
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
+func findBin(name string) string {
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	for _, dir := range extraSearchPaths {
+		full := filepath.Join(dir, name)
+		if _, err := os.Stat(full); err == nil {
+			return full
+		}
+	}
+	return ""
+}
+
+func getVersion(path string, args []string) string {
+	out, err := exec.Command(path, args...).CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	ver := strings.TrimSpace(string(out))
+	if idx := strings.IndexByte(ver, '\n'); idx > 0 {
+		ver = ver[:idx]
+	}
+	return ver
+}
+
 func (a *App) findBinary() string {
 	var candidates []string
 
-	// Project dir (most reliable)
 	if a.projectDir != "" {
 		candidates = append(candidates, filepath.Join(a.projectDir, "bin", "socadmin"))
 	}
@@ -718,7 +701,7 @@ func isPortOpen(port int) bool {
 	return true
 }
 
-func (a *App) findPIDOnPort(port int) int {
+func findPIDOnPort(port int) int {
 	out, err := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port)).CombinedOutput()
 	if err != nil {
 		return 0
@@ -764,14 +747,18 @@ func (a *App) loadConfig() {
 			if p, _ := strconv.Atoi(val); p >= 1024 && p <= 65535 {
 				a.mongoPort = p
 			}
+		case "projectDir":
+			if val != "" {
+				a.projectDir = val
+			}
 		}
 	}
 }
 
 func (a *App) saveConfig() {
 	content := fmt.Sprintf(
-		"port=%d\nautoStart=%t\nopenOnStart=%t\nmysqlPort=%d\npgPort=%d\nmongoPort=%d\n",
-		a.port, a.autoStart, a.openOnStart, a.mysqlPort, a.pgPort, a.mongoPort,
+		"port=%d\nautoStart=%t\nopenOnStart=%t\nmysqlPort=%d\npgPort=%d\nmongoPort=%d\nprojectDir=%s\n",
+		a.port, a.autoStart, a.openOnStart, a.mysqlPort, a.pgPort, a.mongoPort, a.projectDir,
 	)
 	os.WriteFile(a.configPath(), []byte(content), 0644)
 }

@@ -33,15 +33,21 @@
 }
 
 html,
-body,
-#root {
+body {
   height: 100%;
   font-family: "Inter", system-ui, -apple-system, sans-serif;
   background: var(--color-bg);
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
   user-select: none;
+  overflow: hidden;
 }
+
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 
 /* macOS title bar drag region */
 .drag-region {

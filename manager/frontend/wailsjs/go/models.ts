@@ -7,6 +7,7 @@ export namespace main {
 	    mysqlPort: number;
 	    pgPort: number;
 	    mongoPort: number;
+	    projectDir: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppConfig(source);
@@ -20,6 +21,7 @@ export namespace main {
 	        this.mysqlPort = source["mysqlPort"];
 	        this.pgPort = source["pgPort"];
 	        this.mongoPort = source["mongoPort"];
+	        this.projectDir = source["projectDir"];
 	    }
 	}
 	export class ServerStatus {

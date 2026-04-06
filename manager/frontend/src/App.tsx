@@ -95,16 +95,16 @@ function App() {
   const running = status?.running ?? false;
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Title bar */}
-      <div className="drag-region flex h-11 shrink-0 items-center justify-between border-b border-border-subtle px-4">
+    <div className="flex h-full flex-col overflow-hidden rounded-lg">
+      {/* Title bar — macOS drag region, clears traffic lights */}
+      <div className="drag-region flex h-12 shrink-0 items-center justify-between border-b border-border-subtle px-5">
         <div className="flex items-center gap-2 pl-18">
           <div className="h-3.5 w-3.5 rounded-sm bg-brand" />
           <span className="text-xs font-semibold tracking-wide text-text-secondary">
             socAdmin Manager
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 pr-1">
           <span
             className={`inline-block h-2 w-2 rounded-full ${
               running
@@ -120,7 +120,7 @@ function App() {
 
       <div className="flex min-h-0 flex-1">
         {/* Sidebar */}
-        <nav className="flex w-52 shrink-0 flex-col border-r border-border-subtle bg-surface/40 px-4 py-5">
+        <nav className="flex w-52 shrink-0 flex-col border-r border-border-subtle bg-surface/40 px-4 py-4">
           <div className="space-y-1">
             <SidebarItem
               icon={<IconServer />}

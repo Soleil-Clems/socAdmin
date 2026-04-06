@@ -18,6 +18,8 @@ export function SetOpenOnStart(arg1:boolean):Promise<void>;
 
 export function SetPort(arg1:number):Promise<void>;
 
+export function SetProjectDir(arg1:string):Promise<void>;
+
 export function SetServicePort(arg1:string,arg2:number):Promise<void>;
 
 export function StartServer():Promise<main.ServerStatus>;

@@ -34,6 +34,10 @@ export function SetPort(arg1) {
   return window['go']['main']['App']['SetPort'](arg1);
 }
 
+export function SetProjectDir(arg1) {
+  return window['go']['main']['App']['SetProjectDir'](arg1);
+}
+
 export function SetServicePort(arg1, arg2) {
   return window['go']['main']['App']['SetServicePort'](arg1, arg2);
 }
