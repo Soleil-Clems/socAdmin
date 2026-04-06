@@ -41,7 +41,7 @@ build:
 	@echo "Building frontend..."
 	cd frontend && npm run build
 	@echo "Building backend..."
-	go build -o bin/socadmin main.go
+	go build -o bin/socadmin .
 	@echo "Build done → bin/socadmin"
 
 # --- Install les dépendances ---

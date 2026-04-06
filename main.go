@@ -43,9 +43,19 @@ func main() {
 		}
 	}
 
-	router := api.NewRouter(authRepo, whitelist, encKey)
+	apiHandler := api.NewRouter(authRepo, whitelist, encKey)
+	frontend := FrontendHandler()
+
+	// Serve API routes under /api/, everything else is the React SPA
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(r.URL.Path) >= 4 && r.URL.Path[:4] == "/api" {
+			apiHandler.ServeHTTP(w, r)
+			return
+		}
+		frontend.ServeHTTP(w, r)
+	})
 
 	port := 8080
 	fmt.Printf("socAdmin server running on http://localhost:%d\n", port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), router))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), handler))
 }
