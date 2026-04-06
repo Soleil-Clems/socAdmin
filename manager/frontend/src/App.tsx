@@ -506,6 +506,7 @@ function DatabasesTab({
   const [loadingService, setLoadingService] = useState<string | null>(null);
   const [installingService, setInstallingService] = useState<string | null>(null);
   const [uninstallingService, setUninstallingService] = useState<string | null>(null);
+  const [confirmUninstall, setConfirmUninstall] = useState<string | null>(null);
   const [serviceError, setServiceError] = useState("");
   const [editingPort, setEditingPort] = useState<string | null>(null);
   const [portInput, setPortInput] = useState("");
@@ -584,7 +585,8 @@ function DatabasesTab({
     }, 300000);
   };
 
-  const handleUninstall = (name: string) => {
+  const handleUninstallConfirm = (name: string) => {
+    setConfirmUninstall(null);
     setServiceError("");
     setUninstallingService(name);
     UninstallService(name);
@@ -674,8 +676,13 @@ function DatabasesTab({
                       {svc.running && (
                         <span className="h-1.5 w-1.5 rounded-full bg-green" />
                       )}
+                      {svc.source && (
+                        <span className="rounded-full bg-surface-hover px-1.5 py-px text-[9px] font-medium text-text-muted uppercase tracking-wider">
+                          {svc.source}
+                        </span>
+                      )}
                     </div>
-                    <p className="mt-0.5 text-[11px] text-text-muted truncate">
+                    <p className="mt-0.5 text-[11px] text-text-muted truncate" title={svc.path}>
                       {svc.version || svc.path}
                     </p>
                   </div>
@@ -743,9 +750,9 @@ function DatabasesTab({
                     >
                       {isLoading ? <Spinner /> : svc.running ? "Stop" : "Start"}
                     </button>
-                    {canInstall && !svc.running && (
+                    {svc.source === "homebrew" && !svc.running && (
                       <button
-                        onClick={() => handleUninstall(svc.name)}
+                        onClick={() => setConfirmUninstall(svc.name)}
                         disabled={uninstallingService === svc.name}
                         className="rounded-lg px-2.5 py-2 text-[12px] text-text-muted hover:text-red hover:bg-red-subtle/50 transition-colors disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center"
                         title={`Uninstall ${svc.name}`}
@@ -837,6 +844,46 @@ function DatabasesTab({
           <p className="mt-1.5 text-[12px] text-text-muted">
             Install MySQL, PostgreSQL, or MongoDB via Homebrew or MAMP
           </p>
+        </div>
+      )}
+
+      {/* Uninstall confirmation dialog */}
+      {confirmUninstall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80">
+          <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-subtle text-red">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-[14px] font-semibold">
+                  Uninstall {confirmUninstall}?
+                </h3>
+                <p className="mt-1.5 text-[12px] text-text-muted leading-relaxed">
+                  This will remove {confirmUninstall} from your machine via Homebrew.
+                  Your databases and data may be deleted. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                onClick={() => setConfirmUninstall(null)}
+                className="rounded-lg px-4 py-2 text-[12px] font-medium text-text-secondary hover:bg-surface-hover transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleUninstallConfirm(confirmUninstall)}
+                className="rounded-lg bg-red-subtle px-4 py-2 text-[12px] font-medium text-red hover:bg-red-subtle/70 transition-colors"
+              >
+                Uninstall
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

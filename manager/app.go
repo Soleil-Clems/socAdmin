@@ -26,6 +26,7 @@ type ServiceStatus struct {
 	Port      int    `json:"port"`
 	PID       int    `json:"pid"`
 	Path      string `json:"path"`
+	Source    string `json:"source"` // "homebrew", "mamp", "system", or ""
 }
 
 type ServerStatus struct {
@@ -272,6 +273,7 @@ func (a *App) detectService(name string, port int, binaries []string, versionArg
 			s.Installed = true
 			s.Path = path
 			s.Version = getVersion(path, versionArgs)
+			s.Source = detectSource(path)
 			break
 		}
 	}
@@ -282,6 +284,26 @@ func (a *App) detectService(name string, port int, binaries []string, versionArg
 	}
 
 	return s
+}
+
+// detectSource determines where a binary was installed from based on its path.
+func detectSource(binPath string) string {
+	if strings.Contains(binPath, "/MAMP/") {
+		return "mamp"
+	}
+	if strings.Contains(binPath, "/homebrew/") || strings.Contains(binPath, "/Cellar/") || strings.Contains(binPath, "/usr/local/opt/") {
+		return "homebrew"
+	}
+	// Check if brew knows about it
+	if _, err := exec.LookPath("brew"); err == nil {
+		// Get the real path (resolve symlinks)
+		if real, err := filepath.EvalSymlinks(binPath); err == nil {
+			if strings.Contains(real, "/homebrew/") || strings.Contains(real, "/Cellar/") {
+				return "homebrew"
+			}
+		}
+	}
+	return "system"
 }
 
 func (a *App) StartService(name string) {

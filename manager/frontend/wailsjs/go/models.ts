@@ -52,6 +52,7 @@ export namespace main {
 	    port: number;
 	    pid: number;
 	    path: string;
+	    source: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ServiceStatus(source);
@@ -66,6 +67,7 @@ export namespace main {
 	        this.port = source["port"];
 	        this.pid = source["pid"];
 	        this.path = source["path"];
+	        this.source = source["source"];
 	    }
 	}
 
