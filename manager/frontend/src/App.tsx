@@ -97,32 +97,37 @@ function App() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* macOS title bar — drag region */}
-      <div className="drag-region flex h-13 shrink-0 items-center justify-between border-b border-border-subtle/60 px-5">
-        <div className="flex items-center gap-2.5 pl-18">
-          <div className="h-4 w-4 rounded bg-brand" />
-          <span className="text-[13px] font-semibold tracking-tight text-text-secondary">
+      {/* Title bar */}
+      <header
+        className="drag-region flex shrink-0 items-center border-b border-border-subtle/50"
+        style={{
+          height: "var(--titlebar-h)",
+          paddingLeft: "var(--traffic-light-w)",
+          paddingRight: "20px",
+        }}
+      >
+        <div className="flex flex-1 items-center gap-2 pl-3">
+          <div className="h-3.5 w-3.5 rounded-sm bg-brand" />
+          <span className="text-[13px] font-semibold text-text-secondary tracking-[-0.01em]">
             socAdmin
           </span>
         </div>
-        <div className="flex items-center gap-1.5 pr-1">
+        <div className="flex items-center gap-2">
           <span
             className={`inline-block h-[7px] w-[7px] rounded-full transition-colors ${
-              running
-                ? "bg-green shadow-[0_0_6px_var(--color-green)]"
-                : "bg-text-muted/50"
+              running ? "bg-green" : "bg-text-muted/40"
             }`}
           />
           <span className="text-[11px] text-text-muted">
-            {running ? "Online" : "Offline"}
+            {running ? "Running" : "Stopped"}
           </span>
         </div>
-      </div>
+      </header>
 
       <div className="flex min-h-0 flex-1">
         {/* Sidebar */}
-        <nav className="flex w-48 shrink-0 flex-col border-r border-border-subtle/60 bg-surface/30 px-3 pb-3 pt-4">
-          <div className="space-y-0.5">
+        <nav className="flex w-50 shrink-0  flex-col border-r border-border-subtle/50 bg-surface/20 ">
+          <div className="flex flex-col gap-1 h-[90%]">
             <SidebarItem
               icon={<IconServer />}
               label="Server"
@@ -144,19 +149,17 @@ function App() {
             />
           </div>
 
-          <div className="mt-auto pt-3 border-t border-border-subtle/40">
-            <p className="text-[10px] text-text-muted/60 px-2.5 leading-relaxed">
-              {sysInfo.os && (
-                <span className="capitalize">
-                  {sysInfo.os} · {sysInfo.arch}
-                </span>
-              )}
-            </p>
+          <div className="mt-auto px-5 pb-4 pt-3 border-t border-border-subtle/30">
+            {sysInfo.os && (
+              <p className="text-[10px] text-text-muted/50 capitalize leading-relaxed">
+                {sysInfo.os} · {sysInfo.arch}
+              </p>
+            )}
           </div>
         </nav>
 
-        {/* Main content */}
-        <main className="flex-1 overflow-y-auto px-7 py-6">
+        {/* Content */}
+        <main className="flex-1 overflow-y-auto p-6">
           {error && <ErrorBanner message={error} onDismiss={() => setError("")} />}
 
           {tab === "server" && (
@@ -172,11 +175,7 @@ function App() {
             <DatabasesTab services={services} onRefresh={refresh} />
           )}
           {tab === "settings" && (
-            <SettingsTab
-              config={config}
-              onRefresh={refresh}
-              running={running}
-            />
+            <SettingsTab config={config} onRefresh={refresh} running={running} />
           )}
         </main>
       </div>
@@ -186,17 +185,43 @@ function App() {
 
 /* ── Error banner ── */
 
-function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+function ErrorBanner({
+  message,
+  onDismiss,
+}: {
+  message: string;
+  onDismiss: () => void;
+}) {
   return (
-    <div className="mb-5 flex items-start gap-2.5 rounded-lg bg-red-subtle/80 px-3.5 py-3 text-[13px] text-red">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="mt-0.5 shrink-0 opacity-80">
+    <div className="mb-6 flex items-start gap-3 rounded-lg bg-red-subtle/70 px-4 py-3 text-[13px] text-red leading-snug">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        className="mt-[2px] shrink-0 opacity-70"
+      >
         <circle cx="12" cy="12" r="10" />
         <line x1="12" y1="8" x2="12" y2="12" />
         <line x1="12" y1="16" x2="12.01" y2="16" />
       </svg>
-      <span className="flex-1 leading-snug">{message}</span>
-      <button onClick={onDismiss} className="text-red/50 hover:text-red shrink-0 -mt-0.5">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <span className="flex-1">{message}</span>
+      <button
+        onClick={onDismiss}
+        className="shrink-0 text-red/40 hover:text-red transition-colors"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        >
           <line x1="18" y1="6" x2="6" y2="18" />
           <line x1="6" y1="6" x2="18" y2="18" />
         </svg>
@@ -209,7 +234,7 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
 
 function IconServer() {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
       <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
       <line x1="6" x2="6.01" y1="6" y2="6" />
@@ -220,7 +245,7 @@ function IconServer() {
 
 function IconDatabase() {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <ellipse cx="12" cy="5" rx="9" ry="3" />
       <path d="M3 5V19A9 3 0 0 0 21 19V5" />
       <path d="M3 12A9 3 0 0 0 21 12" />
@@ -230,7 +255,7 @@ function IconDatabase() {
 
 function IconSettings() {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
       <circle cx="12" cy="12" r="3" />
     </svg>
@@ -239,7 +264,7 @@ function IconSettings() {
 
 function IconExternal() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
       <polyline points="15 3 21 3 21 9" />
       <line x1="10" y1="14" x2="21" y2="3" />
@@ -265,16 +290,16 @@ function SidebarItem({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-left text-[13px] transition-colors ${
+      className={`flex w-full items-center gap-3 rounded-lg p-3 text-left text-[13px] transition-colors ${
         active
           ? "bg-surface-active text-text font-medium"
           : "text-text-secondary hover:bg-surface-hover hover:text-text"
       }`}
     >
-      <span className={active ? "opacity-100" : "opacity-60"}>{icon}</span>
+      <span className={`shrink-0 ${active ? "opacity-100" : "opacity-50"}`}>{icon}</span>
       <span className="flex-1">{label}</span>
       {badge !== undefined && badge > 0 && (
-        <span className="text-[10px] bg-green-subtle text-green min-w-[18px] text-center py-[1px] rounded-full font-medium leading-tight">
+        <span className="min-w-[20px] rounded-full bg-green-subtle px-1.5 py-[1px] text-center text-[10px] font-medium text-green leading-tight">
           {badge}
         </span>
       )}
@@ -306,26 +331,26 @@ function ServerTab({
   const running = status?.running ?? false;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div>
-        <h2 className="text-[15px] font-semibold">Server</h2>
-        <p className="mt-0.5 text-[13px] text-text-muted">
+        <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Server</h2>
+        <p className="mt-1 text-[13px] text-text-muted">
           Manage your socAdmin instance
         </p>
       </div>
 
-      {/* Status card */}
-      <div className="rounded-xl border border-border bg-surface p-5">
-        <div className="flex items-center justify-between gap-4">
+      {/* Status + actions */}
+      <div className="rounded-xl border border-border bg-surface/60 p-5">
+        <div className="flex items-center justify-between gap-5">
           <div className="flex items-center gap-4 min-w-0">
             <div
-              className={`flex h-12 w-12 items-center justify-center rounded-xl shrink-0 ${
+              className={`flex h-11 w-11 items-center justify-center rounded-xl shrink-0 ${
                 running
                   ? "bg-green-subtle text-green"
                   : "bg-surface-hover text-text-muted"
               }`}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
                 <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
                 <line x1="6" x2="6.01" y1="6" y2="6" />
@@ -344,14 +369,14 @@ function ServerTab({
                 )}
               </div>
               {running ? (
-                <p className="mt-0.5 text-[13px] text-text-secondary truncate">
-                  <span className="font-mono text-text">localhost:{status?.port}</span>
+                <p className="mt-0.5 text-[12px] text-text-secondary truncate">
+                  localhost:{status?.port}
                   {status?.uptime && (
-                    <span className="ml-1.5 text-text-muted">· {status.uptime}</span>
+                    <span className="text-text-muted"> · {status.uptime}</span>
                   )}
                 </p>
               ) : (
-                <p className="mt-0.5 text-[13px] text-text-muted">
+                <p className="mt-0.5 text-[12px] text-text-muted">
                   Port {status?.port}
                 </p>
               )}
@@ -362,7 +387,7 @@ function ServerTab({
             {running && (
               <button
                 onClick={onOpenBrowser}
-                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-[7px] text-[13px] text-text-secondary hover:bg-surface-hover hover:text-text"
+                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-[12px] text-text-secondary hover:bg-surface-hover hover:text-text transition-colors"
               >
                 <IconExternal />
                 Open
@@ -371,9 +396,9 @@ function ServerTab({
             <button
               onClick={running ? onStop : onStart}
               disabled={loading}
-              className={`flex items-center gap-2 rounded-lg px-5 py-[7px] text-[13px] font-medium ${
+              className={`flex items-center gap-2 rounded-lg px-5 py-2 text-[12px] font-medium transition-colors ${
                 running
-                  ? "bg-red-subtle text-red hover:bg-red-subtle/80"
+                  ? "bg-red-subtle text-red hover:bg-red-subtle/70"
                   : "bg-brand text-white hover:bg-brand-hover"
               } disabled:opacity-50 disabled:pointer-events-none`}
             >
@@ -383,8 +408,8 @@ function ServerTab({
         </div>
       </div>
 
-      {/* Quick stats */}
-      <div className="grid grid-cols-3 gap-2.5">
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3">
         <StatCard label="Port" value={String(status?.port ?? "—")} />
         <StatCard
           label="Status"
@@ -407,13 +432,15 @@ function StatCard({
   accent?: "green";
 }) {
   return (
-    <div className="rounded-lg border border-border-subtle bg-surface/50 px-3.5 py-3">
-      <p className="text-[10px] font-medium uppercase tracking-wider text-text-muted">
+    <div className="rounded-lg border border-border-subtle/70 bg-surface/40 px-4 py-3">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-text-muted/70">
         {label}
       </p>
-      <p className={`mt-1 text-[15px] font-semibold tabular-nums ${
-        accent === "green" ? "text-green" : "text-text"
-      }`}>
+      <p
+        className={`mt-1.5 text-[15px] font-semibold tabular-nums ${
+          accent === "green" ? "text-green" : "text-text"
+        }`}
+      >
         {value}
       </p>
     </div>
@@ -476,47 +503,61 @@ function DatabasesTab({
     }
   };
 
-  const dbStyles: Record<string, { bg: string; text: string; letter: string }> = {
-    MySQL:      { bg: "bg-blue-subtle",  text: "text-blue",  letter: "My" },
+  const dbStyles: Record<
+    string,
+    { bg: string; text: string; letter: string }
+  > = {
+    MySQL: { bg: "bg-blue-subtle", text: "text-blue", letter: "My" },
     PostgreSQL: { bg: "bg-amber-subtle", text: "text-amber", letter: "Pg" },
-    MongoDB:    { bg: "bg-green-subtle", text: "text-green", letter: "Mg" },
+    MongoDB: { bg: "bg-green-subtle", text: "text-green", letter: "Mg" },
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div>
-        <h2 className="text-[15px] font-semibold">Databases</h2>
-        <p className="mt-0.5 text-[13px] text-text-muted">
+        <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Databases</h2>
+        <p className="mt-1 text-[13px] text-text-muted">
           Manage database engines on your machine
         </p>
       </div>
 
       {serviceError && (
-        <ErrorBanner message={serviceError} onDismiss={() => setServiceError("")} />
+        <ErrorBanner
+          message={serviceError}
+          onDismiss={() => setServiceError("")}
+        />
       )}
 
       {installed.length === 0 ? (
-        <div className="rounded-xl border border-border-subtle border-dashed bg-surface/30 px-6 py-10 text-center">
-          <p className="text-[13px] text-text-secondary">No database engines detected</p>
-          <p className="mt-1 text-[12px] text-text-muted">
+        <div className="rounded-xl border border-dashed border-border-subtle bg-surface/20 px-6 py-12 text-center">
+          <p className="text-[13px] text-text-secondary">
+            No database engines detected
+          </p>
+          <p className="mt-1.5 text-[12px] text-text-muted">
             Install MySQL, PostgreSQL, or MongoDB via Homebrew or MAMP
           </p>
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           {installed.map((svc) => {
-            const style = dbStyles[svc.name] || { bg: "bg-surface-hover", text: "text-text-muted", letter: "?" };
+            const style = dbStyles[svc.name] || {
+              bg: "bg-surface-hover",
+              text: "text-text-muted",
+              letter: "?",
+            };
             const isEditing = editingPort === svc.name;
             const isLoading = loadingService === svc.name;
 
             return (
               <div
                 key={svc.name}
-                className="rounded-xl border border-border bg-surface px-4 py-3.5"
+                className="rounded-xl border border-border bg-surface/60 px-5 py-4"
               >
-                <div className="flex items-center gap-3.5">
+                <div className="flex items-center gap-4">
                   {/* Badge */}
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-lg text-[11px] font-bold shrink-0 ${style.bg} ${style.text}`}>
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-lg text-[11px] font-bold shrink-0 ${style.bg} ${style.text}`}
+                  >
                     {style.letter}
                   </div>
 
@@ -525,10 +566,10 @@ function DatabasesTab({
                     <div className="flex items-center gap-2">
                       <h3 className="text-[13px] font-semibold">{svc.name}</h3>
                       {svc.running && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-green shadow-[0_0_4px_var(--color-green)]" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-green" />
                       )}
                     </div>
-                    <p className="text-[11px] text-text-muted truncate mt-px">
+                    <p className="mt-0.5 text-[11px] text-text-muted truncate">
                       {svc.version || svc.path}
                     </p>
                   </div>
@@ -536,7 +577,7 @@ function DatabasesTab({
                   {/* Port */}
                   <div className="shrink-0">
                     {isEditing ? (
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1.5">
                         <input
                           type="number"
                           min={1024}
@@ -547,41 +588,49 @@ function DatabasesTab({
                             if (e.key === "Enter") handlePortSave(svc.name);
                             if (e.key === "Escape") setEditingPort(null);
                           }}
-                          className="w-[72px] rounded-md border border-border bg-bg px-2 py-1 text-[12px] text-text outline-none focus:border-brand"
+                          className="w-[72px] rounded-md border border-border bg-bg px-2 py-1.5 text-[12px] text-text outline-none focus:border-brand"
                           autoFocus
                         />
                         <button
                           onClick={() => handlePortSave(svc.name)}
-                          className="rounded-md bg-brand px-2 py-1 text-[10px] font-medium text-white hover:bg-brand-hover"
+                          className="rounded-md bg-brand px-2.5 py-1.5 text-[10px] font-medium text-white hover:bg-brand-hover"
                         >
                           Save
                         </button>
                         <button
                           onClick={() => setEditingPort(null)}
-                          className="rounded-md px-1.5 py-1 text-text-muted hover:text-text"
+                          className="rounded-md px-1.5 py-1.5 text-text-muted hover:text-text"
                         >
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
                           </svg>
                         </button>
                       </div>
                     ) : (
                       <button
-                        onClick={() => { setEditingPort(svc.name); setPortInput(String(svc.port)); }}
+                        onClick={() => {
+                          setEditingPort(svc.name);
+                          setPortInput(String(svc.port));
+                        }}
                         disabled={svc.running}
-                        className="font-mono text-[12px] text-text-secondary hover:text-text disabled:opacity-40 disabled:cursor-default px-1.5 py-0.5 rounded hover:bg-surface-hover"
-                        title={svc.running ? "Stop the service to change port" : "Click to change port"}
+                        className="font-mono text-[12px] text-text-secondary hover:text-text disabled:opacity-40 disabled:cursor-default px-2 py-1 rounded-md hover:bg-surface-hover transition-colors"
+                        title={
+                          svc.running
+                            ? "Stop the service to change port"
+                            : "Click to change port"
+                        }
                       >
                         :{svc.port}
                       </button>
                     )}
                   </div>
 
-                  {/* Start/Stop */}
+                  {/* Toggle */}
                   <button
                     onClick={() => handleToggle(svc)}
                     disabled={isLoading}
-                    className={`shrink-0 rounded-lg px-3.5 py-[6px] text-[12px] font-medium min-w-[56px] flex items-center justify-center ${
+                    className={`shrink-0 rounded-lg px-4 py-2 text-[12px] font-medium min-w-[60px] flex items-center justify-center transition-colors ${
                       svc.running
                         ? "bg-red-subtle text-red hover:bg-red-subtle/70"
                         : "bg-green-subtle text-green hover:bg-green-subtle/70"
@@ -632,21 +681,21 @@ function SettingsTab({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div>
-        <h2 className="text-[15px] font-semibold">Settings</h2>
-        <p className="mt-0.5 text-[13px] text-text-muted">
+        <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Settings</h2>
+        <p className="mt-1 text-[13px] text-text-muted">
           Configure socAdmin Manager
         </p>
       </div>
 
       {/* Port */}
-      <div className="rounded-xl border border-border bg-surface p-4">
+      <section className="rounded-xl border border-border bg-surface/60 p-5">
         <h3 className="text-[13px] font-semibold">Server Port</h3>
-        <p className="mt-0.5 text-[12px] text-text-muted">
+        <p className="mt-1 text-[12px] text-text-muted">
           Port for the socAdmin web interface
         </p>
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-4 flex items-center gap-2.5">
           <input
             type="number"
             min={1024}
@@ -655,12 +704,12 @@ function SettingsTab({
             onChange={(e) => setPortInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handlePortSave()}
             disabled={running}
-            className="w-24 rounded-lg border border-border bg-bg px-3 py-[7px] text-[13px] text-text outline-none focus:border-brand disabled:opacity-40"
+            className="w-24 rounded-lg border border-border bg-bg px-3 py-2 text-[13px] text-text outline-none focus:border-brand disabled:opacity-40"
           />
           <button
             onClick={handlePortSave}
             disabled={running || portInput === String(config.port)}
-            className="rounded-lg bg-brand px-3.5 py-[7px] text-[13px] font-medium text-white hover:bg-brand-hover disabled:opacity-30 disabled:pointer-events-none"
+            className="rounded-lg bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-hover disabled:opacity-30 disabled:pointer-events-none transition-colors"
           >
             Save
           </button>
@@ -668,49 +717,59 @@ function SettingsTab({
             <span className="text-[12px] text-amber">Stop the server first</span>
           )}
         </div>
-        {portError && <p className="mt-2 text-[12px] text-red">{portError}</p>}
-      </div>
+        {portError && (
+          <p className="mt-2.5 text-[12px] text-red">{portError}</p>
+        )}
+      </section>
 
-      {/* Toggles */}
-      <div className="rounded-xl border border-border bg-surface p-4 space-y-3.5">
+      {/* Startup toggles */}
+      <section className="rounded-xl border border-border bg-surface/60 p-5 space-y-4">
         <h3 className="text-[13px] font-semibold">Startup</h3>
 
         <ToggleRow
           label="Auto-start server"
           description="Start socAdmin when the manager opens"
           checked={config.autoStart}
-          onChange={(v) => { SetAutoStart(v); onRefresh(); }}
+          onChange={(v) => {
+            SetAutoStart(v);
+            onRefresh();
+          }}
         />
-        <div className="border-t border-border-subtle/50" />
+        <div className="border-t border-border-subtle/40" />
         <ToggleRow
           label="Open browser on start"
           description="Open localhost automatically"
           checked={config.openOnStart}
-          onChange={(v) => { SetOpenOnStart(v); onRefresh(); }}
+          onChange={(v) => {
+            SetOpenOnStart(v);
+            onRefresh();
+          }}
         />
-      </div>
+      </section>
 
-      {/* DB Ports */}
-      <div className="rounded-xl border border-border bg-surface p-4">
+      {/* DB Ports overview */}
+      <section className="rounded-xl border border-border bg-surface/60 p-5">
         <h3 className="text-[13px] font-semibold">Database Ports</h3>
-        <p className="mt-0.5 text-[12px] text-text-muted">
+        <p className="mt-1 text-[12px] text-text-muted">
           Change these in the Databases tab
         </p>
-        <div className="mt-3 grid grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-3 gap-3">
           <PortCard label="MySQL" port={config.mysqlPort} />
           <PortCard label="PostgreSQL" port={config.pgPort} />
           <PortCard label="MongoDB" port={config.mongoPort} />
         </div>
-      </div>
+      </section>
     </div>
   );
 }
 
 function PortCard({ label, port }: { label: string; port: number }) {
   return (
-    <div className="rounded-lg bg-bg px-3 py-2.5 border border-border-subtle/60">
-      <p className="text-[10px] font-medium uppercase tracking-wider text-text-muted">{label}</p>
-      <p className="mt-0.5 font-mono text-[13px] text-text">{port}</p>
+    <div className="rounded-lg bg-bg px-3.5 py-3 border border-border-subtle/50">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-text-muted/70">
+        {label}
+      </p>
+      <p className="mt-1 font-mono text-[13px] text-text">{port}</p>
     </div>
   );
 }
@@ -729,8 +788,8 @@ function ToggleRow({
   return (
     <div className="flex items-center justify-between gap-4">
       <div>
-        <p className="text-[13px]">{label}</p>
-        <p className="text-[11px] text-text-muted mt-px">{description}</p>
+        <p className="text-[13px] text-text">{label}</p>
+        <p className="mt-0.5 text-[11px] text-text-muted">{description}</p>
       </div>
       <button
         onClick={() => onChange(!checked)}

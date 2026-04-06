@@ -25,9 +25,10 @@ stop:
 	@lsof -ti :$(BACK_PORT) | xargs kill -9 2>/dev/null && echo "Backend stopped  (:$(BACK_PORT))" || echo "Backend not running"
 	@pkill -f "socadmin-manager" 2>/dev/null && echo "Manager stopped" || echo "Manager not running"
 
-# --- Reload : stop tout + rebuild + relance le Manager ---
+# --- Reload : stop tout + clean + rebuild + relance le Manager ---
 reload: stop
 	@sleep 1
+	@rm -rf manager/frontend/dist manager/build/bin
 	@$(MAKE) build
 	@$(MAKE) manager
 	@$(MAKE) start
