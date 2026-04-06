@@ -176,6 +176,7 @@ func (a *App) StartServer() ServerStatus {
 	cmd := exec.Command(binPath)
 	// Run from the project root so socadmin.db is found/created in the right place
 	cmd.Dir = a.projectDir
+	cmd.Env = append(os.Environ(), fmt.Sprintf("PORT=%d", a.port))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -358,6 +359,55 @@ func (a *App) SetServicePort(name string, port int) error {
 	}
 	a.saveConfig()
 	return nil
+}
+
+// ─── Install service via Homebrew ────────────────────────────────
+
+func (a *App) InstallService(name string) {
+	go func() {
+		if runtime.GOOS != "darwin" {
+			a.emitError("Automatic install is only supported on macOS via Homebrew")
+			return
+		}
+		if _, err := exec.LookPath("brew"); err != nil {
+			a.emitError("Homebrew is not installed. Visit https://brew.sh to install it first")
+			return
+		}
+
+		var formula string
+		switch name {
+		case "MySQL":
+			formula = "mysql"
+		case "PostgreSQL":
+			formula = "postgresql@17"
+		case "MongoDB":
+			// MongoDB requires a tap first
+			exec.Command("brew", "tap", "mongodb/brew").CombinedOutput()
+			formula = "mongodb-community"
+		default:
+			a.emitError("Unknown service: " + name)
+			return
+		}
+
+		a.emitEvent("install:progress", fmt.Sprintf("Installing %s...", name))
+
+		out, err := exec.Command("brew", "install", formula).CombinedOutput()
+		if err != nil {
+			a.emitError(fmt.Sprintf("Failed to install %s: %s", name, string(out)))
+			return
+		}
+
+		a.emitEvent("install:done", name)
+	}()
+}
+
+// CanInstallServices returns true if Homebrew is available (macOS only)
+func (a *App) CanInstallServices() bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	_, err := exec.LookPath("brew")
+	return err == nil
 }
 
 // ─── MySQL ───────────────────────────────────────────────────────

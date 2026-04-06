@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 
 	"github.com/soleilouisol/socAdmin/core/api"
 	"github.com/soleilouisol/socAdmin/core/auth"
@@ -56,6 +58,11 @@ func main() {
 	})
 
 	port := 8080
+	if envPort := os.Getenv("PORT"); envPort != "" {
+		if p, err := strconv.Atoi(envPort); err == nil && p > 0 {
+			port = p
+		}
+	}
 	fmt.Printf("socAdmin server running on http://localhost:%d\n", port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), handler))
 }

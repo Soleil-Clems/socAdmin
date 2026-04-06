@@ -13,13 +13,32 @@ import {
   StopService,
   OpenBrowser,
   GetSystemInfo,
+  InstallService,
+  CanInstallServices,
 } from "../wailsjs/go/main/App";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { main } from "../wailsjs/go/models";
 
 type Tab = "server" | "databases" | "settings";
+type Theme = "light" | "dark";
+
+function useTheme() {
+  const [theme, setThemeState] = useState<Theme>(() => {
+    return (localStorage.getItem("theme") as Theme) || "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  const toggle = () => setThemeState((t) => (t === "dark" ? "light" : "dark"));
+
+  return { theme, toggle };
+}
 
 function App() {
+  const { theme, toggle: toggleTheme } = useTheme();
   const [status, setStatus] = useState<main.ServerStatus | null>(null);
   const [config, setConfig] = useState<main.AppConfig | null>(null);
   const [services, setServices] = useState<main.ServiceStatus[]>([]);
@@ -99,28 +118,35 @@ function App() {
     <div className="flex h-full flex-col">
       {/* Title bar */}
       <header
-        className="drag-region flex shrink-0 items-center border-b border-border-subtle/50"
-        style={{
-          height: "var(--titlebar-h)",
-          paddingLeft: "var(--traffic-light-w)",
-          paddingRight: "20px",
-        }}
+        className="drag-region relative flex shrink-0 items-center justify-center border-b border-border-subtle/50"
+        style={{ height: "var(--titlebar-h)" }}
       >
-        <div className="flex flex-1 items-center gap-2 pl-3">
+        {/* Centered title */}
+        <div className="flex items-center gap-2">
           <div className="h-3.5 w-3.5 rounded-sm bg-brand" />
           <span className="text-[13px] font-semibold text-text-secondary tracking-[-0.01em]">
             socAdmin
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-block h-[7px] w-[7px] rounded-full transition-colors ${
-              running ? "bg-green" : "bg-text-muted/40"
-            }`}
-          />
-          <span className="text-[11px] text-text-muted">
-            {running ? "Running" : "Stopped"}
-          </span>
+        {/* Right side — theme toggle + status */}
+        <div className="absolute right-4 flex items-center gap-3">
+          <button
+            onClick={toggleTheme}
+            className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? <IconSun /> : <IconMoon />}
+          </button>
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-block h-1.5 w-1.5 rounded-full transition-colors ${
+                running ? "bg-green" : "bg-text-muted/40"
+              }`}
+            />
+            <span className="text-[11px] text-text-muted">
+              {running ? "Running" : "Stopped"}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -231,6 +257,26 @@ function ErrorBanner({
 }
 
 /* ── Icons ── */
+
+function IconSun() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2" /><path d="M12 20v2" />
+      <path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" />
+      <path d="M2 12h2" /><path d="M20 12h2" />
+      <path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" />
+    </svg>
+  );
+}
+
+function IconMoon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+    </svg>
+  );
+}
 
 function IconServer() {
   return (
@@ -457,11 +503,30 @@ function DatabasesTab({
   onRefresh: () => void;
 }) {
   const [loadingService, setLoadingService] = useState<string | null>(null);
+  const [installingService, setInstallingService] = useState<string | null>(null);
   const [serviceError, setServiceError] = useState("");
   const [editingPort, setEditingPort] = useState<string | null>(null);
   const [portInput, setPortInput] = useState("");
+  const [canInstall, setCanInstall] = useState(false);
+
+  useEffect(() => {
+    CanInstallServices().then(setCanInstall);
+  }, []);
+
+  // Listen for install events
+  useEffect(() => {
+    const off1 = EventsOn("install:done", () => {
+      setInstallingService(null);
+      onRefresh();
+    });
+    const off2 = EventsOn("app:error", () => {
+      setInstallingService(null);
+    });
+    return () => { off1(); off2(); };
+  }, [onRefresh]);
 
   const installed = services.filter((svc) => svc.installed);
+  const notInstalled = services.filter((svc) => !svc.installed);
 
   const handleToggle = async (svc: main.ServiceStatus) => {
     setServiceError("");
@@ -486,6 +551,30 @@ function DatabasesTab({
         onRefresh();
       }
     }, 1000);
+  };
+
+  const handleInstall = (name: string) => {
+    setServiceError("");
+    setInstallingService(name);
+    InstallService(name);
+    // Poll for install completion (service becomes detected)
+    const poll = setInterval(async () => {
+      const svcs = await GetAllServices();
+      const svc = svcs.find((s) => s.name === name);
+      if (svc && svc.installed) {
+        clearInterval(poll);
+        setInstallingService(null);
+        onRefresh();
+      }
+    }, 3000);
+    // Timeout after 5 minutes
+    setTimeout(() => {
+      clearInterval(poll);
+      if (installingService === name) {
+        setInstallingService(null);
+        onRefresh();
+      }
+    }, 300000);
   };
 
   const handlePortSave = async (name: string) => {
@@ -528,16 +617,8 @@ function DatabasesTab({
         />
       )}
 
-      {installed.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border-subtle bg-surface/20 px-6 py-12 text-center">
-          <p className="text-[13px] text-text-secondary">
-            No database engines detected
-          </p>
-          <p className="mt-1.5 text-[12px] text-text-muted">
-            Install MySQL, PostgreSQL, or MongoDB via Homebrew or MAMP
-          </p>
-        </div>
-      ) : (
+      {/* Installed services */}
+      {installed.length > 0 && (
         <div className="space-y-3">
           {installed.map((svc) => {
             const style = dbStyles[svc.name] || {
@@ -554,14 +635,12 @@ function DatabasesTab({
                 className="rounded-xl border border-border bg-surface/60 px-5 py-4"
               >
                 <div className="flex items-center gap-4">
-                  {/* Badge */}
                   <div
                     className={`flex h-10 w-10 items-center justify-center rounded-lg text-[11px] font-bold shrink-0 ${style.bg} ${style.text}`}
                   >
                     {style.letter}
                   </div>
 
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="text-[13px] font-semibold">{svc.name}</h3>
@@ -574,7 +653,6 @@ function DatabasesTab({
                     </p>
                   </div>
 
-                  {/* Port */}
                   <div className="shrink-0">
                     {isEditing ? (
                       <div className="flex items-center gap-1.5">
@@ -588,7 +666,7 @@ function DatabasesTab({
                             if (e.key === "Enter") handlePortSave(svc.name);
                             if (e.key === "Escape") setEditingPort(null);
                           }}
-                          className="w-[72px] rounded-md border border-border bg-bg px-2 py-1.5 text-[12px] text-text outline-none focus:border-brand"
+                          className="w-18 rounded-md border border-border bg-bg px-2 py-1.5 text-[12px] text-text outline-none focus:border-brand"
                           autoFocus
                         />
                         <button
@@ -626,11 +704,10 @@ function DatabasesTab({
                     )}
                   </div>
 
-                  {/* Toggle */}
                   <button
                     onClick={() => handleToggle(svc)}
                     disabled={isLoading}
-                    className={`shrink-0 rounded-lg px-4 py-2 text-[12px] font-medium min-w-[60px] flex items-center justify-center transition-colors ${
+                    className={`shrink-0 rounded-lg px-4 py-2 text-[12px] font-medium min-w-15 flex items-center justify-center transition-colors ${
                       svc.running
                         ? "bg-red-subtle text-red hover:bg-red-subtle/70"
                         : "bg-green-subtle text-green hover:bg-green-subtle/70"
@@ -642,6 +719,78 @@ function DatabasesTab({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Not installed services */}
+      {notInstalled.length > 0 && canInstall && (
+        <div>
+          {installed.length > 0 && (
+            <p className="text-[11px] font-medium text-text-muted uppercase tracking-wider mb-3">
+              Available to install
+            </p>
+          )}
+          <div className="space-y-2">
+            {notInstalled.map((svc) => {
+              const style = dbStyles[svc.name] || {
+                bg: "bg-surface-hover",
+                text: "text-text-muted",
+                letter: "?",
+              };
+              const isInstalling = installingService === svc.name;
+
+              return (
+                <div
+                  key={svc.name}
+                  className="rounded-xl border border-dashed border-border-subtle bg-surface/20 px-5 py-4"
+                >
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-lg text-[11px] font-bold shrink-0 opacity-40 ${style.bg} ${style.text}`}
+                    >
+                      {style.letter}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-[13px] font-semibold text-text-secondary">
+                        {svc.name}
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-text-muted">
+                        Not installed
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => handleInstall(svc.name)}
+                      disabled={isInstalling}
+                      className="shrink-0 rounded-lg border border-border px-4 py-2 text-[12px] font-medium text-text-secondary hover:bg-surface-hover hover:text-text transition-colors disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
+                    >
+                      {isInstalling ? (
+                        <>
+                          <Spinner />
+                          Installing...
+                        </>
+                      ) : (
+                        "Install"
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Nothing at all */}
+      {installed.length === 0 && (!canInstall || notInstalled.length === 0) && (
+        <div className="rounded-xl border border-dashed border-border-subtle bg-surface/20 px-6 py-12 text-center">
+          <p className="text-[13px] text-text-secondary">
+            No database engines detected
+          </p>
+          <p className="mt-1.5 text-[12px] text-text-muted">
+            Install MySQL, PostgreSQL, or MongoDB via Homebrew or MAMP
+          </p>
         </div>
       )}
     </div>

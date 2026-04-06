@@ -31,6 +31,33 @@
   --window-radius: 10px;
 }
 
+/* Light theme override */
+[data-theme="light"] {
+  --color-bg: oklch(0.97 0.005 260);
+  --color-surface: oklch(1 0 0);
+  --color-surface-hover: oklch(0.95 0.005 260);
+  --color-surface-active: oklch(0.92 0.008 260);
+  --color-border: oklch(0.87 0.008 260);
+  --color-border-subtle: oklch(0.92 0.005 260);
+
+  --color-text: oklch(0.2 0.015 260);
+  --color-text-secondary: oklch(0.45 0.015 260);
+  --color-text-muted: oklch(0.6 0.01 260);
+
+  --color-brand: oklch(0.52 0.2 12);
+  --color-brand-hover: oklch(0.47 0.21 12);
+  --color-brand-subtle: oklch(0.93 0.03 12);
+
+  --color-green: oklch(0.52 0.17 155);
+  --color-green-subtle: oklch(0.93 0.035 155);
+  --color-red: oklch(0.55 0.2 25);
+  --color-red-subtle: oklch(0.95 0.03 25);
+  --color-amber: oklch(0.6 0.15 75);
+  --color-amber-subtle: oklch(0.94 0.04 75);
+  --color-blue: oklch(0.55 0.15 245);
+  --color-blue-subtle: oklch(0.93 0.035 245);
+}
+
 /* box-sizing only — margin/padding handled by Tailwind preflight */
 * {
   box-sizing: border-box;
