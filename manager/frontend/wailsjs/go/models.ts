@@ -4,6 +4,9 @@ export namespace main {
 	    port: number;
 	    autoStart: boolean;
 	    openOnStart: boolean;
+	    mysqlPort: number;
+	    pgPort: number;
+	    mongoPort: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppConfig(source);
@@ -14,24 +17,9 @@ export namespace main {
 	        this.port = source["port"];
 	        this.autoStart = source["autoStart"];
 	        this.openOnStart = source["openOnStart"];
-	    }
-	}
-	export class SGBDInfo {
-	    name: string;
-	    installed: boolean;
-	    version: string;
-	    path: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new SGBDInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.installed = source["installed"];
-	        this.version = source["version"];
-	        this.path = source["path"];
+	        this.mysqlPort = source["mysqlPort"];
+	        this.pgPort = source["pgPort"];
+	        this.mongoPort = source["mongoPort"];
 	    }
 	}
 	export class ServerStatus {
@@ -52,6 +40,30 @@ export namespace main {
 	        this.pid = source["pid"];
 	        this.uptime = source["uptime"];
 	        this.url = source["url"];
+	    }
+	}
+	export class ServiceStatus {
+	    name: string;
+	    running: boolean;
+	    installed: boolean;
+	    version: string;
+	    port: number;
+	    pid: number;
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ServiceStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.running = source["running"];
+	        this.installed = source["installed"];
+	        this.version = source["version"];
+	        this.port = source["port"];
+	        this.pid = source["pid"];
+	        this.path = source["path"];
 	    }
 	}
 

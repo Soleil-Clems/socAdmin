@@ -13,7 +13,7 @@ all: build manager
 	@echo ""
 	@echo "Launching socAdmin Manager..."
 	@open "manager/build/bin/socAdmin Manager.app" 2>/dev/null || manager/build/bin/socadmin-manager 2>/dev/null || echo "Run: open \"manager/build/bin/socAdmin Manager.app\""
-	open \"manager/build/bin/socAdmin Manager.app\"
+
 # --- Start : lance tout en background ---
 start:
 	@if lsof -ti :$(BACK_PORT) >/dev/null 2>&1; then echo "Backend already running on :$(BACK_PORT)"; exit 1; fi
