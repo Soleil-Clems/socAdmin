@@ -18,7 +18,19 @@ type Connector interface {
 	ExecuteQuery(database, query string) (*QueryResult, error)
 	DropTable(database, table string) error
 	TruncateTable(database, table string) error
+	AlterColumn(database, table string, op AlterColumnOp) error
 	Close() error
+}
+
+// AlterColumnOp describes a single column-level ALTER TABLE operation.
+// Op is one of: "add", "drop", "rename", "modify".
+type AlterColumnOp struct {
+	Op           string `json:"op"`
+	Name         string `json:"name"`                    // current column name (all ops)
+	NewName      string `json:"new_name,omitempty"`      // for rename
+	Type         string `json:"type,omitempty"`          // for add/modify
+	Nullable     bool   `json:"nullable,omitempty"`      // for add/modify
+	DefaultValue string `json:"default_value,omitempty"` // for add/modify
 }
 
 type Column struct {

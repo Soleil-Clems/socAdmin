@@ -26,25 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const MYSQL_TYPES = [
-  "INT", "BIGINT", "SMALLINT", "TINYINT",
-  "VARCHAR(255)", "VARCHAR(100)", "VARCHAR(50)",
-  "TEXT", "LONGTEXT", "MEDIUMTEXT",
-  "BOOLEAN",
-  "DATE", "DATETIME", "TIMESTAMP",
-  "FLOAT", "DOUBLE", "DECIMAL(10,2)",
-  "JSON", "BLOB",
-];
-
-const PG_TYPES = [
-  "INTEGER", "BIGINT", "SMALLINT",
-  "VARCHAR(255)", "VARCHAR(100)", "VARCHAR(50)",
-  "TEXT",
-  "BOOLEAN",
-  "DATE", "TIMESTAMP", "TIMESTAMPTZ",
-  "REAL", "DOUBLE PRECISION", "NUMERIC(10,2)",
-  "JSON", "JSONB", "BYTEA", "UUID",
-];
+import { typeOptionsFor } from "@/lib/column-types";
 
 const emptyColumn = (): TableColumnDef => ({
   name: "",
@@ -69,7 +51,7 @@ export default function DatabaseView() {
   const [tableName, setTableName] = useState("");
   const [columns, setColumns] = useState<TableColumnDef[]>([emptyColumn()]);
 
-  const typeOptions = dbType === "postgresql" ? PG_TYPES : MYSQL_TYPES;
+  const typeOptions = typeOptionsFor(dbType);
 
   const toggleSelect = (table: string) => {
     setSelected((prev) => {

@@ -63,6 +63,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("POST /api/databases", auth.RequireAdmin(dbController.CreateDatabase))
 	protected.HandleFunc("DELETE /api/databases/{db}", auth.RequireAdmin(dbController.DropDatabase))
 	protected.HandleFunc("POST /api/databases/{db}/tables", auth.RequireAdmin(dbController.CreateTable))
+	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/columns/alter", auth.RequireAdmin(dbController.AlterColumn))
 	protected.HandleFunc("POST /api/databases/{db}/tables/{table}/rows", auth.RequireAdmin(dbController.InsertRow))
 	protected.HandleFunc("PUT /api/databases/{db}/tables/{table}/rows", auth.RequireAdmin(dbController.UpdateRow))
 	protected.HandleFunc("DELETE /api/databases/{db}/tables/{table}/rows", auth.RequireAdmin(dbController.DeleteRow))

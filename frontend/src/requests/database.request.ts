@@ -9,6 +9,15 @@ export type TableColumnDef = {
   default_value: string;
 };
 
+export type AlterColumnOp = {
+  op: "add" | "drop" | "rename" | "modify";
+  name: string;
+  new_name?: string;
+  type?: string;
+  nullable?: boolean;
+  default_value?: string;
+};
+
 export const databaseRequest = {
   list: () => customfetch.get("/databases"),
 
@@ -21,6 +30,12 @@ export const databaseRequest = {
 
   createTable: (db: string, name: string, columns: TableColumnDef[]) =>
     customfetch.post(`/databases/${db}/tables`, { name, columns }),
+
+  alterColumn: (db: string, table: string, op: AlterColumnOp) =>
+    customfetch.post(
+      `/databases/${db}/tables/${table}/columns/alter`,
+      op as unknown as Record<string, unknown>,
+    ),
 
   describeTable: (db: string, table: string) =>
     customfetch.get(`/databases/${db}/tables/${table}/columns`),

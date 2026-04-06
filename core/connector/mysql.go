@@ -183,6 +183,59 @@ func (c *MySQLConnector) DropTable(database, table string) error {
 	return err
 }
 
+func (c *MySQLConnector) AlterColumn(database, table string, op AlterColumnOp) error {
+	qTable := quoteIdentifier(database) + "." + quoteIdentifier(table)
+	switch op.Op {
+	case "add":
+		if op.Name == "" || op.Type == "" {
+			return fmt.Errorf("name and type are required")
+		}
+		if err := validateSQLType(op.Type); err != nil {
+			return err
+		}
+		def := quoteIdentifier(op.Name) + " " + op.Type
+		if !op.Nullable {
+			def += " NOT NULL"
+		}
+		if op.DefaultValue != "" {
+			def += " DEFAULT " + sanitizeDefault(op.DefaultValue)
+		}
+		_, err := c.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", qTable, def))
+		return err
+	case "drop":
+		if op.Name == "" {
+			return fmt.Errorf("name is required")
+		}
+		_, err := c.db.Exec(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", qTable, quoteIdentifier(op.Name)))
+		return err
+	case "rename":
+		if op.Name == "" || op.NewName == "" {
+			return fmt.Errorf("name and new_name are required")
+		}
+		_, err := c.db.Exec(fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s",
+			qTable, quoteIdentifier(op.Name), quoteIdentifier(op.NewName)))
+		return err
+	case "modify":
+		if op.Name == "" || op.Type == "" {
+			return fmt.Errorf("name and type are required")
+		}
+		if err := validateSQLType(op.Type); err != nil {
+			return err
+		}
+		def := quoteIdentifier(op.Name) + " " + op.Type
+		if !op.Nullable {
+			def += " NOT NULL"
+		}
+		if op.DefaultValue != "" {
+			def += " DEFAULT " + sanitizeDefault(op.DefaultValue)
+		}
+		_, err := c.db.Exec(fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s", qTable, def))
+		return err
+	default:
+		return fmt.Errorf("unknown operation: %s", op.Op)
+	}
+}
+
 func (c *MySQLConnector) TruncateTable(database, table string) error {
 	query := fmt.Sprintf("TRUNCATE TABLE %s.%s", quoteIdentifier(database), quoteIdentifier(table))
 	_, err := c.db.Exec(query)
@@ -243,5 +296,6 @@ func (c *MySQLConnector) Close() error {
 }
 
 func quoteIdentifier(name string) string {
-	return "`" + name + "`"
+	escaped := strings.ReplaceAll(name, "`", "``")
+	return "`" + escaped + "`"
 }

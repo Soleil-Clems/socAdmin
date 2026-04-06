@@ -300,6 +300,10 @@ func (c *MongoConnector) TruncateTable(database, collection string) error {
 	return err
 }
 
+func (c *MongoConnector) AlterColumn(database, collection string, op AlterColumnOp) error {
+	return fmt.Errorf("ALTER COLUMN is not supported for MongoDB (schemaless)")
+}
+
 func (c *MongoConnector) Close() error {
 	if c.client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

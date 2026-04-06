@@ -165,6 +165,13 @@ func (s *DatabaseService) DropTable(database, table string) error {
 	return s.conn.DropTable(database, table)
 }
 
+func (s *DatabaseService) AlterColumn(database, table string, op connector.AlterColumnOp) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	return s.conn.AlterColumn(database, table, op)
+}
+
 func (s *DatabaseService) TruncateTable(database, table string) error {
 	if s.conn == nil {
 		return fmt.Errorf("not connected")

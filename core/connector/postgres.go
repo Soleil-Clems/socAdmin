@@ -63,12 +63,12 @@ func (c *PostgresConnector) ListDatabases() ([]string, error) {
 }
 
 func (c *PostgresConnector) CreateDatabase(name string) error {
-	_, err := c.db.Exec(fmt.Sprintf(`CREATE DATABASE "%s"`, name))
+	_, err := c.db.Exec("CREATE DATABASE " + pgQuoteIdent(name))
 	return err
 }
 
 func (c *PostgresConnector) DropDatabase(name string) error {
-	_, err := c.db.Exec(fmt.Sprintf(`DROP DATABASE "%s"`, name))
+	_, err := c.db.Exec("DROP DATABASE " + pgQuoteIdent(name))
 	return err
 }
 
@@ -85,7 +85,7 @@ func (c *PostgresConnector) CreateTable(database string, table string, columns [
 		if col.AutoIncrement {
 			colType = "SERIAL"
 		}
-		def := fmt.Sprintf(`"%s" %s`, col.Name, colType)
+		def := pgQuoteIdent(col.Name) + " " + colType
 		if !col.Nullable && !col.AutoIncrement {
 			def += " NOT NULL"
 		}
@@ -97,7 +97,7 @@ func (c *PostgresConnector) CreateTable(database string, table string, columns [
 		}
 		colDefs = append(colDefs, def)
 	}
-	query := fmt.Sprintf(`CREATE TABLE "%s" (%s)`, table, strings.Join(colDefs, ", "))
+	query := fmt.Sprintf("CREATE TABLE %s (%s)", pgQuoteIdent(table), strings.Join(colDefs, ", "))
 	_, err = db.Exec(query)
 	return err
 }
@@ -179,7 +179,7 @@ func (c *PostgresConnector) GetRows(database, table string, limit, offset int) (
 	}
 	defer db.Close()
 
-	query := fmt.Sprintf(`SELECT * FROM "%s" LIMIT %d OFFSET %d`, table, limit, offset)
+	query := fmt.Sprintf("SELECT * FROM %s LIMIT %d OFFSET %d", pgQuoteIdent(table), limit, offset)
 	return scanQuery(db, query)
 }
 
@@ -192,7 +192,7 @@ func (c *PostgresConnector) InsertRow(database, table string, data map[string]in
 
 	cols, vals := pgBuildColsVals(data)
 	placeholders := pgPlaceholders(len(vals))
-	query := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s)`, table, cols, placeholders)
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", pgQuoteIdent(table), cols, placeholders)
 	_, err = db.Exec(query, vals...)
 	return err
 }
@@ -208,17 +208,17 @@ func (c *PostgresConnector) UpdateRow(database, table string, primaryKey map[str
 	var vals []interface{}
 	i := 1
 	for k, v := range data {
-		setClauses = append(setClauses, fmt.Sprintf(`"%s" = $%d`, k, i))
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", pgQuoteIdent(k), i))
 		vals = append(vals, v)
 		i++
 	}
 	var whereClauses []string
 	for k, v := range primaryKey {
-		whereClauses = append(whereClauses, fmt.Sprintf(`"%s" = $%d`, k, i))
+		whereClauses = append(whereClauses, fmt.Sprintf("%s = $%d", pgQuoteIdent(k), i))
 		vals = append(vals, v)
 		i++
 	}
-	query := fmt.Sprintf(`UPDATE "%s" SET %s WHERE %s`, table,
+	query := fmt.Sprintf("UPDATE %s SET %s WHERE %s", pgQuoteIdent(table),
 		strings.Join(setClauses, ", "), strings.Join(whereClauses, " AND "))
 	_, err = db.Exec(query, vals...)
 	return err
@@ -235,11 +235,11 @@ func (c *PostgresConnector) DeleteRow(database, table string, primaryKey map[str
 	var vals []interface{}
 	i := 1
 	for k, v := range primaryKey {
-		whereClauses = append(whereClauses, fmt.Sprintf(`"%s" = $%d`, k, i))
+		whereClauses = append(whereClauses, fmt.Sprintf("%s = $%d", pgQuoteIdent(k), i))
 		vals = append(vals, v)
 		i++
 	}
-	query := fmt.Sprintf(`DELETE FROM "%s" WHERE %s`, table, strings.Join(whereClauses, " AND "))
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s", pgQuoteIdent(table), strings.Join(whereClauses, " AND "))
 	_, err = db.Exec(query, vals...)
 	return err
 }
@@ -262,8 +262,85 @@ func (c *PostgresConnector) DropTable(database, table string) error {
 		return err
 	}
 	defer db.Close()
-	_, err = db.Exec(fmt.Sprintf(`DROP TABLE "%s"`, table))
+	_, err = db.Exec("DROP TABLE " + pgQuoteIdent(table))
 	return err
+}
+
+func (c *PostgresConnector) AlterColumn(database, table string, op AlterColumnOp) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	qTable := pgQuoteIdent(table)
+	switch op.Op {
+	case "add":
+		if op.Name == "" || op.Type == "" {
+			return fmt.Errorf("name and type are required")
+		}
+		if err := validateSQLType(op.Type); err != nil {
+			return err
+		}
+		def := pgQuoteIdent(op.Name) + " " + op.Type
+		if !op.Nullable {
+			def += " NOT NULL"
+		}
+		if op.DefaultValue != "" {
+			def += " DEFAULT " + sanitizeDefault(op.DefaultValue)
+		}
+		_, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", qTable, def))
+		return err
+	case "drop":
+		if op.Name == "" {
+			return fmt.Errorf("name is required")
+		}
+		_, err := db.Exec(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", qTable, pgQuoteIdent(op.Name)))
+		return err
+	case "rename":
+		if op.Name == "" || op.NewName == "" {
+			return fmt.Errorf("name and new_name are required")
+		}
+		_, err := db.Exec(fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s",
+			qTable, pgQuoteIdent(op.Name), pgQuoteIdent(op.NewName)))
+		return err
+	case "modify":
+		if op.Name == "" {
+			return fmt.Errorf("name is required")
+		}
+		qCol := pgQuoteIdent(op.Name)
+		if op.Type != "" {
+			if err := validateSQLType(op.Type); err != nil {
+				return err
+			}
+			if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s::%s",
+				qTable, qCol, op.Type, qCol, op.Type)); err != nil {
+				return err
+			}
+		}
+		if op.Nullable {
+			if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL", qTable, qCol)); err != nil {
+				return err
+			}
+		} else {
+			if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET NOT NULL", qTable, qCol)); err != nil {
+				return err
+			}
+		}
+		if op.DefaultValue != "" {
+			if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s",
+				qTable, qCol, sanitizeDefault(op.DefaultValue))); err != nil {
+				return err
+			}
+		} else {
+			if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP DEFAULT", qTable, qCol)); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown operation: %s", op.Op)
+	}
 }
 
 func (c *PostgresConnector) TruncateTable(database, table string) error {
@@ -272,7 +349,7 @@ func (c *PostgresConnector) TruncateTable(database, table string) error {
 		return err
 	}
 	defer db.Close()
-	_, err = db.Exec(fmt.Sprintf(`TRUNCATE TABLE "%s"`, table))
+	_, err = db.Exec("TRUNCATE TABLE " + pgQuoteIdent(table))
 	return err
 }
 
@@ -280,7 +357,7 @@ func pgBuildColsVals(data map[string]interface{}) (string, []interface{}) {
 	var cols []string
 	var vals []interface{}
 	for k, v := range data {
-		cols = append(cols, fmt.Sprintf(`"%s"`, k))
+		cols = append(cols, pgQuoteIdent(k))
 		vals = append(vals, v)
 	}
 	return strings.Join(cols, ", "), vals
@@ -292,6 +369,11 @@ func pgPlaceholders(n int) string {
 		p = append(p, fmt.Sprintf("$%d", i))
 	}
 	return strings.Join(p, ", ")
+}
+
+func pgQuoteIdent(name string) string {
+	escaped := strings.ReplaceAll(name, `"`, `""`)
+	return `"` + escaped + `"`
 }
 
 func (c *PostgresConnector) Close() error {

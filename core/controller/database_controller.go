@@ -118,6 +118,9 @@ func (c *DatabaseController) CreateDatabase(w http.ResponseWriter, r *http.Reque
 		jsonError(w, http.StatusBadRequest, "name is required")
 		return
 	}
+	if !validatePathIdent(w, req.Name, "database name") {
+		return
+	}
 
 	if err := c.dbService.CreateDatabase(req.Name); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
@@ -130,6 +133,9 @@ func (c *DatabaseController) CreateDatabase(w http.ResponseWriter, r *http.Reque
 
 func (c *DatabaseController) DropDatabase(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
+	if !validatePathIdent(w, db, "database") {
+		return
+	}
 
 	if err := c.dbService.DropDatabase(db); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
@@ -258,6 +264,43 @@ func (c *DatabaseController) DropTable(w http.ResponseWriter, r *http.Request) {
 
 	logger.Admin(requestUserID(r), requestIP(r), "drop_table", fmt.Sprintf("%s.%s", db, table))
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "dropped"})
+}
+
+func (c *DatabaseController) AlterColumn(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+	if !validatePathIdent(w, db, "database") || !validatePathIdent(w, table, "table") {
+		return
+	}
+
+	var op connector.AlterColumnOp
+	if err := json.NewDecoder(r.Body).Decode(&op); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if op.Op != "add" && op.Op != "drop" && op.Op != "rename" && op.Op != "modify" {
+		jsonError(w, http.StatusBadRequest, "op must be one of: add, drop, rename, modify")
+		return
+	}
+	if err := connector.ValidateIdentifier(op.Name); op.Name != "" && err != nil {
+		jsonError(w, http.StatusBadRequest, "column name: "+err.Error())
+		return
+	}
+	if op.NewName != "" {
+		if err := connector.ValidateIdentifier(op.NewName); err != nil {
+			jsonError(w, http.StatusBadRequest, "new column name: "+err.Error())
+			return
+		}
+	}
+
+	if err := c.dbService.AlterColumn(db, table, op); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "alter_column_"+op.Op, fmt.Sprintf("%s.%s.%s", db, table, op.Name))
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (c *DatabaseController) TruncateTable(w http.ResponseWriter, r *http.Request) {
