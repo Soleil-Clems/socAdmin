@@ -8,5 +8,6 @@ export function useUsers() {
     queryKey: ["users"],
     queryFn: () => databaseRequest.listUsers(),
     enabled: isConnected,
+    retry: 1,
   });
 }

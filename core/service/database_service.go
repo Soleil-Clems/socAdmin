@@ -200,7 +200,7 @@ func (s *DatabaseService) ListUsers() (*connector.QueryResult, error) {
 	case "postgresql":
 		return s.conn.ExecuteQuery("", "SELECT rolname AS \"User\", CASE WHEN rolcanlogin THEN 'Yes' ELSE 'No' END AS \"Can Login\", CASE WHEN rolsuper THEN 'Yes' ELSE 'No' END AS \"Superuser\", CASE WHEN rolcreatedb THEN 'Yes' ELSE 'No' END AS \"Create DB\", CASE WHEN rolcreaterole THEN 'Yes' ELSE 'No' END AS \"Create Role\" FROM pg_roles ORDER BY rolname")
 	case "mongodb":
-		return s.conn.ExecuteQuery("admin", `{"listUsers": 1}`)
+		return s.conn.ExecuteQuery("admin", `{"usersInfo": 1}`)
 	default:
 		return nil, fmt.Errorf("unsupported for this database type")
 	}
@@ -217,7 +217,7 @@ func (s *DatabaseService) ServerStatus() (*connector.QueryResult, error) {
 	case "postgresql":
 		return s.conn.ExecuteQuery("", "SELECT name AS \"Variable_name\", setting AS \"Value\" FROM pg_settings WHERE name IN ('max_connections','shared_buffers','work_mem','effective_cache_size','maintenance_work_mem') UNION ALL SELECT 'server_version', version() UNION ALL SELECT 'active_connections', count(*)::text FROM pg_stat_activity WHERE state = 'active'")
 	case "mongodb":
-		return nil, fmt.Errorf("status not supported for MongoDB")
+		return s.conn.ExecuteQuery("admin", `{"serverStatus": 1}`)
 	default:
 		return nil, fmt.Errorf("unsupported for this database type")
 	}

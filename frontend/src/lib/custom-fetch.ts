@@ -88,10 +88,19 @@ class CustomFetch {
     endpoint: string,
     options: RequestOptions & RequestInit = {}
   ): Promise<T> {
-    let res = await fetch(
-      `${this.baseURL}${endpoint}`,
-      this.buildFetchOptions(options)
-    );
+    let res: Response;
+    try {
+      res = await fetch(
+        `${this.baseURL}${endpoint}`,
+        this.buildFetchOptions(options)
+      );
+    } catch {
+      // Network error (connection refused, DB stopped, server down)
+      if (!endpoint.startsWith("/auth/")) {
+        this.handleConnectionLost();
+      }
+      throw new Error("Connection lost — server unreachable");
+    }
 
     // On 401, try refresh then retry once
     if (res.status === 401 && !endpoint.startsWith("/auth/")) {
@@ -122,10 +131,9 @@ class CustomFetch {
     if (!res.ok) {
       const errorMsg = (data.error as string) || "An error occurred";
 
-      // If backend says "not connected", clear connection state so user gets sent back to connect page
-      if (res.status === 500 && errorMsg === "not connected") {
-        sessionStorage.removeItem("socadmin_conn");
-        window.location.reload();
+      // If backend says "not connected" or connection failed, disconnect the user
+      if (errorMsg === "not connected" || errorMsg.includes("connection refused") || errorMsg.includes("failed to ping")) {
+        this.handleConnectionLost();
         throw new Error("Database connection lost");
       }
 
@@ -133,6 +141,11 @@ class CustomFetch {
     }
 
     return data as T;
+  }
+
+  private handleConnectionLost() {
+    sessionStorage.removeItem("socadmin_conn");
+    window.location.reload();
   }
 
   get<T = Record<string, unknown>>(endpoint: string, options: RequestOptions = {}) {

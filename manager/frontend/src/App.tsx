@@ -133,7 +133,7 @@ function App() {
               label="Databases"
               active={tab === "databases"}
               onClick={() => setTab("databases")}
-              badge={services.filter((s) => s.running).length}
+              badge={services.filter((s) => s.installed && s.running).length}
             />
             <SidebarItem
               icon={<IconSettings />}
@@ -481,7 +481,13 @@ function DatabasesTab({
       )}
 
       <div className="space-y-3">
-        {services.map((svc) => {
+        {services.filter((svc) => svc.installed).length === 0 && (
+          <div className="rounded-xl border border-border-subtle bg-surface/60 p-6 text-center">
+            <p className="text-sm text-text-secondary">No database engines detected on this machine.</p>
+            <p className="mt-1 text-xs text-text-muted">Install MySQL, PostgreSQL, or MongoDB via Homebrew or MAMP.</p>
+          </div>
+        )}
+        {services.filter((svc) => svc.installed).map((svc) => {
           const colors = dbColors[svc.name] || {
             bg: "bg-surface-hover",
             text: "text-text-muted",
@@ -512,23 +518,14 @@ function DatabasesTab({
                         Running
                       </span>
                     )}
-                    {!svc.installed && (
-                      <span className="rounded-full bg-surface-hover px-2 py-0.5 text-[10px] font-medium text-text-muted">
-                        Not installed
-                      </span>
-                    )}
                   </div>
                   {svc.version ? (
                     <p className="text-xs text-text-muted truncate mt-0.5">
                       {svc.version}
                     </p>
-                  ) : svc.installed ? (
-                    <p className="text-xs text-text-muted mt-0.5">
-                      Installed at {svc.path}
-                    </p>
                   ) : (
                     <p className="text-xs text-text-muted mt-0.5">
-                      Install via Homebrew or from the official website
+                      {svc.path}
                     </p>
                   )}
                 </div>
@@ -582,23 +579,21 @@ function DatabasesTab({
                 </div>
 
                 {/* Start/Stop */}
-                {svc.installed && (
-                  <button
-                    onClick={() => handleToggle(svc)}
-                    disabled={isLoading}
-                    className={`shrink-0 rounded-lg px-4 py-2 text-xs font-medium transition-all ${
-                      svc.running
-                        ? "bg-red-subtle text-red hover:bg-red/20"
-                        : "bg-green-subtle text-green hover:bg-green/20"
-                    } disabled:opacity-50`}
-                  >
-                    {isLoading
-                      ? "..."
-                      : svc.running
-                      ? "Stop"
-                      : "Start"}
-                  </button>
-                )}
+                <button
+                  onClick={() => handleToggle(svc)}
+                  disabled={isLoading}
+                  className={`shrink-0 rounded-lg px-4 py-2 text-xs font-medium transition-all ${
+                    svc.running
+                      ? "bg-red-subtle text-red hover:bg-red/20"
+                      : "bg-green-subtle text-green hover:bg-green/20"
+                  } disabled:opacity-50`}
+                >
+                  {isLoading
+                    ? "..."
+                    : svc.running
+                    ? "Stop"
+                    : "Start"}
+                </button>
               </div>
 
               {/* PID info when running */}
