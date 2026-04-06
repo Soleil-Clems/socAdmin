@@ -84,10 +84,10 @@ class CustomFetch {
     };
   }
 
-  private async request(
+  private async request<T = Record<string, unknown>>(
     endpoint: string,
     options: RequestOptions & RequestInit = {}
-  ) {
+  ): Promise<T> {
     let res = await fetch(
       `${this.baseURL}${endpoint}`,
       this.buildFetchOptions(options)
@@ -132,31 +132,31 @@ class CustomFetch {
       throw new Error(errorMsg);
     }
 
-    return data;
+    return data as T;
   }
 
-  get(endpoint: string, options: RequestOptions = {}) {
-    return this.request(endpoint, { method: "GET", ...options });
+  get<T = Record<string, unknown>>(endpoint: string, options: RequestOptions = {}) {
+    return this.request<T>(endpoint, { method: "GET", ...options });
   }
 
-  post(endpoint: string, body?: BodyData, options: RequestOptions = {}) {
-    return this.request(endpoint, {
+  post<T = Record<string, unknown>>(endpoint: string, body?: BodyData, options: RequestOptions = {}) {
+    return this.request<T>(endpoint, {
       method: "POST",
       body: JSON.stringify(body),
       ...options,
     });
   }
 
-  put(endpoint: string, body?: BodyData, options: RequestOptions = {}) {
-    return this.request(endpoint, {
+  put<T = Record<string, unknown>>(endpoint: string, body?: BodyData, options: RequestOptions = {}) {
+    return this.request<T>(endpoint, {
       method: "PUT",
       body: JSON.stringify(body),
       ...options,
     });
   }
 
-  delete(endpoint: string, body?: BodyData, options: RequestOptions = {}) {
-    return this.request(endpoint, {
+  delete<T = Record<string, unknown>>(endpoint: string, body?: BodyData, options: RequestOptions = {}) {
+    return this.request<T>(endpoint, {
       method: "DELETE",
       body: body ? JSON.stringify(body) : undefined,
       ...options,

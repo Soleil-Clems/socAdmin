@@ -1,10 +1,12 @@
 import customfetch from "@/lib/custom-fetch";
 import type { ConnectFormData } from "@/schemas/connect.schema";
 
+type DbType = "mysql" | "postgresql" | "mongodb";
+
 export type SavedConnection = {
   id: number;
   name: string;
-  type: string;
+  type: DbType;
   host: string;
   port: number;
   user: string;

@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: oklch(0.11 0.015 260);
+  --color-surface: oklch(0.145 0.018 260);
+  --color-surface-hover: oklch(0.175 0.02 260);
+  --color-surface-active: oklch(0.20 0.022 260);
+  --color-border: oklch(0.22 0.02 260);
+  --color-border-subtle: oklch(0.18 0.015 260);
+
+  --color-text: oklch(0.93 0.008 260);
+  --color-text-secondary: oklch(0.62 0.015 260);
+  --color-text-muted: oklch(0.45 0.012 260);
+
+  --color-brand: oklch(0.555 0.195 12);
+  --color-brand-hover: oklch(0.50 0.20 12);
+  --color-brand-subtle: oklch(0.20 0.06 12);
+
+  --color-green: oklch(0.72 0.19 155);
+  --color-green-subtle: oklch(0.20 0.06 155);
+  --color-red: oklch(0.63 0.21 25);
+  --color-red-subtle: oklch(0.20 0.06 25);
+  --color-amber: oklch(0.75 0.16 75);
+  --color-amber-subtle: oklch(0.22 0.06 75);
+  --color-blue: oklch(0.70 0.15 245);
+  --color-blue-subtle: oklch(0.20 0.06 245);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* macOS title bar drag region */
+.drag-region {
+  --wails-draggable: drag;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}

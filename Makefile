@@ -1,8 +1,19 @@
 # socAdmin — Makefile
 
+export PATH := $(shell go env GOPATH)/bin:$(PATH)
+
 BACK_PORT  = 8080
 FRONT_PORT = 5173
 
+# --- All : build tout + lance le Manager ---
+all: build manager
+	@echo ""
+	@echo "✓ socAdmin built    → bin/socadmin"
+	@echo "✓ Manager built     → manager/build/bin/"
+	@echo ""
+	@echo "Launching socAdmin Manager..."
+	@open "manager/build/bin/socAdmin Manager.app" 2>/dev/null || manager/build/bin/socadmin-manager 2>/dev/null || echo "Run: open \"manager/build/bin/socAdmin Manager.app\""
+	open \"manager/build/bin/socAdmin Manager.app\"
 # --- Start : lance tout en background ---
 start:
 	@if lsof -ti :$(BACK_PORT) >/dev/null 2>&1; then echo "Backend already running on :$(BACK_PORT)"; exit 1; fi
@@ -25,9 +36,11 @@ reload: stop
 	@sleep 1
 	@$(MAKE) start
 
-# --- Build ---
+# --- Build : compile socAdmin (backend + frontend embed) ---
 build:
+	@echo "Building frontend..."
 	cd frontend && npm run build
+	@echo "Building backend..."
 	go build -o bin/socadmin main.go
 	@echo "Build done → bin/socadmin"
 
@@ -35,16 +48,29 @@ build:
 install:
 	go mod download
 	cd frontend && npm install
+	cd manager/frontend && npm install
 
 # --- Check / Lint ---
 check:
 	go vet ./...
-	cd frontend && npx tsc --noEmit
+	cd frontend && npx tsc -b
+	cd manager && go vet ./...
+
+# --- Manager : build l'app desktop Wails ---
+manager:
+	@echo "Building socAdmin Manager..."
+	cd manager && wails build
+	@echo "Manager built → manager/build/bin/"
+
+manager-dev:
+	@echo "Starting socAdmin Manager (dev mode)..."
+	cd manager && wails dev
 
 # --- Clean ---
 clean:
 	rm -rf bin/
 	rm -rf frontend/dist/
+	rm -rf manager/build/bin/
 
 # --- Status ---
 status:
@@ -59,4 +85,4 @@ push:
 	git commit -m "$(m)"
 	git push
 
-.PHONY: start stop reload build install check clean status push
+.PHONY: all start stop reload build install check clean status push manager manager-dev

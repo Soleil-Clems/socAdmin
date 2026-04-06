@@ -294,7 +294,7 @@ export default function StructureView() {
                 <label className="text-xs font-medium">Type</label>
                 <Select
                   value={edit.type}
-                  onValueChange={(v) => setEdit({ ...edit, type: v })}
+                  onValueChange={(v) => v && setEdit({ ...edit, type: v })}
                 >
                   <SelectTrigger className="h-9">
                     <SelectValue placeholder="Select type..." />

@@ -64,8 +64,8 @@ export default function DatabaseView() {
 
   const toggleAll = () => {
     if (!tables) return;
-    if (selected.size === tables.length) {
-      setSelected(new Set());
+    if (selected.size === tables!.length) {
+      setSelected(new Set(tables));
     } else {
       setSelected(new Set(tables));
     }
@@ -147,7 +147,7 @@ export default function DatabaseView() {
       {/* Toolbar */}
       <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">{selectedDb}</span>
-        <span className="text-muted-foreground">{tables?.length ?? 0} tables</span>
+        <span className="text-muted-foreground">{(tables?.length ?? 0)} tables</span>
         {selected.size > 0 && isAdmin && (
           <>
             <span className="text-primary font-medium">{selected.size} selected</span>
@@ -193,7 +193,7 @@ export default function DatabaseView() {
               <tr className="border-b border-border">
                 <th className="px-3 py-1.5 text-left w-10">
                   <Checkbox
-                    checked={tables?.length > 0 && selected.size === tables.length}
+                    checked={(tables?.length ?? 0) > 0 && selected.size === (tables?.length ?? 0)}
                     onCheckedChange={toggleAll}
                   />
                 </th>

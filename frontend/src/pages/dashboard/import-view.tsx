@@ -2,7 +2,6 @@ import { useState, useRef } from "react";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useQueryClient } from "@tanstack/react-query";
 import { databaseRequest } from "@/requests/database.request";
-import { Button } from "@/components/ui/button";
 
 export default function ImportView() {
   const { selectedDb, selectedTable } = useNavigationStore();

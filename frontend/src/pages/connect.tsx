@@ -128,7 +128,7 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
     });
   };
 
-  const handleTypeChange = (value: string, onChange: (value: string) => void) => {
+  const handleTypeChange = (value: ConnectFormData["type"], onChange: (value: string) => void) => {
     onChange(value);
     setValue("port", defaultPorts[value] || 3306);
     if (value === "mongodb") {

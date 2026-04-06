@@ -74,7 +74,7 @@ export default function Sidebar() {
       <div className="px-2 pt-2 pb-1">
         <Select
           value={selectedDb || undefined}
-          onValueChange={(db) => setSelectedDb(db)}
+          onValueChange={(db) => db && setSelectedDb(db)}
         >
           <SelectTrigger className="h-7 text-xs bg-sidebar-accent/50 border-sidebar-border text-sidebar-foreground">
             <SelectValue placeholder="Select database..." />

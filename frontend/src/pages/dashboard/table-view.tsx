@@ -195,9 +195,11 @@ export default function TableView() {
   const hasNextPage = (rowsData?.Rows?.length ?? 0) === pageSize;
   const hasPrevPage = page > 0;
 
-  const handlePageSizeChange = (size: string) => {
-    setPageSize(Number(size));
-    setPage(0);
+  const handlePageSizeChange = (size: string | null) => {
+    if (size) {
+      setPageSize(Number(size));
+      setPage(0);
+    }
   };
 
   const [prevTable, setPrevTable] = useState(selectedTable);
