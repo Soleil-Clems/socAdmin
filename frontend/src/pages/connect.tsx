@@ -30,6 +30,15 @@ const dbIcons: Record<string, string> = {
   mongodb: "M",
 };
 
+function isServiceDown(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return lower.includes("connection refused") ||
+    lower.includes("failed to ping") ||
+    lower.includes("failed to connect") ||
+    lower.includes("no such host") ||
+    lower.includes("i/o timeout");
+}
+
 type Props = {
   onOpenAdmin?: () => void;
 };
@@ -213,7 +222,18 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
               ))}
             </div>
             {useSavedMutation.isError && (
-              <p className="text-xs text-destructive mt-2">{useSavedMutation.error.message}</p>
+              <div className="text-xs bg-destructive/10 px-3 py-2.5 rounded-md mt-2 space-y-1">
+                <p className="text-destructive font-medium">
+                  {isServiceDown(useSavedMutation.error.message)
+                    ? "Database service is not running"
+                    : useSavedMutation.error.message}
+                </p>
+                {isServiceDown(useSavedMutation.error.message) && (
+                  <p className="text-muted-foreground">
+                    Start it from <span className="font-semibold text-foreground">socAdmin Manager</span> (Databases tab), then try again.
+                  </p>
+                )}
+              </div>
             )}
             <div className="flex items-center gap-3 my-5">
               <div className="flex-1 h-px bg-border" />
@@ -287,9 +307,18 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
           </div>
 
           {connectMutation.isError && (
-            <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-md">
-              {connectMutation.error.message}
-            </p>
+            <div className="text-xs bg-destructive/10 px-3 py-2.5 rounded-md space-y-1">
+              <p className="text-destructive font-medium">
+                {isServiceDown(connectMutation.error.message)
+                  ? `${dbLabels[selectedType] || selectedType} is not running`
+                  : connectMutation.error.message}
+              </p>
+              {isServiceDown(connectMutation.error.message) && (
+                <p className="text-muted-foreground">
+                  Start it from <span className="font-semibold text-foreground">socAdmin Manager</span> (Databases tab), then try again.
+                </p>
+              )}
+            </div>
           )}
 
           <div className="flex gap-2">
