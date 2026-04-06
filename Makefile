@@ -19,7 +19,7 @@ start:
 	@if lsof -ti :$(BACK_PORT) >/dev/null 2>&1; then echo "Backend already running on :$(BACK_PORT)"; exit 1; fi
 	@if lsof -ti :$(FRONT_PORT) >/dev/null 2>&1; then echo "Frontend already running on :$(FRONT_PORT)"; exit 1; fi
 	@echo "Starting socAdmin..."
-	@go run main.go & disown
+	@go run . & disown
 	@cd frontend && npm run dev -- --port $(FRONT_PORT) & disown
 	@sleep 1
 	@echo "Backend  → http://localhost:$(BACK_PORT)"

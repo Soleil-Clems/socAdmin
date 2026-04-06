@@ -171,7 +171,8 @@ func (a *App) StartServer() ServerStatus {
 	}
 
 	cmd := exec.Command(binPath)
-	cmd.Dir = filepath.Dir(binPath)
+	// Run from the project root so socadmin.db is found/created in the right place
+	cmd.Dir = a.projectDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -196,28 +197,54 @@ func (a *App) StopServer() ServerStatus {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	stopped := false
+
 	// If we own the process, kill it
 	if a.serverProc != nil {
-		a.serverProc.Kill()
-		a.serverProc.Wait()
+		a.serverProc.Signal(os.Interrupt)
+		// Give it a moment to shut down gracefully, then force kill
+		done := make(chan struct{})
+		go func() {
+			a.serverProc.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			a.serverProc.Kill()
+			a.serverProc.Wait()
+		}
 		a.serverProc = nil
 		a.startedAt = time.Time{}
-		wailsRuntime.EventsEmit(a.ctx, "server:stopped", nil)
-		return ServerStatus{Running: false, Port: a.port}
+		stopped = true
 	}
 
-	// If running externally, kill by port
+	// Also kill anything still holding the port (externally started, or zombie)
 	if isPortOpen(a.port) {
 		pid := findPIDOnPort(a.port)
 		if pid > 0 {
-			proc, err := os.FindProcess(pid)
-			if err == nil {
-				proc.Kill()
+			if proc, err := os.FindProcess(pid); err == nil {
+				proc.Signal(os.Interrupt)
+				time.Sleep(500 * time.Millisecond)
+				if isPortOpen(a.port) {
+					proc.Kill()
+				}
 			}
 		}
-		wailsRuntime.EventsEmit(a.ctx, "server:stopped", nil)
+		stopped = true
 	}
 
+	// Wait for the port to actually free up
+	if stopped {
+		for i := 0; i < 10; i++ {
+			if !isPortOpen(a.port) {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+
+	wailsRuntime.EventsEmit(a.ctx, "server:stopped", nil)
 	return ServerStatus{Running: false, Port: a.port}
 }
 
