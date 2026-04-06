@@ -415,21 +415,27 @@ function DatabasesTab({
   const handleToggle = async (svc: main.ServiceStatus) => {
     setServiceError("");
     setLoadingService(svc.name);
-    try {
-      if (svc.running) {
-        await StopService(svc.name);
-      } else {
-        await StartService(svc.name);
-      }
-      // Give the service time to start/stop
-      setTimeout(onRefresh, 1000);
-    } catch (e: unknown) {
-      setServiceError(
-        e instanceof Error ? e.message : String(e)
-      );
-    } finally {
-      setLoadingService(null);
+    if (svc.running) {
+      await StopService(svc.name);
+    } else {
+      await StartService(svc.name);
     }
+    // The Go side runs async and emits events — poll briefly for status change
+    let attempts = 0;
+    const poll = setInterval(async () => {
+      attempts++;
+      const svcs = await GetAllServices();
+      const updated = svcs.find((s) => s.name === svc.name);
+      if (updated && updated.running !== svc.running) {
+        clearInterval(poll);
+        setLoadingService(null);
+        onRefresh();
+      } else if (attempts >= 15) {
+        clearInterval(poll);
+        setLoadingService(null);
+        onRefresh();
+      }
+    }, 1000);
   };
 
   const handlePortSave = async (name: string) => {

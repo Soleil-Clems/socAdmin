@@ -283,30 +283,63 @@ func (a *App) detectService(name string, port int, binaries []string, versionArg
 	return s
 }
 
-func (a *App) StartService(name string) error {
-	switch name {
-	case "MySQL":
-		return a.startMySQL()
-	case "PostgreSQL":
-		return a.startPostgreSQL()
-	case "MongoDB":
-		return a.startMongoDB()
-	default:
-		return fmt.Errorf("unknown service: %s", name)
-	}
+func (a *App) StartService(name string) {
+	go func() {
+		var err error
+		switch name {
+		case "MySQL":
+			err = a.startMySQL()
+		case "PostgreSQL":
+			err = a.startPostgreSQL()
+		case "MongoDB":
+			err = a.startMongoDB()
+		default:
+			err = fmt.Errorf("unknown service: %s", name)
+		}
+		if err != nil {
+			a.emitError(fmt.Sprintf("Failed to start %s: %v", name, err))
+			return
+		}
+		// Wait for the port to open, then notify the frontend
+		port := a.servicePort(name)
+		a.waitForPort(port, "service:started", nil)
+	}()
 }
 
-func (a *App) StopService(name string) error {
+func (a *App) StopService(name string) {
+	go func() {
+		var err error
+		switch name {
+		case "MySQL":
+			err = a.stopMySQL()
+		case "PostgreSQL":
+			err = a.stopPostgreSQL()
+		case "MongoDB":
+			err = a.stopMongoDB()
+		default:
+			err = fmt.Errorf("unknown service: %s", name)
+		}
+		if err != nil {
+			a.emitError(fmt.Sprintf("Failed to stop %s: %v", name, err))
+			return
+		}
+		// Wait for the port to close, then notify the frontend
+		port := a.servicePort(name)
+		a.waitForPortClosed(port)
+		a.emitEvent("service:stopped", name)
+	}()
+}
+
+func (a *App) servicePort(name string) int {
 	switch name {
 	case "MySQL":
-		return a.stopMySQL()
+		return a.mysqlPort
 	case "PostgreSQL":
-		return a.stopPostgreSQL()
+		return a.pgPort
 	case "MongoDB":
-		return a.stopMongoDB()
-	default:
-		return fmt.Errorf("unknown service: %s", name)
+		return a.mongoPort
 	}
+	return 0
 }
 
 func (a *App) SetServicePort(name string, port int) error {
@@ -332,18 +365,22 @@ func (a *App) SetServicePort(name string, port int) error {
 func (a *App) startMySQL() error {
 	// 1. Homebrew
 	if ok := brewServiceAction("start", "mysql"); ok {
-		a.emitEvent("service:started", "MySQL")
 		return nil
 	}
 
-	// 2. MAMP — use the dedicated MySQL start script (not start.sh which also launches Apache)
-	if _, err := os.Stat("/Applications/MAMP/bin/startMysql.sh"); err == nil {
-		out, err := exec.Command("/bin/sh", "/Applications/MAMP/bin/startMysql.sh").CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("MAMP startMysql.sh failed: %s", string(out))
+	// 2. mysqld_safe directly (MAMP or standalone) — use the CONFIGURED port
+	if path := findBin("mysqld_safe"); path != "" {
+		cmd := exec.Command(path,
+			fmt.Sprintf("--port=%d", a.mysqlPort),
+			"--log-error="+filepath.Join(a.configDir, "mysql_error.log"),
+		)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("mysqld_safe start failed: %v", err)
 		}
-		// Wait for MySQL to be ready
-		go a.waitForPort(a.mysqlPort, "service:started", nil)
+		// Don't wait — cmd.Start returns immediately, mysqld_safe forks
+		go cmd.Wait()
 		return nil
 	}
 
@@ -352,21 +389,10 @@ func (a *App) startMySQL() error {
 		if out, err := exec.Command(path, "start").CombinedOutput(); err != nil {
 			return fmt.Errorf("mysql.server start failed: %s", string(out))
 		}
-		a.emitEvent("service:started", "MySQL")
 		return nil
 	}
 
-	// 4. Direct mysqld (MAMP or standalone)
-	if path := findBin("mysqld_safe"); path != "" {
-		cmd := exec.Command(path, fmt.Sprintf("--port=%d", a.mysqlPort))
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Start(); err != nil {
-			return fmt.Errorf("mysqld_safe start failed: %v", err)
-		}
-		go a.waitForPort(a.mysqlPort, "service:started", nil)
-		return nil
-	}
+	// 4. mysqld directly
 	if path := findBin("mysqld"); path != "" {
 		cmd := exec.Command(path, fmt.Sprintf("--port=%d", a.mysqlPort))
 		cmd.Stdout = os.Stdout
@@ -374,7 +400,7 @@ func (a *App) startMySQL() error {
 		if err := cmd.Start(); err != nil {
 			return fmt.Errorf("mysqld start failed: %v", err)
 		}
-		go a.waitForPort(a.mysqlPort, "service:started", nil)
+		go cmd.Wait()
 		return nil
 	}
 
@@ -384,45 +410,26 @@ func (a *App) startMySQL() error {
 func (a *App) stopMySQL() error {
 	// 1. Homebrew
 	if ok := brewServiceAction("stop", "mysql"); ok {
-		a.emitEvent("service:stopped", "MySQL")
 		return nil
 	}
 
-	// 2. MAMP stop script
-	if _, err := os.Stat("/Applications/MAMP/bin/stopMysql.sh"); err == nil {
-		exec.Command("/bin/sh", "/Applications/MAMP/bin/stopMysql.sh").CombinedOutput()
-		a.waitForPortClosed(a.mysqlPort)
-		a.emitEvent("service:stopped", "MySQL")
-		return nil
-	}
-
-	// 3. mysqladmin shutdown (works for MAMP and standalone)
+	// 2. mysqladmin shutdown — works for any MySQL, use configured port
 	if path := findBin("mysqladmin"); path != "" {
 		exec.Command(path, "-u", "root", "-proot", fmt.Sprintf("--port=%d", a.mysqlPort), "shutdown").CombinedOutput()
-		a.waitForPortClosed(a.mysqlPort)
-		a.emitEvent("service:stopped", "MySQL")
 		return nil
 	}
 
-	// 4. mysql.server stop
+	// 3. mysql.server stop
 	if path := findBin("mysql.server"); path != "" {
-		if out, err := exec.Command(path, "stop").CombinedOutput(); err != nil {
-			return fmt.Errorf("mysql.server stop failed: %s", string(out))
-		}
-		a.emitEvent("service:stopped", "MySQL")
+		exec.Command(path, "stop").CombinedOutput()
 		return nil
 	}
 
-	// 5. Last resort: kill by port
+	// 4. Kill by port
 	if pid := findPIDOnPort(a.mysqlPort); pid > 0 {
 		if proc, err := os.FindProcess(pid); err == nil {
-			proc.Signal(os.Interrupt)
-			a.waitForPortClosed(a.mysqlPort)
-			if isPortOpen(a.mysqlPort) {
-				proc.Kill()
-			}
+			proc.Kill()
 		}
-		a.emitEvent("service:stopped", "MySQL")
 		return nil
 	}
 
@@ -434,7 +441,6 @@ func (a *App) stopMySQL() error {
 func (a *App) startPostgreSQL() error {
 	for _, formula := range []string{"postgresql@17", "postgresql@16", "postgresql@15", "postgresql@14", "postgresql"} {
 		if brewServiceAction("start", formula) {
-			a.emitEvent("service:started", "PostgreSQL")
 			return nil
 		}
 	}
@@ -448,7 +454,6 @@ func (a *App) startPostgreSQL() error {
 		if err != nil {
 			return fmt.Errorf("pg_ctl start failed: %s", string(out))
 		}
-		a.emitEvent("service:started", "PostgreSQL")
 		return nil
 	}
 
@@ -458,7 +463,6 @@ func (a *App) startPostgreSQL() error {
 func (a *App) stopPostgreSQL() error {
 	for _, formula := range []string{"postgresql@17", "postgresql@16", "postgresql@15", "postgresql@14", "postgresql"} {
 		if brewServiceAction("stop", formula) {
-			a.emitEvent("service:stopped", "PostgreSQL")
 			return nil
 		}
 	}
@@ -470,7 +474,6 @@ func (a *App) stopPostgreSQL() error {
 			if err != nil {
 				return fmt.Errorf("pg_ctl stop failed: %s", string(out))
 			}
-			a.emitEvent("service:stopped", "PostgreSQL")
 			return nil
 		}
 	}
@@ -503,7 +506,6 @@ func (a *App) findPgDataDir() string {
 func (a *App) startMongoDB() error {
 	for _, formula := range []string{"mongodb-community", "mongodb/brew/mongodb-community"} {
 		if brewServiceAction("start", formula) {
-			a.emitEvent("service:started", "MongoDB")
 			return nil
 		}
 	}
@@ -516,7 +518,6 @@ func (a *App) startMongoDB() error {
 		if err != nil {
 			return fmt.Errorf("mongod start failed: %s", string(out))
 		}
-		a.emitEvent("service:started", "MongoDB")
 		return nil
 	}
 
@@ -526,7 +527,6 @@ func (a *App) startMongoDB() error {
 func (a *App) stopMongoDB() error {
 	for _, formula := range []string{"mongodb-community", "mongodb/brew/mongodb-community"} {
 		if brewServiceAction("stop", formula) {
-			a.emitEvent("service:stopped", "MongoDB")
 			return nil
 		}
 	}
@@ -534,13 +534,11 @@ func (a *App) stopMongoDB() error {
 	if path := findBin("mongod"); path != "" {
 		dbPath := filepath.Join(a.configDir, "mongo-data")
 		exec.Command(path, "--shutdown", "--dbpath", dbPath).CombinedOutput()
-		a.emitEvent("service:stopped", "MongoDB")
 		return nil
 	}
 
 	if path := findBin("mongosh"); path != "" {
 		exec.Command(path, "--eval", "db.adminCommand({shutdown: 1})", "--quiet").CombinedOutput()
-		a.emitEvent("service:stopped", "MongoDB")
 		return nil
 	}
 
