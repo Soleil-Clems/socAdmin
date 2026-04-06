@@ -14,6 +14,7 @@ import {
   OpenBrowser,
   GetSystemInfo,
   InstallService,
+  UninstallService,
   CanInstallServices,
 } from "../wailsjs/go/main/App";
 import { EventsOn } from "../wailsjs/runtime/runtime";
@@ -504,6 +505,7 @@ function DatabasesTab({
 }) {
   const [loadingService, setLoadingService] = useState<string | null>(null);
   const [installingService, setInstallingService] = useState<string | null>(null);
+  const [uninstallingService, setUninstallingService] = useState<string | null>(null);
   const [serviceError, setServiceError] = useState("");
   const [editingPort, setEditingPort] = useState<string | null>(null);
   const [portInput, setPortInput] = useState("");
@@ -513,16 +515,21 @@ function DatabasesTab({
     CanInstallServices().then(setCanInstall);
   }, []);
 
-  // Listen for install events
+  // Listen for install/uninstall events
   useEffect(() => {
     const off1 = EventsOn("install:done", () => {
       setInstallingService(null);
       onRefresh();
     });
-    const off2 = EventsOn("app:error", () => {
-      setInstallingService(null);
+    const off2 = EventsOn("uninstall:done", () => {
+      setUninstallingService(null);
+      onRefresh();
     });
-    return () => { off1(); off2(); };
+    const off3 = EventsOn("app:error", () => {
+      setInstallingService(null);
+      setUninstallingService(null);
+    });
+    return () => { off1(); off2(); off3(); };
   }, [onRefresh]);
 
   const installed = services.filter((svc) => svc.installed);
@@ -574,6 +581,26 @@ function DatabasesTab({
         setInstallingService(null);
         onRefresh();
       }
+    }, 300000);
+  };
+
+  const handleUninstall = (name: string) => {
+    setServiceError("");
+    setUninstallingService(name);
+    UninstallService(name);
+    const poll = setInterval(async () => {
+      const svcs = await GetAllServices();
+      const svc = svcs.find((s) => s.name === name);
+      if (svc && !svc.installed) {
+        clearInterval(poll);
+        setUninstallingService(null);
+        onRefresh();
+      }
+    }, 3000);
+    setTimeout(() => {
+      clearInterval(poll);
+      setUninstallingService(null);
+      onRefresh();
     }, 300000);
   };
 
@@ -704,17 +731,36 @@ function DatabasesTab({
                     )}
                   </div>
 
-                  <button
-                    onClick={() => handleToggle(svc)}
-                    disabled={isLoading}
-                    className={`shrink-0 rounded-lg px-4 py-2 text-[12px] font-medium min-w-15 flex items-center justify-center transition-colors ${
-                      svc.running
-                        ? "bg-red-subtle text-red hover:bg-red-subtle/70"
-                        : "bg-green-subtle text-green hover:bg-green-subtle/70"
-                    } disabled:opacity-50 disabled:pointer-events-none`}
-                  >
-                    {isLoading ? <Spinner /> : svc.running ? "Stop" : "Start"}
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => handleToggle(svc)}
+                      disabled={isLoading || uninstallingService === svc.name}
+                      className={`rounded-lg px-4 py-2 text-[12px] font-medium min-w-15 flex items-center justify-center transition-colors ${
+                        svc.running
+                          ? "bg-red-subtle text-red hover:bg-red-subtle/70"
+                          : "bg-green-subtle text-green hover:bg-green-subtle/70"
+                      } disabled:opacity-50 disabled:pointer-events-none`}
+                    >
+                      {isLoading ? <Spinner /> : svc.running ? "Stop" : "Start"}
+                    </button>
+                    {canInstall && !svc.running && (
+                      <button
+                        onClick={() => handleUninstall(svc.name)}
+                        disabled={uninstallingService === svc.name}
+                        className="rounded-lg px-2.5 py-2 text-[12px] text-text-muted hover:text-red hover:bg-red-subtle/50 transition-colors disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center"
+                        title={`Uninstall ${svc.name}`}
+                      >
+                        {uninstallingService === svc.name ? (
+                          <Spinner />
+                        ) : (
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );

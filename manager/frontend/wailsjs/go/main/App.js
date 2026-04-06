@@ -65,3 +65,7 @@ export function StopServer() {
 export function StopService(arg1) {
   return window['go']['main']['App']['StopService'](arg1);
 }
+
+export function UninstallService(arg1) {
+  return window['go']['main']['App']['UninstallService'](arg1);
+}

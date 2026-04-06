@@ -401,6 +401,65 @@ func (a *App) InstallService(name string) {
 	}()
 }
 
+// UninstallService removes a database engine via Homebrew
+func (a *App) UninstallService(name string) {
+	go func() {
+		if runtime.GOOS != "darwin" {
+			a.emitError("Automatic uninstall is only supported on macOS via Homebrew")
+			return
+		}
+		if _, err := exec.LookPath("brew"); err != nil {
+			a.emitError("Homebrew is not installed")
+			return
+		}
+
+		// Stop the service first if running
+		port := a.servicePort(name)
+		if isPortOpen(port) {
+			switch name {
+			case "MySQL":
+				a.stopMySQL()
+			case "PostgreSQL":
+				a.stopPostgreSQL()
+			case "MongoDB":
+				a.stopMongoDB()
+			}
+			a.waitForPortClosed(port)
+		}
+
+		var formula string
+		switch name {
+		case "MySQL":
+			formula = "mysql"
+		case "PostgreSQL":
+			// Find which version is installed
+			formula = "postgresql@17"
+			for _, f := range []string{"postgresql@17", "postgresql@16", "postgresql@15", "postgresql@14", "postgresql"} {
+				out, _ := exec.Command("brew", "list", f).CombinedOutput()
+				if !strings.Contains(string(out), "Error") {
+					formula = f
+					break
+				}
+			}
+		case "MongoDB":
+			formula = "mongodb-community"
+		default:
+			a.emitError("Unknown service: " + name)
+			return
+		}
+
+		a.emitEvent("uninstall:progress", fmt.Sprintf("Uninstalling %s...", name))
+
+		out, err := exec.Command("brew", "uninstall", "--force", formula).CombinedOutput()
+		if err != nil {
+			a.emitError(fmt.Sprintf("Failed to uninstall %s: %s", name, string(out)))
+			return
+		}
+
+		a.emitEvent("uninstall:done", name)
+	}()
+}
+
 // CanInstallServices returns true if Homebrew is available (macOS only)
 func (a *App) CanInstallServices() bool {
 	if runtime.GOOS != "darwin" {

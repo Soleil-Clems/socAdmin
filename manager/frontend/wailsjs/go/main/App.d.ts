@@ -33,3 +33,5 @@ export function StartService(arg1:string):Promise<void>;
 export function StopServer():Promise<main.ServerStatus>;
 
 export function StopService(arg1:string):Promise<void>;
+
+export function UninstallService(arg1:string):Promise<void>;
