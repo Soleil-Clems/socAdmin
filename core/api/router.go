@@ -3,7 +3,10 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"os/exec"
 	"os/user"
+	"path/filepath"
 	"time"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
@@ -32,7 +35,10 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 			username = u.Username
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"os_user": username})
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"os_user":        username,
+			"installed_sgbd": detectInstalledSGBD(),
+		})
 	})
 
 	// Auth routes (publiques)
@@ -100,3 +106,54 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 
 	return handler
 }
+
+// detectInstalledSGBD checks which database engines are available on the machine.
+func detectInstalledSGBD() []string {
+	// Extra paths where SGBD binaries live (MAMP, Homebrew, etc.)
+	extraPaths := []string{
+		"/Applications/MAMP/Library/bin/mysql80/bin",
+		"/Applications/MAMP/Library/bin/mysql57/bin",
+		"/Applications/MAMP/Library/bin",
+		"/opt/homebrew/bin",
+		"/opt/homebrew/opt/mysql/bin",
+		"/opt/homebrew/opt/postgresql@17/bin",
+		"/opt/homebrew/opt/postgresql@16/bin",
+		"/opt/homebrew/opt/postgresql@15/bin",
+		"/opt/homebrew/opt/postgresql/bin",
+		"/opt/homebrew/opt/mongodb-community/bin",
+		"/usr/local/bin",
+		"/usr/local/opt/mysql/bin",
+		"/usr/local/opt/postgresql/bin",
+		"/usr/local/opt/mongodb-community/bin",
+	}
+
+	findBin := func(name string) bool {
+		if _, err := exec.LookPath(name); err == nil {
+			return true
+		}
+		for _, dir := range extraPaths {
+			if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+				return true
+			}
+		}
+		return false
+	}
+
+	var installed []string
+	if findBin("mysql") || findBin("mysqld") {
+		installed = append(installed, "mysql")
+	}
+	if findBin("psql") || findBin("postgres") {
+		installed = append(installed, "postgresql")
+	}
+	if findBin("mongod") || findBin("mongosh") {
+		installed = append(installed, "mongodb")
+	}
+
+	// Fallback: if nothing detected (e.g. Docker), return all
+	if len(installed) == 0 {
+		return []string{"mysql", "postgresql", "mongodb"}
+	}
+	return installed
+}
+

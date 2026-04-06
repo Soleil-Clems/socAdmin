@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { connectSchema, dbTypes, type ConnectFormData } from "@/schemas/connect.schema";
@@ -97,6 +97,18 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
 
   const selectedType = watch("type");
 
+  // Filter DB types to only show installed engines
+  const availableTypes = systemInfo?.installed_sgbd?.length
+    ? dbTypes.filter((t) => systemInfo.installed_sgbd.includes(t))
+    : dbTypes;
+
+  // Switch to first available type if current selection isn't installed
+  useEffect(() => {
+    if (availableTypes.length > 0 && !availableTypes.includes(selectedType as typeof availableTypes[number])) {
+      handleTypeChange(availableTypes[0], (v: string) => setValue("type", v as ConnectFormData["type"]));
+    }
+  }, [availableTypes]);
+
   const onSubmit = (data: ConnectFormData) => {
     connectMutation.mutate(data, {
       onSuccess: () => {
@@ -152,7 +164,11 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
     }
   };
 
-  const hasSaved = savedConnections && savedConnections.length > 0;
+  // Filter saved connections to only show installed DB types
+  const filteredSavedConnections = savedConnections?.filter(
+    (conn) => !systemInfo?.installed_sgbd?.length || systemInfo.installed_sgbd.includes(conn.type)
+  );
+  const hasSaved = filteredSavedConnections && filteredSavedConnections.length > 0;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6 relative">
@@ -186,7 +202,7 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
               Saved Connections
             </p>
             <div className="border border-border rounded divide-y divide-border">
-              {savedConnections.map((conn) => (
+              {filteredSavedConnections.map((conn) => (
                 <div
                   key={conn.id}
                   className="flex items-center justify-between px-3 py-2.5 hover:bg-accent/40 transition-colors group"
@@ -249,7 +265,7 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
           control={control}
           render={({ field }) => (
             <div className="flex gap-2">
-              {dbTypes.map((t) => (
+              {availableTypes.map((t) => (
                 <button
                   key={t}
                   type="button"
