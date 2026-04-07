@@ -444,6 +444,117 @@ func containsCI(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
+// GetSchema returns the full schema for a database (tables, columns, foreign keys).
+func (s *DatabaseService) GetSchema(database string) ([]connector.TableSchema, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	tables, err := s.conn.ListTables(database)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get foreign keys map
+	fkMap := s.getForeignKeys(database)
+
+	var schema []connector.TableSchema
+	for _, tableName := range tables {
+		cols, err := s.conn.DescribeTable(database, tableName)
+		if err != nil {
+			continue
+		}
+
+		var schemaCols []connector.SchemaColumn
+		for _, col := range cols {
+			sc := connector.SchemaColumn{
+				Name:      col.Name,
+				Type:      col.Type,
+				Nullable:  col.Null == "YES",
+				IsPrimary: strings.Contains(col.Key, "PRI") || strings.Contains(col.Key, "PRIMARY"),
+			}
+			// Check for foreign key
+			fkKey := tableName + "." + col.Name
+			if fk, ok := fkMap[fkKey]; ok {
+				sc.ForeignKey = &fk
+			}
+			schemaCols = append(schemaCols, sc)
+		}
+
+		schema = append(schema, connector.TableSchema{
+			Name:    tableName,
+			Columns: schemaCols,
+		})
+	}
+
+	return schema, nil
+}
+
+func (s *DatabaseService) getForeignKeys(database string) map[string]connector.FKInfo {
+	fkMap := make(map[string]connector.FKInfo)
+	if s.conn == nil {
+		return fkMap
+	}
+
+	var query string
+	switch s.dbType {
+	case "mysql":
+		query = fmt.Sprintf(`
+			SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+			FROM information_schema.KEY_COLUMN_USAGE
+			WHERE TABLE_SCHEMA = '%s'
+			AND REFERENCED_TABLE_NAME IS NOT NULL
+		`, escapeLike(database))
+	case "postgresql":
+		query = fmt.Sprintf(`
+			SELECT
+				tc.table_name,
+				kcu.column_name,
+				ccu.table_name AS referenced_table,
+				ccu.column_name AS referenced_column
+			FROM information_schema.table_constraints tc
+			JOIN information_schema.key_column_usage kcu
+				ON tc.constraint_name = kcu.constraint_name
+				AND tc.table_schema = kcu.table_schema
+			JOIN information_schema.constraint_column_usage ccu
+				ON ccu.constraint_name = tc.constraint_name
+				AND ccu.table_schema = tc.table_schema
+			WHERE tc.constraint_type = 'FOREIGN KEY'
+			AND tc.table_schema = 'public'
+		`)
+		_ = database // PostgreSQL uses schema 'public' by default
+	default:
+		return fkMap // MongoDB has no foreign keys
+	}
+
+	result, err := s.conn.ExecuteQuery(database, query)
+	if err != nil {
+		return fkMap
+	}
+
+	for _, row := range result.Rows {
+		tableName := fmt.Sprintf("%v", row["TABLE_NAME"])
+		colName := fmt.Sprintf("%v", row["COLUMN_NAME"])
+		refTable := fmt.Sprintf("%v", row["REFERENCED_TABLE_NAME"])
+		refCol := fmt.Sprintf("%v", row["REFERENCED_COLUMN_NAME"])
+
+		// PostgreSQL uses lowercase column names
+		if tableName == "<nil>" {
+			tableName = fmt.Sprintf("%v", row["table_name"])
+			colName = fmt.Sprintf("%v", row["column_name"])
+			refTable = fmt.Sprintf("%v", row["referenced_table"])
+			refCol = fmt.Sprintf("%v", row["referenced_column"])
+		}
+
+		fkMap[tableName+"."+colName] = connector.FKInfo{
+			RefTable:  refTable,
+			RefColumn: refCol,
+		}
+	}
+
+	return fkMap
+}
+
 func (s *DatabaseService) Disconnect() error {
 	if s.conn != nil {
 		err := s.conn.Close()

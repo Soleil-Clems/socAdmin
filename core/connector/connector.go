@@ -51,6 +51,24 @@ type TableColumnDef struct {
 	DefaultValue  string `json:"default_value"`
 }
 
+type TableSchema struct {
+	Name    string         `json:"name"`
+	Columns []SchemaColumn `json:"columns"`
+}
+
+type SchemaColumn struct {
+	Name       string  `json:"name"`
+	Type       string  `json:"type"`
+	Nullable   bool    `json:"nullable"`
+	IsPrimary  bool    `json:"is_primary"`
+	ForeignKey *FKInfo `json:"foreign_key,omitempty"`
+}
+
+type FKInfo struct {
+	RefTable  string `json:"ref_table"`
+	RefColumn string `json:"ref_column"`
+}
+
 type DatabaseInfo struct {
 	Name       string `json:"name"`
 	TableCount int    `json:"table_count"`

@@ -117,6 +117,22 @@ func (c *DatabaseController) ListDatabasesWithStats(w http.ResponseWriter, r *ht
 	jsonResponse(w, http.StatusOK, infos)
 }
 
+// GetSchema returns the full schema for a database (tables, columns, foreign keys)
+func (c *DatabaseController) GetSchema(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	if !validatePathIdent(w, db, "database") {
+		return
+	}
+
+	schema, err := c.dbService.GetSchema(db)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, schema)
+}
+
 // SearchGlobal searches for a term across all tables in a database
 func (c *DatabaseController) SearchGlobal(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")

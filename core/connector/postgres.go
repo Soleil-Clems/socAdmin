@@ -2,6 +2,7 @@ package connector
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -405,6 +406,9 @@ func scanQuery(db *sql.DB, query string) (*QueryResult, error) {
 		return nil, err
 	}
 
+	// Get column types to handle UUIDs and binary data properly
+	colTypes, _ := rows.ColumnTypes()
+
 	var results []map[string]interface{}
 	for rows.Next() {
 		values := make([]interface{}, len(columns))
@@ -421,6 +425,19 @@ func scanQuery(db *sql.DB, query string) (*QueryResult, error) {
 		for i, col := range columns {
 			val := values[i]
 			if b, ok := val.([]byte); ok {
+				// Check if this is a UUID (16 bytes) based on column type
+				if colTypes != nil && i < len(colTypes) {
+					dbType := strings.ToLower(colTypes[i].DatabaseTypeName())
+					if dbType == "uuid" && len(b) == 16 {
+						row[col] = formatUUID(b)
+						continue
+					}
+					// Binary types: show as hex
+					if dbType == "bytea" || dbType == "blob" || dbType == "binary" || dbType == "varbinary" {
+						row[col] = "0x" + hex.EncodeToString(b)
+						continue
+					}
+				}
 				row[col] = string(b)
 			} else {
 				row[col] = val
@@ -430,4 +447,10 @@ func scanQuery(db *sql.DB, query string) (*QueryResult, error) {
 	}
 
 	return &QueryResult{Columns: columns, Rows: results}, nil
+}
+
+// formatUUID converts 16 raw bytes into a standard UUID string (8-4-4-4-12)
+func formatUUID(b []byte) string {
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }

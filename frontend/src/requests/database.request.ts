@@ -25,6 +25,19 @@ export type DatabaseInfo = {
   size_bytes: number;
 };
 
+export type SchemaTable = {
+  name: string;
+  columns: SchemaColumn[];
+};
+
+export type SchemaColumn = {
+  name: string;
+  type: string;
+  nullable: boolean;
+  is_primary: boolean;
+  foreign_key?: { ref_table: string; ref_column: string };
+};
+
 export type SearchResult = {
   table: string;
   matches: Record<string, unknown>[];
@@ -50,6 +63,9 @@ export const databaseRequest = {
   list: () => customfetch.get<string[]>("/databases"),
 
   listWithStats: () => customfetch.get<DatabaseInfo[]>("/databases/stats"),
+
+  getSchema: (db: string) =>
+    customfetch.get<SchemaTable[]>(`/databases/${db}/schema`),
 
   searchGlobal: (db: string, q: string, limit = 5) =>
     customfetch.get<SearchResult[]>(`/databases/${db}/search?q=${encodeURIComponent(q)}&limit=${limit}`),

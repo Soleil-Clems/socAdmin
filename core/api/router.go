@@ -60,6 +60,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/rows", dbController.GetRows)
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/export", dbController.ExportTable)
 	protected.HandleFunc("GET "+p+"/databases/{db}/export", dbController.ExportDatabase)
+	protected.HandleFunc("GET "+p+"/databases/{db}/schema", dbController.GetSchema)
 	protected.HandleFunc("GET "+p+"/databases/{db}/search", dbController.SearchGlobal)
 	protected.HandleFunc("GET "+p+"/users", dbController.ListUsers)
 	protected.HandleFunc("GET "+p+"/status", dbController.ServerStatus)
