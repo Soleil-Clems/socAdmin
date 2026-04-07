@@ -39,7 +39,7 @@ export default function DashboardPage() {
       <div className="flex h-screen bg-background">
         {sidebarOpen && <Sidebar />}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <Tabs defaultValue="databases" className="flex-1 flex flex-col overflow-hidden">
+          <Tabs key="global" defaultValue="databases" className="flex-1 flex flex-col overflow-hidden">
             <div className="border-b border-border bg-card px-1 flex items-center">
               <button
                 className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 rounded"
@@ -89,7 +89,7 @@ export default function DashboardPage() {
     <div className="flex h-screen bg-background">
       {sidebarOpen && <Sidebar />}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+        <Tabs key="db" value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
           <div className="border-b border-border bg-card px-1 flex items-center">
             <button
               className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 rounded"
