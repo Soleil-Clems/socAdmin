@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Sidebar from "@/components/layout/sidebar";
 import TableView from "@/pages/dashboard/table-view";
 import StructureView from "@/pages/dashboard/structure-view";
@@ -23,6 +23,14 @@ export default function DashboardPage() {
   const { selectedDb, selectedTable, showAllDatabases } = useNavigationStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState("data");
+
+  // Switch to "data" tab when a table is selected (e.g. from Search results)
+  useEffect(() => {
+    if (selectedTable) {
+      setActiveTab("data");
+    }
+  }, [selectedTable]);
 
   // Global tabs when showing all databases
   if (showAllDatabases || !selectedDb) {
@@ -79,7 +87,7 @@ export default function DashboardPage() {
     <div className="flex h-screen bg-background">
       {sidebarOpen && <Sidebar />}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Tabs defaultValue="data" className="flex-1 flex flex-col overflow-hidden">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
           <div className="border-b border-border bg-card px-1 flex items-center">
             <button
               className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 rounded"
