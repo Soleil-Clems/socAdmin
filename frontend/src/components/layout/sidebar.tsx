@@ -77,7 +77,9 @@ export default function Sidebar() {
           onValueChange={(db) => db && setSelectedDb(db)}
         >
           <SelectTrigger className="h-7 text-xs bg-sidebar-accent/50 border-sidebar-border text-sidebar-foreground">
-            <SelectValue placeholder="Select database..." />
+            <SelectValue placeholder="Select database...">
+              {selectedDb || "Select database..."}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {dbLoading && (
