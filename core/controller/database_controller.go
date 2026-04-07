@@ -107,6 +107,46 @@ func (c *DatabaseController) ListDatabases(w http.ResponseWriter, r *http.Reques
 	jsonResponse(w, http.StatusOK, databases)
 }
 
+func (c *DatabaseController) ListDatabasesWithStats(w http.ResponseWriter, r *http.Request) {
+	infos, err := c.dbService.ListDatabasesWithStats()
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, infos)
+}
+
+// SearchGlobal searches for a term across all tables in a database
+func (c *DatabaseController) SearchGlobal(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	if !validatePathIdent(w, db, "database") {
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		jsonError(w, http.StatusBadRequest, "query parameter 'q' is required")
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 5 // results per table
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 50 {
+			limit = l
+		}
+	}
+
+	results, err := c.dbService.SearchGlobal(db, q, limit)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, results)
+}
+
 func (c *DatabaseController) CreateDatabase(w http.ResponseWriter, r *http.Request) {
 	var req CreateDatabaseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

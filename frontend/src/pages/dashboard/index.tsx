@@ -11,6 +11,7 @@ import UsersView from "@/pages/dashboard/users-view";
 import StatusView from "@/pages/dashboard/status-view";
 import SecurityView from "@/pages/dashboard/security-view";
 import AccountsView from "@/pages/dashboard/accounts-view";
+import SearchView from "@/pages/dashboard/search-view";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -99,6 +100,7 @@ export default function DashboardPage() {
               {isAdmin && (
                 <TabsTrigger value="import" className={tabClass}>Import</TabsTrigger>
               )}
+              <TabsTrigger value="search" className={tabClass}>Search</TabsTrigger>
               <TabsTrigger value="export" className={tabClass}>Export</TabsTrigger>
               <TabsTrigger value="users" className={tabClass}>Users</TabsTrigger>
               <TabsTrigger value="status" className={tabClass}>Status</TabsTrigger>
@@ -128,6 +130,9 @@ export default function DashboardPage() {
               <ImportView />
             </TabsContent>
           )}
+          <TabsContent value="search" className="flex-1 overflow-hidden m-0">
+            <SearchView />
+          </TabsContent>
           <TabsContent value="export" className="flex-1 overflow-hidden m-0">
             <ExportView />
           </TabsContent>

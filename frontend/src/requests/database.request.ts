@@ -18,6 +18,20 @@ export type AlterColumnOp = {
   default_value?: string;
 };
 
+export type DatabaseInfo = {
+  name: string;
+  table_count: number;
+  size: string;
+  size_bytes: number;
+};
+
+export type SearchResult = {
+  table: string;
+  matches: Record<string, unknown>[];
+  total: number;
+  columns: string[];
+};
+
 type Column = {
   Name: string;
   Type: string;
@@ -34,6 +48,11 @@ type QueryResult = {
 
 export const databaseRequest = {
   list: () => customfetch.get<string[]>("/databases"),
+
+  listWithStats: () => customfetch.get<DatabaseInfo[]>("/databases/stats"),
+
+  searchGlobal: (db: string, q: string, limit = 5) =>
+    customfetch.get<SearchResult[]>(`/databases/${db}/search?q=${encodeURIComponent(q)}&limit=${limit}`),
 
   createDatabase: (name: string) =>
     customfetch.post("/databases", { name }),

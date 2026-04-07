@@ -51,6 +51,13 @@ type TableColumnDef struct {
 	DefaultValue  string `json:"default_value"`
 }
 
+type DatabaseInfo struct {
+	Name       string `json:"name"`
+	TableCount int    `json:"table_count"`
+	Size       string `json:"size"` // human-readable (e.g. "12.5 MB")
+	SizeBytes  int64  `json:"size_bytes"`
+}
+
 type QueryResult struct {
 	Columns []string
 	Rows    []map[string]interface{}

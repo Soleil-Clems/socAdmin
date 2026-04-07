@@ -1,11 +1,12 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useDatabases } from "@/hooks/queries/use-databases";
 import { useCreateDatabase } from "@/hooks/mutations/use-create-database";
 import { useDropDatabase } from "@/hooks/mutations/use-drop-database";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
 import { useAuthStore } from "@/stores/auth.store";
-import { databaseRequest } from "@/requests/database.request";
+import { databaseRequest, type DatabaseInfo } from "@/requests/database.request";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,10 @@ const dbTypeLabels: Record<string, string> = {
 
 export default function AllDatabasesView() {
   const { data: databases, isLoading } = useDatabases();
+  const { data: stats } = useQuery<DatabaseInfo[]>({
+    queryKey: ["databases", "stats"],
+    queryFn: databaseRequest.listWithStats,
+  });
   const createDb = useCreateDatabase();
   const dropDb = useDropDatabase();
   const { setSelectedDb } = useNavigationStore();
@@ -34,6 +39,13 @@ export default function AllDatabasesView() {
   const [showCreate, setShowCreate] = useState(false);
   const [newDbName, setNewDbName] = useState("");
   const [search, setSearch] = useState("");
+
+  // Build a lookup map for stats by DB name
+  const statsMap = useMemo(() => {
+    const map = new Map<string, DatabaseInfo>();
+    stats?.forEach((s) => map.set(s.name, s));
+    return map;
+  }, [stats]);
 
   const filtered = useMemo(() => {
     if (!databases) return [];
@@ -100,13 +112,21 @@ export default function AllDatabasesView() {
                 <th className="px-3 py-1.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Database
                 </th>
+                <th className="px-3 py-1.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-20">
+                  Tables
+                </th>
+                <th className="px-3 py-1.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-24">
+                  Size
+                </th>
                 <th className="px-3 py-1.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((db: string) => (
+              {filtered.map((db: string) => {
+                const info = statsMap.get(db);
+                return (
                 <tr
                   key={db}
                   className="border-b border-border/50 hover:bg-accent/40 transition-colors"
@@ -118,6 +138,12 @@ export default function AllDatabasesView() {
                     >
                       {db}
                     </button>
+                  </td>
+                  <td className="px-3 py-1.5 text-right text-[12px] text-muted-foreground tabular-nums">
+                    {info ? info.table_count : "—"}
+                  </td>
+                  <td className="px-3 py-1.5 text-right text-[12px] text-muted-foreground tabular-nums">
+                    {info?.size || "—"}
                   </td>
                   <td className="px-3 py-1.5 text-right">
                     <div className="flex justify-end gap-0.5">
@@ -145,10 +171,11 @@ export default function AllDatabasesView() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={2} className="text-center text-muted-foreground py-12 text-sm">
+                  <td colSpan={4} className="text-center text-muted-foreground py-12 text-sm">
                     {search ? "No matching databases" : "No databases found"}
                   </td>
                 </tr>
