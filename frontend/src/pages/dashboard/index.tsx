@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Sidebar from "@/components/layout/sidebar";
 import TableView from "@/pages/dashboard/table-view";
+import DocumentView from "@/pages/dashboard/document-view";
 import StructureView from "@/pages/dashboard/structure-view";
 import DatabaseView from "@/pages/dashboard/database-view";
 import AllDatabasesView from "@/pages/dashboard/all-databases-view";
@@ -15,6 +16,7 @@ import SearchView from "@/pages/dashboard/search-view";
 import SchemaView from "@/pages/dashboard/schema-view";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useAuthStore } from "@/stores/auth.store";
+import { useConnectionStore } from "@/stores/connection.store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const tabClass =
@@ -23,6 +25,7 @@ const tabClass =
 export default function DashboardPage() {
   const { selectedDb, selectedTable, showAllDatabases } = useNavigationStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
+  const isMongo = useConnectionStore((s) => s.dbType) === "mongodb";
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // Key resets the tab state to "data" whenever DB or table changes
   const tabKey = `${selectedDb}::${selectedTable}`;
@@ -99,18 +102,20 @@ export default function DashboardPage() {
             </button>
             <TabsList className="h-9 bg-transparent border-0 p-0 gap-0">
               <TabsTrigger value="data" className={tabClass}>
-                {selectedTable ? "Browse" : "Tables"}
+                {selectedTable ? (isMongo ? "Documents" : "Browse") : (isMongo ? "Collections" : "Tables")}
               </TabsTrigger>
-              {selectedTable && (
+              {selectedTable && !isMongo && (
                 <TabsTrigger value="structure" className={tabClass}>Structure</TabsTrigger>
               )}
               {isAdmin && (
-                <TabsTrigger value="query" className={tabClass}>SQL</TabsTrigger>
+                <TabsTrigger value="query" className={tabClass}>{isMongo ? "Shell" : "SQL"}</TabsTrigger>
               )}
-              {isAdmin && (
+              {isAdmin && !isMongo && (
                 <TabsTrigger value="import" className={tabClass}>Import</TabsTrigger>
               )}
-              <TabsTrigger value="schema" className={tabClass}>Schema</TabsTrigger>
+              {!isMongo && (
+                <TabsTrigger value="schema" className={tabClass}>Schema</TabsTrigger>
+              )}
               <TabsTrigger value="search" className={tabClass}>Search</TabsTrigger>
               <TabsTrigger value="export" className={tabClass}>Export</TabsTrigger>
               <TabsTrigger value="users" className={tabClass}>Users</TabsTrigger>
@@ -124,9 +129,9 @@ export default function DashboardPage() {
             </TabsList>
           </div>
           <TabsContent value="data" className="flex-1 overflow-hidden m-0">
-            {selectedTable ? <TableView /> : <DatabaseView />}
+            {selectedTable ? (isMongo ? <DocumentView /> : <TableView />) : <DatabaseView />}
           </TabsContent>
-          {selectedTable && (
+          {selectedTable && !isMongo && (
             <TabsContent value="structure" className="flex-1 overflow-hidden m-0">
               <StructureView />
             </TabsContent>
@@ -136,14 +141,16 @@ export default function DashboardPage() {
               <QueryEditor />
             </TabsContent>
           )}
-          {isAdmin && (
+          {isAdmin && !isMongo && (
             <TabsContent value="import" className="flex-1 overflow-hidden m-0">
               <ImportView />
             </TabsContent>
           )}
-          <TabsContent value="schema" className="flex-1 overflow-hidden m-0">
-            <SchemaView />
-          </TabsContent>
+          {!isMongo && (
+            <TabsContent value="schema" className="flex-1 overflow-hidden m-0">
+              <SchemaView />
+            </TabsContent>
+          )}
           <TabsContent value="search" className="flex-1 overflow-hidden m-0">
             <SearchView />
           </TabsContent>

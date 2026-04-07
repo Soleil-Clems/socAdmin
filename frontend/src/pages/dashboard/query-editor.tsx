@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useExecuteQuery } from "@/hooks/mutations/use-execute-query";
 import { useNavigationStore } from "@/stores/navigation.store";
+import { useConnectionStore } from "@/stores/connection.store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -35,6 +36,7 @@ function saveHistory(history: HistoryEntry[]) {
 
 export default function QueryEditor() {
   const { selectedDb } = useNavigationStore();
+  const isMongo = useConnectionStore((s) => s.dbType) === "mongodb";
   const [query, setQuery] = useState("");
   const executeQuery = useExecuteQuery();
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
@@ -131,9 +133,11 @@ export default function QueryEditor() {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={
-            selectedDb
-              ? `SELECT * FROM ${selectedDb}...`
-              : "SELECT * FROM ..."
+            isMongo
+              ? `{"find": "collection", "filter": {"field": "value"}}`
+              : selectedDb
+                ? `SELECT * FROM ${selectedDb}...`
+                : "SELECT * FROM ..."
           }
           className="font-mono text-sm min-h-[100px] resize-y bg-background"
         />
