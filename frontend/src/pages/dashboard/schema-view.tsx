@@ -253,10 +253,10 @@ export default function SchemaView() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden bg-muted/20 relative">
+      <div className="flex-1 min-h-0 bg-muted/20 relative">
         <svg
           ref={svgRef}
-          className="w-full h-full select-none"
+          className="absolute inset-0 w-full h-full select-none"
           style={{ cursor: isPanning ? "grabbing" : dragging ? "move" : "grab" }}
           onMouseDown={handleBgMouseDown}
           onMouseMove={handleMouseMove}

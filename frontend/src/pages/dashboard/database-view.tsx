@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState} from "react";
 import { useTables } from "@/hooks/queries/use-tables";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
@@ -52,13 +52,6 @@ export default function DatabaseView() {
   const [columns, setColumns] = useState<TableColumnDef[]>([emptyColumn()]);
 
   const typeOptions = typeOptionsFor(dbType);
-
-  // Auto-select first table when navigating to a DB with no table selected
-  useEffect(() => {
-    if (tables && tables.length > 0 && !useNavigationStore.getState().selectedTable) {
-      setSelectedTable(tables[0]);
-    }
-  }, [tables, setSelectedTable]);
 
   const toggleSelect = (table: string) => {
     setSelected((prev) => {
