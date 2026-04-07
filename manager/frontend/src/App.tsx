@@ -61,7 +61,12 @@ function App() {
 
   useEffect(() => {
     refresh();
-    GetSystemInfo().then(setSysInfo);
+    GetSystemInfo().then((info) => {
+      setSysInfo(info);
+      if (info.os) {
+        document.documentElement.setAttribute("data-os", info.os);
+      }
+    });
 
     const interval = setInterval(async () => {
       const [s, svcs] = await Promise.all([
@@ -750,7 +755,7 @@ function DatabasesTab({
                     >
                       {isLoading ? <Spinner /> : svc.running ? "Stop" : "Start"}
                     </button>
-                    {svc.source === "homebrew" && !svc.running && (
+                    {svc.source && svc.source !== "system" && svc.source !== "mamp" && !svc.running && (
                       <button
                         onClick={() => setConfirmUninstall(svc.name)}
                         disabled={uninstallingService === svc.name}
@@ -842,7 +847,7 @@ function DatabasesTab({
             No database engines detected
           </p>
           <p className="mt-1.5 text-[12px] text-text-muted">
-            Install MySQL, PostgreSQL, or MongoDB via Homebrew or MAMP
+            Install MySQL, PostgreSQL, or MongoDB to get started
           </p>
         </div>
       )}
@@ -864,7 +869,7 @@ function DatabasesTab({
                   Uninstall {confirmUninstall}?
                 </h3>
                 <p className="mt-1.5 text-[12px] text-text-muted leading-relaxed">
-                  This will remove {confirmUninstall} from your machine via Homebrew.
+                  This will remove {confirmUninstall} from your machine.
                   Your databases and data may be deleted. This action cannot be undone.
                 </p>
               </div>

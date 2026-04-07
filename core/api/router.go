@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
@@ -109,44 +110,33 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 
 // detectInstalledSGBD checks which database engines are available on the machine.
 func detectInstalledSGBD() []string {
-	// Extra paths where SGBD binaries live (MAMP, Homebrew, etc.)
-	extraPaths := []string{
-		"/Applications/MAMP/Library/bin/mysql80/bin",
-		"/Applications/MAMP/Library/bin/mysql57/bin",
-		"/Applications/MAMP/Library/bin",
-		"/opt/homebrew/bin",
-		"/opt/homebrew/opt/mysql/bin",
-		"/opt/homebrew/opt/postgresql@17/bin",
-		"/opt/homebrew/opt/postgresql@16/bin",
-		"/opt/homebrew/opt/postgresql@15/bin",
-		"/opt/homebrew/opt/postgresql/bin",
-		"/opt/homebrew/opt/mongodb-community/bin",
-		"/usr/local/bin",
-		"/usr/local/opt/mysql/bin",
-		"/usr/local/opt/postgresql/bin",
-		"/usr/local/opt/mongodb-community/bin",
-	}
+	extraPaths := sgbdSearchPaths()
 
-	findBin := func(name string) bool {
-		if _, err := exec.LookPath(name); err == nil {
-			return true
-		}
-		for _, dir := range extraPaths {
-			if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+	findBin := func(names ...string) bool {
+		for _, name := range names {
+			if runtime.GOOS == "windows" {
+				name += ".exe"
+			}
+			if _, err := exec.LookPath(name); err == nil {
 				return true
+			}
+			for _, dir := range extraPaths {
+				if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+					return true
+				}
 			}
 		}
 		return false
 	}
 
 	var installed []string
-	if findBin("mysql") || findBin("mysqld") {
+	if findBin("mysql", "mysqld") {
 		installed = append(installed, "mysql")
 	}
-	if findBin("psql") || findBin("postgres") {
+	if findBin("psql", "postgres") {
 		installed = append(installed, "postgresql")
 	}
-	if findBin("mongod") || findBin("mongosh") {
+	if findBin("mongod", "mongosh") {
 		installed = append(installed, "mongodb")
 	}
 
