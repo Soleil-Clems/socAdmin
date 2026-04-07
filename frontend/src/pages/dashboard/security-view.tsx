@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { securityRequest, type WhitelistResponse } from "@/requests/security.request";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuthStore } from "@/stores/auth.store";
 
 function ipLabel(ip: string): string | null {
   if (ip === "127.0.0.1" || ip === "::1") return "localhost";
@@ -12,8 +13,11 @@ function ipLabel(ip: string): string | null {
 
 export default function SecurityView() {
   const queryClient = useQueryClient();
+  const isAdmin = useAuthStore((s) => s.isAdmin);
   const [newIP, setNewIP] = useState("");
   const [error, setError] = useState("");
+  const [bulkText, setBulkText] = useState("");
+  const [showBulk, setShowBulk] = useState(false);
 
   const { data, isLoading } = useQuery<WhitelistResponse>({
     queryKey: ["security", "whitelist"],
@@ -41,6 +45,39 @@ export default function SecurityView() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["security", "whitelist"] }),
     onError: (e: Error) => setError(e.message),
   });
+
+  const bulkMutation = useMutation({
+    mutationFn: (ips: string[]) => securityRequest.bulkAddIPs(ips),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["security", "whitelist"] });
+      setBulkText("");
+      setShowBulk(false);
+      setError("");
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const handleBulkImport = () => {
+    const lines = bulkText.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    bulkMutation.mutate(lines);
+  };
+
+  const handleExport = () => {
+    const url = securityRequest.exportURL();
+    const token = localStorage.getItem("access_token");
+    fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((res) => res.blob())
+      .then((blob) => {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "whitelist.txt";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+  };
 
   const handleAddIP = () => {
     const trimmed = newIP.trim();
@@ -193,6 +230,44 @@ export default function SecurityView() {
               <p className="text-xs text-destructive mt-1">{error}</p>
             )}
           </div>
+
+          {/* Bulk import / Export */}
+          {isAdmin && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowBulk(!showBulk)}
+                className="h-8 px-3 text-xs font-medium border border-border rounded hover:bg-accent/40 transition-colors"
+              >
+                {showBulk ? "Cancel" : "Bulk import"}
+              </button>
+              {ips.length > 0 && (
+                <button
+                  onClick={handleExport}
+                  className="h-8 px-3 text-xs font-medium border border-border rounded hover:bg-accent/40 transition-colors"
+                >
+                  Export list
+                </button>
+              )}
+            </div>
+          )}
+
+          {showBulk && (
+            <div className="space-y-2">
+              <textarea
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                placeholder={"One IP per line, e.g.:\n192.168.1.100\n10.0.0.50\n# comments are ignored"}
+                className="w-full h-32 px-3 py-2 text-sm font-mono bg-background border border-border rounded resize-y focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button
+                onClick={handleBulkImport}
+                disabled={bulkMutation.isPending || !bulkText.trim()}
+                className="h-8 px-4 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {bulkMutation.isPending ? "Importing..." : "Import all"}
+              </button>
+            </div>
+          )}
 
           {/* IP list */}
           <div>

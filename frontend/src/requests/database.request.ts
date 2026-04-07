@@ -1,4 +1,4 @@
-import customfetch from "@/lib/custom-fetch";
+import customfetch, { API_URL } from "@/lib/custom-fetch";
 
 export type TableColumnDef = {
   name: string;
@@ -82,7 +82,7 @@ export const databaseRequest = {
   // Export — returns raw file content (not JSON)
   exportDatabase: async (db: string, format: "csv" | "json" | "sql" | "yaml" = "sql") => {
     const token = localStorage.getItem("access_token");
-    const res = await fetch(`/api/databases/${db}/export?format=${format}`, {
+    const res = await fetch(`${API_URL}/databases/${db}/export?format=${format}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
@@ -97,7 +97,7 @@ export const databaseRequest = {
 
   exportTable: async (db: string, table: string, format: "csv" | "json" | "sql" | "yaml") => {
     const token = localStorage.getItem("access_token");
-    const res = await fetch(`/api/databases/${db}/tables/${table}/export?format=${format}`, {
+    const res = await fetch(`${API_URL}/databases/${db}/tables/${table}/export?format=${format}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
@@ -113,7 +113,7 @@ export const databaseRequest = {
   // Import
   importSQL: (db: string, sql: string) => {
     const token = localStorage.getItem("access_token");
-    return fetch(`/api/databases/${db}/import/sql`, {
+    return fetch(`${API_URL}/databases/${db}/import/sql`, {
       method: "POST",
       headers: {
         "Content-Type": "text/plain",
@@ -129,7 +129,7 @@ export const databaseRequest = {
 
   importCSV: (db: string, table: string, csv: string) => {
     const token = localStorage.getItem("access_token");
-    return fetch(`/api/databases/${db}/tables/${table}/import/csv`, {
+    return fetch(`${API_URL}/databases/${db}/tables/${table}/import/csv`, {
       method: "POST",
       headers: {
         "Content-Type": "text/csv",
@@ -145,7 +145,7 @@ export const databaseRequest = {
 
   importJSON: (db: string, table: string, jsonData: string) => {
     const token = localStorage.getItem("access_token");
-    return fetch(`/api/databases/${db}/tables/${table}/import/json`, {
+    return fetch(`${API_URL}/databases/${db}/tables/${table}/import/json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

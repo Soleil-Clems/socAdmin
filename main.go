@@ -36,6 +36,12 @@ func main() {
 		log.Fatalf("Failed to initialize encryption key: %v", err)
 	}
 
+	// Initialize random API prefix (non-guessable URL)
+	apiPrefix, err := authRepo.GetOrCreateAPIPrefix()
+	if err != nil {
+		log.Fatalf("Failed to initialize API prefix: %v", err)
+	}
+
 	// Initialize IP whitelist from persisted state
 	whitelist := security.NewIPWhitelist()
 	whitelist.SetEnabled(authRepo.GetIPWhitelistEnabled())
@@ -45,12 +51,13 @@ func main() {
 		}
 	}
 
-	apiHandler := api.NewRouter(authRepo, whitelist, encKey)
-	frontend := FrontendHandler()
+	apiHandler := api.NewRouter(authRepo, whitelist, encKey, apiPrefix)
+	frontend := FrontendHandler(apiPrefix)
 
-	// Serve API routes under /api/, everything else is the React SPA
+	// Serve API routes under /{prefix}/api/, everything else is the React SPA
+	apiPathPrefix := "/" + apiPrefix + "/api"
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if len(r.URL.Path) >= 4 && r.URL.Path[:4] == "/api" {
+		if len(r.URL.Path) >= len(apiPathPrefix) && r.URL.Path[:len(apiPathPrefix)] == apiPathPrefix {
 			apiHandler.ServeHTTP(w, r)
 			return
 		}

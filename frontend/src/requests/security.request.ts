@@ -1,4 +1,4 @@
-import customfetch from "@/lib/custom-fetch";
+import customfetch, { API_URL } from "@/lib/custom-fetch";
 
 export type WhitelistResponse = {
   enabled: boolean;
@@ -18,4 +18,9 @@ export const securityRequest = {
 
   removeIP: (ip: string) =>
     customfetch.delete("/security/whitelist/ip", { ip }),
+
+  bulkAddIPs: (ips: string[]) =>
+    customfetch.post("/security/whitelist/bulk", { ips }),
+
+  exportURL: () => `${API_URL}/security/whitelist/export`,
 };

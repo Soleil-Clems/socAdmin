@@ -130,6 +130,30 @@ func (r *Repository) GetOrCreateEncryptionKey() ([]byte, error) {
 	return bytes, nil
 }
 
+// GetOrCreateAPIPrefix returns a random URL prefix, generating one on first run.
+// This makes the API URL non-guessable (e.g. /a3f7b2c1/api/ instead of /api/).
+func (r *Repository) GetOrCreateAPIPrefix() (string, error) {
+	var prefix string
+	err := r.db.QueryRow("SELECT value FROM settings WHERE key = 'api_prefix'").Scan(&prefix)
+	if err == nil {
+		return prefix, nil
+	}
+
+	// Generate a random 8-char hex prefix
+	bytes := make([]byte, 4)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("failed to generate API prefix: %w", err)
+	}
+	prefix = hex.EncodeToString(bytes)
+
+	_, err = r.db.Exec("INSERT INTO settings (key, value) VALUES ('api_prefix', ?)", prefix)
+	if err != nil {
+		return "", fmt.Errorf("failed to save API prefix: %w", err)
+	}
+
+	return prefix, nil
+}
+
 // CleanExpiredTokens removes expired refresh tokens
 func (r *Repository) CleanExpiredTokens() error {
 	_, err := r.db.Exec("DELETE FROM refresh_tokens WHERE expires_at <= CURRENT_TIMESTAMP")

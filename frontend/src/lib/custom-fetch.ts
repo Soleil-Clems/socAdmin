@@ -1,4 +1,6 @@
-const API_URL = "/api";
+// Read the secret API prefix injected by the backend into index.html
+const API_PREFIX = (window as unknown as Record<string, string>).__SOCADMIN_API_PREFIX__ || "";
+const API_URL = API_PREFIX ? `/${API_PREFIX}/api` : "/api";
 
 type RequestOptions = {
   headers?: Record<string, string>;
@@ -181,4 +183,5 @@ class CustomFetch {
 }
 
 export const customfetch = new CustomFetch(API_URL);
+export { API_URL };
 export default customfetch;

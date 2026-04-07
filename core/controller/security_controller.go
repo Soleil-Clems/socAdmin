@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
 	"github.com/soleilouisol/socAdmin/core/logger"
@@ -113,4 +114,49 @@ func (c *SecurityController) RemoveIP(w http.ResponseWriter, r *http.Request) {
 
 	logger.Security(requestUserID(r), requestIP(r), "whitelist_remove_ip", req.IP)
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "removed", "ip": req.IP})
+}
+
+type BulkAddIPsRequest struct {
+	IPs []string `json:"ips"`
+}
+
+// BulkAddIPs adds multiple IPs at once
+func (c *SecurityController) BulkAddIPs(w http.ResponseWriter, r *http.Request) {
+	var req BulkAddIPsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(req.IPs) == 0 {
+		jsonError(w, http.StatusBadRequest, "ips array is required")
+		return
+	}
+
+	added := 0
+	for _, ip := range req.IPs {
+		ip = strings.TrimSpace(ip)
+		if ip == "" || strings.HasPrefix(ip, "#") {
+			continue // skip empty lines and comments
+		}
+		c.whitelist.AddIP(ip)
+		if err := c.repo.AddWhitelistedIP(ip); err == nil {
+			added++
+		}
+	}
+
+	logger.Security(requestUserID(r), requestIP(r), "whitelist_bulk_add", fmt.Sprintf("%d IPs", added))
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"status": "added",
+		"count":  added,
+	})
+}
+
+// ExportWhitelist returns all whitelisted IPs as plain text (one per line)
+func (c *SecurityController) ExportWhitelist(w http.ResponseWriter, r *http.Request) {
+	ips := c.whitelist.ListIPs()
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=whitelist.txt")
+	for _, ip := range ips {
+		w.Write([]byte(ip + "\n"))
+	}
 }
