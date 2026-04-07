@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -148,7 +150,7 @@ func (c *MongoConnector) DescribeTable(database, collection string) ([]Column, e
 		}
 		for key, val := range doc {
 			if _, exists := fieldTypes[key]; !exists {
-				fieldTypes[key] = fmt.Sprintf("%T", val)
+				fieldTypes[key] = friendlyBsonType(val)
 			}
 		}
 	}
@@ -382,11 +384,7 @@ func (c *MongoConnector) UpdateRow(database, collection string, primaryKey map[s
 
 	delete(data, "_id")
 
-	filter := bson.M{}
-	for k, v := range primaryKey {
-		filter[k] = v
-	}
-
+	filter := buildMongoFilter(primaryKey)
 	update := bson.M{"$set": data}
 	coll := c.client.Database(database).Collection(collection)
 	_, err := coll.UpdateOne(ctx, filter, update)
@@ -397,11 +395,7 @@ func (c *MongoConnector) DeleteRow(database, collection string, primaryKey map[s
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	filter := bson.M{}
-	for k, v := range primaryKey {
-		filter[k] = v
-	}
-
+	filter := buildMongoFilter(primaryKey)
 	coll := c.client.Database(database).Collection(collection)
 	_, err := coll.DeleteOne(ctx, filter)
 	return err
@@ -433,17 +427,91 @@ func (c *MongoConnector) Close() error {
 	return nil
 }
 
-func cursorToQueryResult(ctx context.Context, cursor *mongo.Cursor) (*QueryResult, error) {
-	var docs []bson.M
-	if err := cursor.All(ctx, &docs); err != nil {
-		return nil, err
+// buildMongoFilter converts a primary key map to a bson.M filter,
+// converting _id strings back to ObjectID when valid.
+func buildMongoFilter(pk map[string]interface{}) bson.M {
+	filter := bson.M{}
+	for k, v := range pk {
+		if k == "_id" {
+			if s, ok := v.(string); ok {
+				if oid, err := bson.ObjectIDFromHex(s); err == nil {
+					filter[k] = oid
+					continue
+				}
+			}
+		}
+		filter[k] = v
+	}
+	return filter
+}
+
+// friendlyBsonType returns a human-readable type name for a BSON value.
+func friendlyBsonType(val interface{}) string {
+	if val == nil {
+		return "null"
+	}
+	t := reflect.TypeOf(val)
+	typeName := t.String()
+
+	switch {
+	case strings.Contains(typeName, "ObjectID"):
+		return "ObjectId"
+	case strings.Contains(typeName, "DateTime"), strings.Contains(typeName, "Time"):
+		return "Date"
+	case typeName == "bson.A", strings.Contains(typeName, "bson.A"):
+		return "Array"
+	case typeName == "bson.M", strings.Contains(typeName, "bson.M"):
+		return "Object"
+	case typeName == "bson.D":
+		return "Object"
 	}
 
+	switch val.(type) {
+	case string:
+		return "String"
+	case int, int32, int64:
+		return "Int"
+	case float32, float64:
+		return "Double"
+	case bool:
+		return "Boolean"
+	default:
+		return typeName
+	}
+}
+
+// formatBsonValue converts a BSON value to a display-friendly string.
+func formatBsonValue(val interface{}) interface{} {
+	if val == nil {
+		return nil
+	}
+	switch v := val.(type) {
+	case bson.ObjectID:
+		return v.Hex()
+	case bson.M:
+		b, _ := json.Marshal(v)
+		return string(b)
+	case bson.D:
+		m := make(map[string]interface{})
+		for _, e := range v {
+			m[e.Key] = e.Value
+		}
+		b, _ := json.Marshal(m)
+		return string(b)
+	case bson.A:
+		b, _ := json.Marshal(v)
+		return string(b)
+	default:
+		return fmt.Sprintf("%v", val)
+	}
+}
+
+func docsToQueryResult(docs []bson.M) *QueryResult {
 	if len(docs) == 0 {
-		return &QueryResult{Columns: []string{}, Rows: []map[string]interface{}{}}, nil
+		return &QueryResult{Columns: []string{}, Rows: []map[string]interface{}{}}
 	}
 
-	// Collecter toutes les clés uniques
+	// Collect unique keys
 	keySet := make(map[string]bool)
 	for _, doc := range docs {
 		for k := range doc {
@@ -468,7 +536,7 @@ func cursorToQueryResult(ctx context.Context, cursor *mongo.Cursor) (*QueryResul
 		row := make(map[string]interface{})
 		for _, col := range columns {
 			if val, ok := doc[col]; ok {
-				row[col] = fmt.Sprintf("%v", val)
+				row[col] = formatBsonValue(val)
 			} else {
 				row[col] = nil
 			}
@@ -476,7 +544,15 @@ func cursorToQueryResult(ctx context.Context, cursor *mongo.Cursor) (*QueryResul
 		rows = append(rows, row)
 	}
 
-	return &QueryResult{Columns: columns, Rows: rows}, nil
+	return &QueryResult{Columns: columns, Rows: rows}
+}
+
+func cursorToQueryResult(ctx context.Context, cursor *mongo.Cursor) (*QueryResult, error) {
+	var docs []bson.M
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, err
+	}
+	return docsToQueryResult(docs), nil
 }
 
 func bsonArrayToQueryResult(arr bson.A) (*QueryResult, error) {
@@ -486,42 +562,5 @@ func bsonArrayToQueryResult(arr bson.A) (*QueryResult, error) {
 			docs = append(docs, doc)
 		}
 	}
-
-	if len(docs) == 0 {
-		return &QueryResult{Columns: []string{}, Rows: []map[string]interface{}{}}, nil
-	}
-
-	keySet := make(map[string]bool)
-	for _, doc := range docs {
-		for k := range doc {
-			keySet[k] = true
-		}
-	}
-
-	var columns []string
-	if keySet["_id"] {
-		columns = append(columns, "_id")
-		delete(keySet, "_id")
-	}
-	var rest []string
-	for k := range keySet {
-		rest = append(rest, k)
-	}
-	sort.Strings(rest)
-	columns = append(columns, rest...)
-
-	var rows []map[string]interface{}
-	for _, doc := range docs {
-		row := make(map[string]interface{})
-		for _, col := range columns {
-			if val, ok := doc[col]; ok {
-				row[col] = fmt.Sprintf("%v", val)
-			} else {
-				row[col] = nil
-			}
-		}
-		rows = append(rows, row)
-	}
-
-	return &QueryResult{Columns: columns, Rows: rows}, nil
+	return docsToQueryResult(docs), nil
 }

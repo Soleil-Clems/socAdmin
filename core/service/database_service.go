@@ -365,9 +365,10 @@ func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]Sea
 			for _, c := range cols {
 				castCols = append(castCols, fmt.Sprintf(`COALESCE("%s"::text,'')`, c.Name))
 			}
+			// PostgreSQL: ExecuteQuery connects to the specific DB, so just use public."table"
 			searchQuery = fmt.Sprintf(
-				`SELECT * FROM "%s".public."%s" WHERE CONCAT_WS(' ',%s) ILIKE '%%%s%%' LIMIT %d`,
-				database, table, joinStrings(castCols, ","), escapeLike(query), limit,
+				`SELECT * FROM public."%s" WHERE CONCAT_WS(' ',%s) ILIKE '%%%s%%' LIMIT %d`,
+				table, joinStrings(castCols, ","), escapeLike(query), limit,
 			)
 		case "mongodb":
 			// For MongoDB, search via regex on all string fields
