@@ -38,6 +38,20 @@ export type SchemaColumn = {
   foreign_key?: { ref_table: string; ref_column: string };
 };
 
+export type MongoFindResult = {
+  Columns: string[];
+  Rows: Record<string, unknown>[];
+  total: number;
+};
+
+export type MongoIndex = {
+  name: string;
+  keys: Record<string, number>;
+  unique: boolean;
+  sparse: boolean;
+  ttl?: number;
+};
+
 export type SearchResult = {
   table: string;
   matches: Record<string, unknown>[];
@@ -109,6 +123,22 @@ export const databaseRequest = {
 
   executeQuery: (query: string, database?: string) =>
     customfetch.post<QueryResult>("/query", { query, database }),
+
+  // MongoDB-specific
+  mongoFind: (db: string, collection: string, filter: string, sort: string, limit: number, skip: number) =>
+    customfetch.post<MongoFindResult>(`/databases/${db}/tables/${collection}/find`, { filter, sort, limit, skip }),
+
+  mongoCount: (db: string, collection: string) =>
+    customfetch.get<{ count: number }>(`/databases/${db}/tables/${collection}/count`),
+
+  mongoListIndexes: (db: string, collection: string) =>
+    customfetch.get<MongoIndex[]>(`/databases/${db}/tables/${collection}/indexes`),
+
+  mongoCreateIndex: (db: string, collection: string, keys: string, unique: boolean, name?: string) =>
+    customfetch.post(`/databases/${db}/tables/${collection}/indexes`, { keys, unique, name: name || "" }),
+
+  mongoDropIndex: (db: string, collection: string, name: string) =>
+    customfetch.delete(`/databases/${db}/tables/${collection}/indexes`, { name }),
 
   listUsers: () => customfetch.get<Record<string, unknown>[]>("/users"),
 

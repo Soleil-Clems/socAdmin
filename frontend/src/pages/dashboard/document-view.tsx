@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useAuthStore } from "@/stores/auth.store";
-import { useRows } from "@/hooks/queries/use-rows";
+import { databaseRequest, type MongoFindResult } from "@/requests/database.request";
 import { useInsertRow } from "@/hooks/mutations/use-insert-row";
 import { useUpdateRow } from "@/hooks/mutations/use-update-row";
 import { useDeleteRow } from "@/hooks/mutations/use-delete-row";
@@ -22,11 +23,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-type QueryResult = {
-  Columns: string[];
-  Rows: Record<string, unknown>[];
-};
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -192,17 +188,33 @@ function DocumentCard({
 export default function DocumentView() {
   const { selectedDb, selectedTable } = useNavigationStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
+  const queryClient = useQueryClient();
 
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
-  const [filter, setFilter] = useState("");
+  const [filterInput, setFilterInput] = useState("");
+  const [activeFilter, setActiveFilter] = useState("");
+  const [sortInput, setSortInput] = useState("");
+  const [activeSort, setActiveSort] = useState("");
 
-  const { data: rowsData, isLoading } = useRows(
-    selectedDb,
-    selectedTable,
-    pageSize,
-    page * pageSize
-  ) as { data: QueryResult | undefined; isLoading: boolean };
+  // Server-side find
+  const { data: findResult, isLoading } = useQuery<MongoFindResult>({
+    queryKey: ["mongo-find", selectedDb, selectedTable, activeFilter, activeSort, pageSize, page],
+    queryFn: () =>
+      databaseRequest.mongoFind(
+        selectedDb,
+        selectedTable,
+        activeFilter || "{}",
+        activeSort || "{}",
+        pageSize,
+        page * pageSize
+      ),
+    enabled: !!selectedDb && !!selectedTable,
+  });
+
+  const docs = findResult?.Rows || [];
+  const totalDocs = findResult?.total ?? 0;
+  const totalPages = Math.ceil(totalDocs / pageSize);
 
   const insertRow = useInsertRow();
   const updateRow = useUpdateRow();
@@ -213,57 +225,41 @@ export default function DocumentView() {
   const [jsonInput, setJsonInput] = useState("");
   const [jsonError, setJsonError] = useState("");
 
-  // Client-side filter
-  const displayDocs = useMemo(() => {
-    const docs = rowsData?.Rows || [];
-    if (!filter.trim()) return docs;
-
-    // Try to parse as MongoDB filter JSON
-    try {
-      const filterObj = JSON.parse(filter);
-      return docs.filter((doc) => {
-        for (const [key, val] of Object.entries(filterObj)) {
-          const docVal = doc[key];
-          if (typeof val === "object" && val !== null) {
-            // Basic operator support: $gt, $gte, $lt, $lte, $ne, $regex
-            const ops = val as Record<string, unknown>;
-            for (const [op, opVal] of Object.entries(ops)) {
-              const numDoc = Number(docVal);
-              const numOp = Number(opVal);
-              switch (op) {
-                case "$gt": if (!(numDoc > numOp)) return false; break;
-                case "$gte": if (!(numDoc >= numOp)) return false; break;
-                case "$lt": if (!(numDoc < numOp)) return false; break;
-                case "$lte": if (!(numDoc <= numOp)) return false; break;
-                case "$ne": if (String(docVal) === String(opVal)) return false; break;
-                case "$regex": if (!new RegExp(String(opVal), "i").test(String(docVal))) return false; break;
-              }
-            }
-          } else {
-            if (String(docVal) !== String(val)) return false;
-          }
-        }
-        return true;
-      });
-    } catch {
-      // Plain text search
-      const q = filter.toLowerCase();
-      return docs.filter((doc) =>
-        Object.values(doc).some((v) => v !== null && String(v).toLowerCase().includes(q))
-      );
-    }
-  }, [rowsData, filter]);
-
-  const hasNextPage = (rowsData?.Rows?.length ?? 0) === pageSize;
-  const hasPrevPage = page > 0;
-
   // Reset page on collection change
   const [prevTable, setPrevTable] = useState(selectedTable);
   if (selectedTable !== prevTable) {
     setPrevTable(selectedTable);
     setPage(0);
-    setFilter("");
+    setFilterInput("");
+    setActiveFilter("");
+    setSortInput("");
+    setActiveSort("");
   }
+
+  const applyFilter = useCallback(() => {
+    setActiveFilter(filterInput);
+    setActiveSort(sortInput);
+    setPage(0);
+  }, [filterInput, sortInput]);
+
+  const clearFilter = useCallback(() => {
+    setFilterInput("");
+    setSortInput("");
+    setActiveFilter("");
+    setActiveSort("");
+    setPage(0);
+  }, []);
+
+  const handleFilterKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      applyFilter();
+    }
+  };
+
+  const invalidateFind = () => {
+    queryClient.invalidateQueries({ queryKey: ["mongo-find", selectedDb, selectedTable] });
+  };
 
   const handleInsertOpen = () => {
     setJsonInput("{\n  \n}");
@@ -280,7 +276,6 @@ export default function DocumentView() {
   };
 
   const handleEditOpen = (doc: Record<string, unknown>) => {
-    // Build a clean object for editing (parse JSON strings back)
     const clean: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(doc)) {
       if (k === "_id") continue;
@@ -307,7 +302,7 @@ export default function DocumentView() {
       setJsonError("");
       insertRow.mutate(
         { db: selectedDb, table: selectedTable, data },
-        { onSuccess: () => setShowInsert(false) }
+        { onSuccess: () => { setShowInsert(false); invalidateFind(); } }
       );
     } catch (e) {
       setJsonError(`Invalid JSON: ${(e as Error).message}`);
@@ -330,7 +325,7 @@ export default function DocumentView() {
           primaryKey: { _id: editingDoc._id },
           data,
         },
-        { onSuccess: () => setEditingDoc(null) }
+        { onSuccess: () => { setEditingDoc(null); invalidateFind(); } }
       );
     } catch (e) {
       setJsonError(`Invalid JSON: ${(e as Error).message}`);
@@ -339,11 +334,14 @@ export default function DocumentView() {
 
   const handleDelete = (doc: Record<string, unknown>) => {
     if (!confirm("Delete this document?")) return;
-    deleteRow.mutate({
-      db: selectedDb,
-      table: selectedTable,
-      primaryKey: { _id: doc._id },
-    });
+    deleteRow.mutate(
+      {
+        db: selectedDb,
+        table: selectedTable,
+        primaryKey: { _id: doc._id },
+      },
+      { onSuccess: invalidateFind }
+    );
   };
 
   return (
@@ -352,12 +350,9 @@ export default function DocumentView() {
       <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">{selectedTable}</span>
         <span className="text-muted-foreground">{selectedDb}</span>
-        {rowsData?.Rows && (
-          <span className="text-muted-foreground">
-            · {displayDocs.length}
-            {filter && ` / ${rowsData.Rows.length}`} docs
-          </span>
-        )}
+        <span className="text-muted-foreground">
+          · {totalDocs.toLocaleString()} docs
+        </span>
         <div className="ml-auto flex items-center gap-1.5">
           {isAdmin && (
             <Button size="sm" className="h-7 text-xs px-3" onClick={handleInsertOpen}>
@@ -367,21 +362,35 @@ export default function DocumentView() {
         </div>
       </div>
 
-      {/* Filter bar */}
+      {/* Filter / Sort bar */}
       <div className="px-3 py-1.5 border-b border-border bg-muted/30 flex items-center gap-2">
-        <span className="text-[11px] text-muted-foreground font-medium shrink-0">Filter</span>
-        <input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder='{"field": "value"} or text search...'
-          className="flex-1 h-7 px-2 text-xs font-mono bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary/50"
-        />
-        {filter && (
+        <div className="flex-1 flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground font-medium shrink-0">Filter</span>
+          <input
+            value={filterInput}
+            onChange={(e) => setFilterInput(e.target.value)}
+            onKeyDown={handleFilterKeyDown}
+            placeholder='{"field": "value", "age": {"$gt": 25}}'
+            className="flex-1 h-7 px-2 text-xs font-mono bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary/50"
+          />
+          <span className="text-[11px] text-muted-foreground font-medium shrink-0">Sort</span>
+          <input
+            value={sortInput}
+            onChange={(e) => setSortInput(e.target.value)}
+            onKeyDown={handleFilterKeyDown}
+            placeholder='{"field": 1}'
+            className="w-36 h-7 px-2 text-xs font-mono bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary/50"
+          />
+        </div>
+        <Button size="sm" variant="default" className="h-7 text-xs px-3" onClick={applyFilter}>
+          Find
+        </Button>
+        {(activeFilter || activeSort) && (
           <button
-            onClick={() => setFilter("")}
+            onClick={clearFilter}
             className="text-[11px] text-muted-foreground hover:text-foreground px-1"
           >
-            Clear
+            Reset
           </button>
         )}
       </div>
@@ -396,7 +405,7 @@ export default function DocumentView() {
       ) : (
         <ScrollArea className="flex-1">
           <div className="p-3 space-y-2">
-            {displayDocs.map((doc, i) => (
+            {docs.map((doc, i) => (
               <DocumentCard
                 key={String(doc._id) || i}
                 doc={doc}
@@ -406,9 +415,9 @@ export default function DocumentView() {
                 isAdmin={isAdmin}
               />
             ))}
-            {displayDocs.length === 0 && (
+            {docs.length === 0 && (
               <div className="text-center text-muted-foreground py-16 text-sm">
-                {filter ? "No documents match the filter" : "Collection is empty"}
+                {activeFilter ? "No documents match the filter" : "Collection is empty"}
               </div>
             )}
           </div>
@@ -429,13 +438,20 @@ export default function DocumentView() {
               ))}
             </SelectContent>
           </Select>
+          <span className="text-muted-foreground">
+            {totalDocs > 0
+              ? `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, totalDocs)} of ${totalDocs.toLocaleString()}`
+              : "0 docs"}
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-muted-foreground">Page {page + 1}</span>
-          <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]" onClick={() => setPage((p) => p - 1)} disabled={!hasPrevPage}>
+          <span className="text-muted-foreground">
+            Page {page + 1}{totalPages > 0 && ` / ${totalPages}`}
+          </span>
+          <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]" onClick={() => setPage((p) => p - 1)} disabled={page === 0}>
             Prev
           </Button>
-          <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]" onClick={() => setPage((p) => p + 1)} disabled={!hasNextPage}>
+          <Button variant="outline" size="sm" className="h-6 px-2 text-[11px]" onClick={() => setPage((p) => p + 1)} disabled={page + 1 >= totalPages}>
             Next
           </Button>
         </div>

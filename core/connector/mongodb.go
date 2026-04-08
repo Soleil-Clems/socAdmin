@@ -418,6 +418,196 @@ func (c *MongoConnector) AlterColumn(database, collection string, op AlterColumn
 	return fmt.Errorf("ALTER COLUMN is not supported for MongoDB (schemaless)")
 }
 
+// ── MongoDB-specific methods (not in Connector interface) ──
+
+// FindDocuments performs a server-side find with filter, sort, limit, skip.
+// filterJSON and sortJSON are raw JSON strings (e.g. `{"age":{"$gt":25}}`, `{"name":1}`).
+func (c *MongoConnector) FindDocuments(database, collection, filterJSON, sortJSON string, limit, skip int) (*QueryResult, int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	coll := c.client.Database(database).Collection(collection)
+
+	// Parse filter
+	filter := bson.D{}
+	if filterJSON != "" && filterJSON != "{}" {
+		if err := bson.UnmarshalExtJSON([]byte(filterJSON), false, &filter); err != nil {
+			return nil, 0, fmt.Errorf("invalid filter JSON: %w", err)
+		}
+	}
+
+	// Convert _id string values to ObjectID in filter
+	filter = convertFilterIDs(filter)
+
+	// Count total matching documents
+	total, err := coll.CountDocuments(ctx, filter)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count failed: %w", err)
+	}
+
+	// Build find options
+	opts := options.Find().SetLimit(int64(limit)).SetSkip(int64(skip))
+
+	// Parse sort
+	if sortJSON != "" && sortJSON != "{}" {
+		var sortDoc bson.D
+		if err := bson.UnmarshalExtJSON([]byte(sortJSON), false, &sortDoc); err == nil && len(sortDoc) > 0 {
+			opts.SetSort(sortDoc)
+		}
+	}
+
+	cursor, err := coll.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, 0, fmt.Errorf("find failed: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	result, err := cursorToQueryResult(ctx, cursor)
+	if err != nil {
+		return nil, 0, err
+	}
+	return result, total, nil
+}
+
+// CountDocuments returns the total number of documents in a collection.
+func (c *MongoConnector) CountDocuments(database, collection string) (int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	coll := c.client.Database(database).Collection(collection)
+	return coll.CountDocuments(ctx, bson.D{})
+}
+
+// IndexInfo represents a MongoDB index.
+type IndexInfo struct {
+	Name   string                 `json:"name"`
+	Keys   map[string]interface{} `json:"keys"`
+	Unique bool                   `json:"unique"`
+	Sparse bool                   `json:"sparse"`
+	TTL    *int32                 `json:"ttl,omitempty"`
+}
+
+// ListIndexes returns all indexes on a collection.
+func (c *MongoConnector) ListIndexes(database, collection string) ([]IndexInfo, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	coll := c.client.Database(database).Collection(collection)
+	cursor, err := coll.Indexes().List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list indexes failed: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var indexes []IndexInfo
+	for cursor.Next(ctx) {
+		var raw bson.M
+		if err := cursor.Decode(&raw); err != nil {
+			continue
+		}
+		info := IndexInfo{
+			Name: fmt.Sprintf("%v", raw["name"]),
+		}
+		// Parse keys
+		info.Keys = make(map[string]interface{})
+		if keyDoc, ok := raw["key"].(bson.M); ok {
+			for k, v := range keyDoc {
+				info.Keys[k] = v
+			}
+		} else if keyDoc, ok := raw["key"].(bson.D); ok {
+			for _, e := range keyDoc {
+				info.Keys[e.Key] = e.Value
+			}
+		}
+		if u, ok := raw["unique"].(bool); ok {
+			info.Unique = u
+		}
+		if s, ok := raw["sparse"].(bool); ok {
+			info.Sparse = s
+		}
+		if ttl, ok := raw["expireAfterSeconds"].(int32); ok {
+			info.TTL = &ttl
+		}
+		indexes = append(indexes, info)
+	}
+	return indexes, nil
+}
+
+// CreateIndex creates a new index on a collection.
+// keysJSON is like `{"field": 1}` or `{"field": -1}` or `{"f1": 1, "f2": -1}`.
+func (c *MongoConnector) CreateIndex(database, collection, keysJSON string, unique bool, name string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var keys bson.D
+	if err := bson.UnmarshalExtJSON([]byte(keysJSON), false, &keys); err != nil {
+		return fmt.Errorf("invalid keys JSON: %w", err)
+	}
+	if len(keys) == 0 {
+		return fmt.Errorf("at least one key is required")
+	}
+
+	model := mongo.IndexModel{Keys: keys}
+	opts := options.Index()
+	if unique {
+		opts.SetUnique(true)
+	}
+	if name != "" {
+		opts.SetName(name)
+	}
+	model.Options = opts
+
+	coll := c.client.Database(database).Collection(collection)
+	_, err := coll.Indexes().CreateOne(ctx, model)
+	return err
+}
+
+// DropIndex removes an index by name.
+func (c *MongoConnector) DropIndex(database, collection, indexName string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if indexName == "_id_" {
+		return fmt.Errorf("cannot drop the default _id index")
+	}
+
+	coll := c.client.Database(database).Collection(collection)
+	return coll.Indexes().DropOne(ctx, indexName)
+}
+
+// convertFilterIDs recursively converts _id string values to ObjectID in a filter.
+func convertFilterIDs(doc bson.D) bson.D {
+	for i, elem := range doc {
+		if elem.Key == "_id" {
+			doc[i].Value = convertIDValue(elem.Value)
+		}
+	}
+	return doc
+}
+
+func convertIDValue(val interface{}) interface{} {
+	switch v := val.(type) {
+	case string:
+		if oid, err := bson.ObjectIDFromHex(v); err == nil {
+			return oid
+		}
+		return v
+	case bson.D:
+		// Operator like {"$in": [...], "$gt": "..."}
+		for i, elem := range v {
+			v[i].Value = convertIDValue(elem.Value)
+		}
+		return v
+	case bson.A:
+		for i, item := range v {
+			v[i] = convertIDValue(item)
+		}
+		return v
+	default:
+		return val
+	}
+}
+
 func (c *MongoConnector) Close() error {
 	if c.client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

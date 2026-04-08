@@ -556,6 +556,68 @@ func (s *DatabaseService) getForeignKeys(database string) map[string]connector.F
 	return fkMap
 }
 
+// ── MongoDB-specific methods ──
+
+// MongoFind performs a server-side find with filter, sort, limit, skip.
+func (s *DatabaseService) MongoFind(database, collection, filter, sort string, limit, skip int) (*connector.QueryResult, int64, error) {
+	if s.conn == nil {
+		return nil, 0, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, 0, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.FindDocuments(database, collection, filter, sort, limit, skip)
+}
+
+// MongoCount returns total document count for a collection.
+func (s *DatabaseService) MongoCount(database, collection string) (int64, error) {
+	if s.conn == nil {
+		return 0, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return 0, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.CountDocuments(database, collection)
+}
+
+// MongoListIndexes returns indexes for a collection.
+func (s *DatabaseService) MongoListIndexes(database, collection string) ([]connector.IndexInfo, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.ListIndexes(database, collection)
+}
+
+// MongoCreateIndex creates an index on a collection.
+func (s *DatabaseService) MongoCreateIndex(database, collection, keysJSON string, unique bool, name string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.CreateIndex(database, collection, keysJSON, unique, name)
+}
+
+// MongoDropIndex drops an index by name.
+func (s *DatabaseService) MongoDropIndex(database, collection, indexName string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.DropIndex(database, collection, indexName)
+}
+
 func (s *DatabaseService) Disconnect() error {
 	if s.conn != nil {
 		err := s.conn.Close()

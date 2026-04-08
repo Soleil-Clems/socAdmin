@@ -696,6 +696,127 @@ func splitSQL(sql string) []string {
 	return statements
 }
 
+// ── MongoDB-specific handlers ──
+
+type MongoFindRequest struct {
+	Filter string `json:"filter"` // JSON string, e.g. {"age": {"$gt": 25}}
+	Sort   string `json:"sort"`   // JSON string, e.g. {"name": 1}
+	Limit  int    `json:"limit"`
+	Skip   int    `json:"skip"`
+}
+
+func (c *DatabaseController) MongoFind(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req MongoFindRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Limit <= 0 || req.Limit > 1000 {
+		req.Limit = 50
+	}
+	if req.Skip < 0 {
+		req.Skip = 0
+	}
+
+	result, total, err := c.dbService.MongoFind(db, table, req.Filter, req.Sort, req.Limit, req.Skip)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"Columns": result.Columns,
+		"Rows":    result.Rows,
+		"total":   total,
+	})
+}
+
+func (c *DatabaseController) MongoCount(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	count, err := c.dbService.MongoCount(db, table)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]interface{}{"count": count})
+}
+
+func (c *DatabaseController) MongoListIndexes(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	indexes, err := c.dbService.MongoListIndexes(db, table)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, indexes)
+}
+
+type MongoCreateIndexRequest struct {
+	Keys   string `json:"keys"`   // JSON string, e.g. {"field": 1}
+	Unique bool   `json:"unique"`
+	Name   string `json:"name"`
+}
+
+func (c *DatabaseController) MongoCreateIndex(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req MongoCreateIndexRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Keys == "" {
+		jsonError(w, http.StatusBadRequest, "keys are required")
+		return
+	}
+
+	if err := c.dbService.MongoCreateIndex(db, table, req.Keys, req.Unique, req.Name); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusCreated, map[string]string{"status": "created"})
+}
+
+type MongoDropIndexRequest struct {
+	Name string `json:"name"`
+}
+
+func (c *DatabaseController) MongoDropIndex(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req MongoDropIndexRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Name == "" {
+		jsonError(w, http.StatusBadRequest, "index name is required")
+		return
+	}
+
+	if err := c.dbService.MongoDropIndex(db, table, req.Name); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "dropped"})
+}
+
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
