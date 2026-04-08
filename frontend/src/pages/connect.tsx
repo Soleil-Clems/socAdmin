@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { connectSchema, dbTypes, type ConnectFormData } from "@/schemas/connect.schema";
@@ -102,12 +102,28 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
     ? dbTypes.filter((t) => systemInfo.installed_sgbd.includes(t))
     : dbTypes;
 
+  const handleTypeChange = useCallback((value: ConnectFormData["type"], onChange: (value: string) => void) => {
+    onChange(value);
+    setValue("port", defaultPorts[value] || 3306);
+    connectMutation.reset();
+    if (value === "mongodb") {
+      setValue("user", "");
+      setValue("password", "");
+    } else if (value === "postgresql") {
+      setValue("user", systemInfo?.os_user || "");
+      setValue("password", "");
+    } else {
+      setValue("user", "root");
+      setValue("password", "");
+    }
+  }, [setValue, systemInfo?.os_user, connectMutation]);
+
   // Switch to first available type if current selection isn't installed
   useEffect(() => {
     if (availableTypes.length > 0 && !availableTypes.includes(selectedType as typeof availableTypes[number])) {
       handleTypeChange(availableTypes[0], (v: string) => setValue("type", v as ConnectFormData["type"]));
     }
-  }, [availableTypes]);
+  }, [availableTypes, handleTypeChange, selectedType, setValue]);
 
   const onSubmit = (data: ConnectFormData) => {
     connectMutation.mutate(data, {
@@ -147,21 +163,6 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
         setConnected(conn.host, conn.port, conn.user, conn.type);
       },
     });
-  };
-
-  const handleTypeChange = (value: ConnectFormData["type"], onChange: (value: string) => void) => {
-    onChange(value);
-    setValue("port", defaultPorts[value] || 3306);
-    if (value === "mongodb") {
-      setValue("user", "");
-      setValue("password", "");
-    } else if (value === "postgresql") {
-      setValue("user", systemInfo?.os_user || "");
-      setValue("password", "");
-    } else {
-      setValue("user", "root");
-      setValue("password", "");
-    }
   };
 
   // Filter saved connections to only show installed DB types
