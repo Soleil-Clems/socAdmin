@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useAuthStore } from "@/stores/auth.store";
-import { databaseRequest, type MongoFindResult } from "@/requests/database.request";
+import { databaseRequest, type MongoFindResult, type MongoCollectionStats } from "@/requests/database.request";
 import { useInsertRow } from "@/hooks/mutations/use-insert-row";
 import { useUpdateRow } from "@/hooks/mutations/use-update-row";
 import { useDeleteRow } from "@/hooks/mutations/use-delete-row";
@@ -25,6 +25,14 @@ import {
 } from "@/components/ui/dialog";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(i > 0 ? 1 : 0)} ${sizes[i]}`;
+}
 
 // ── JSON syntax highlight ──
 function JsonValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
@@ -197,6 +205,13 @@ export default function DocumentView() {
   const [sortInput, setSortInput] = useState("");
   const [activeSort, setActiveSort] = useState("");
 
+  // Collection stats
+  const { data: stats } = useQuery<MongoCollectionStats>({
+    queryKey: ["mongo-stats", selectedDb, selectedTable],
+    queryFn: () => databaseRequest.mongoCollectionStats(selectedDb, selectedTable),
+    enabled: !!selectedDb && !!selectedTable,
+  });
+
   // Server-side find
   const { data: findResult, isLoading } = useQuery<MongoFindResult>({
     queryKey: ["mongo-find", selectedDb, selectedTable, activeFilter, activeSort, pageSize, page],
@@ -352,6 +367,13 @@ export default function DocumentView() {
         <span className="text-muted-foreground">{selectedDb}</span>
         <span className="text-muted-foreground">
           · {totalDocs.toLocaleString()} docs
+          {stats && (
+            <>
+              {" · "}{formatBytes(stats.storage_size)}
+              {" · "}{stats.index_count} idx
+              {stats.avg_doc_size > 0 && <> · avg {formatBytes(stats.avg_doc_size)}</>}
+            </>
+          )}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
           {isAdmin && (

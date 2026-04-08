@@ -105,13 +105,13 @@ export default function DashboardPage() {
               <TabsTrigger value="data" className={tabClass}>
                 {selectedTable ? (isMongo ? "Documents" : "Browse") : (isMongo ? "Collections" : "Tables")}
               </TabsTrigger>
-              {selectedTable && !isMongo && (
+              {selectedTable && (
                 <TabsTrigger value="structure" className={tabClass}>Structure</TabsTrigger>
               )}
               {isAdmin && (
                 <TabsTrigger value="query" className={tabClass}>{isMongo ? "Shell" : "SQL"}</TabsTrigger>
               )}
-              {isAdmin && !isMongo && (
+              {isAdmin && (
                 <TabsTrigger value="import" className={tabClass}>Import</TabsTrigger>
               )}
               {!isMongo && (
@@ -135,7 +135,7 @@ export default function DashboardPage() {
           <TabsContent value="data" className="flex-1 overflow-hidden m-0">
             {selectedTable ? (isMongo ? <DocumentView /> : <TableView />) : <DatabaseView />}
           </TabsContent>
-          {selectedTable && !isMongo && (
+          {selectedTable && (
             <TabsContent value="structure" className="flex-1 overflow-hidden m-0">
               <StructureView />
             </TabsContent>
@@ -145,7 +145,7 @@ export default function DashboardPage() {
               <QueryEditor />
             </TabsContent>
           )}
-          {isAdmin && !isMongo && (
+          {isAdmin && (
             <TabsContent value="import" className="flex-1 overflow-hidden m-0">
               <ImportView />
             </TabsContent>

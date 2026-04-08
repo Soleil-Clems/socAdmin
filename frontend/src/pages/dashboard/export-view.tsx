@@ -1,17 +1,25 @@
 import { useNavigationStore } from "@/stores/navigation.store";
+import { useConnectionStore } from "@/stores/connection.store";
 import { databaseRequest } from "@/requests/database.request";
 
 type Format = "csv" | "json" | "sql" | "yaml";
 
-const formats: { value: Format; label: string; desc: string }[] = [
+const sqlFormats: { value: Format; label: string; desc: string }[] = [
   { value: "sql", label: "SQL", desc: "CREATE + INSERT" },
   { value: "json", label: "JSON", desc: "Structured data" },
   { value: "csv", label: "CSV", desc: "Comma-separated" },
   { value: "yaml", label: "YAML", desc: "Human-readable" },
 ];
 
+const mongoFormats: { value: Format; label: string; desc: string }[] = [
+  { value: "json", label: "JSON", desc: "Documents array" },
+  { value: "csv", label: "CSV", desc: "Flattened fields" },
+];
+
 export default function ExportView() {
   const { selectedDb, selectedTable } = useNavigationStore();
+  const isMongo = useConnectionStore((s) => s.dbType) === "mongodb";
+  const formats = isMongo ? mongoFormats : sqlFormats;
 
   const handleExportTable = (format: Format) => {
     if (!selectedDb || !selectedTable) return;
@@ -45,7 +53,7 @@ export default function ExportView() {
               <div>
                 <p className="text-sm font-medium">Export database</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Export all tables from <span className="text-primary font-medium">{selectedDb}</span>
+                  Export all {isMongo ? "collections" : "tables"} from <span className="text-primary font-medium">{selectedDb}</span>
                 </p>
               </div>
               <div className="grid grid-cols-4 gap-3">
@@ -64,11 +72,11 @@ export default function ExportView() {
               </div>
             </div>
 
-            {/* Export Table */}
+            {/* Export Table/Collection */}
             {selectedTable ? (
               <div className="max-w-2xl space-y-3">
                 <div>
-                  <p className="text-sm font-medium">Export table</p>
+                  <p className="text-sm font-medium">Export {isMongo ? "collection" : "table"}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Export <span className="text-primary font-medium">{selectedTable}</span> from {selectedDb}
                   </p>
@@ -91,7 +99,7 @@ export default function ExportView() {
             ) : (
               <div className="max-w-2xl">
                 <p className="text-xs text-muted-foreground">
-                  Select a table to export individually
+                  Select a {isMongo ? "collection" : "table"} to export individually
                 </p>
               </div>
             )}

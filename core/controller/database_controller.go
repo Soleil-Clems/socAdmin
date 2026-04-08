@@ -817,6 +817,19 @@ func (c *DatabaseController) MongoDropIndex(w http.ResponseWriter, r *http.Reque
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "dropped"})
 }
 
+func (c *DatabaseController) MongoCollectionStats(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	stats, err := c.dbService.MongoCollectionStats(db, table)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, stats)
+}
+
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

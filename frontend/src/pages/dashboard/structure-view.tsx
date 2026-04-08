@@ -62,7 +62,7 @@ export default function StructureView() {
   const [error, setError] = useState("");
 
   const typeOptions = typeOptionsFor(dbType);
-  const mongoUnsupported = dbType === "mongodb";
+  const isMongo = dbType === "mongodb";
 
   const openAdd = () => {
     setError("");
@@ -153,8 +153,11 @@ export default function StructureView() {
       <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">{selectedTable}</span>
         <span className="text-muted-foreground">{selectedDb} · Structure</span>
+        {isMongo && (
+          <span className="text-[11px] text-muted-foreground/70 italic">Inferred from document sample</span>
+        )}
         <div className="ml-auto">
-          {isAdmin && !mongoUnsupported && (
+          {isAdmin && !isMongo && (
             <Button size="sm" className="h-7 text-xs px-3" onClick={openAdd}>
               + Column
             </Button>
@@ -186,7 +189,7 @@ export default function StructureView() {
                 <th className="px-3 py-1.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Key</th>
                 <th className="px-3 py-1.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Default</th>
                 <th className="px-3 py-1.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Extra</th>
-                {isAdmin && !mongoUnsupported && (
+                {isAdmin && !isMongo && (
                   <th className="px-3 py-1.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-24">
                     Actions
                   </th>
@@ -233,7 +236,7 @@ export default function StructureView() {
                   <td className="px-3 py-1.5 text-[12px] text-muted-foreground">
                     {col.Extra || "—"}
                   </td>
-                  {isAdmin && !mongoUnsupported && (
+                  {isAdmin && !isMongo && (
                     <td className="px-3 py-1.5 text-right">
                       <div className="flex justify-end gap-0.5">
                         <button
@@ -258,7 +261,7 @@ export default function StructureView() {
               {(!columns || columns.length === 0) && (
                 <tr>
                   <td
-                    colSpan={isAdmin && !mongoUnsupported ? 8 : 7}
+                    colSpan={isAdmin && !isMongo ? 8 : 7}
                     className="text-center text-muted-foreground py-12 text-sm"
                   >
                     No columns found

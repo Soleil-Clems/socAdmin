@@ -575,6 +575,65 @@ func (c *MongoConnector) DropIndex(database, collection, indexName string) error
 	return coll.Indexes().DropOne(ctx, indexName)
 }
 
+// CollectionStats returns stats about a MongoDB collection.
+type CollectionStats struct {
+	Documents  int64  `json:"documents"`
+	AvgDocSize int64  `json:"avg_doc_size"`
+	TotalSize  int64  `json:"total_size"`
+	IndexCount int    `json:"index_count"`
+	IndexSize  int64  `json:"index_size"`
+	StorageSize int64 `json:"storage_size"`
+}
+
+func (c *MongoConnector) CollectionStats(database, collection string) (*CollectionStats, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result bson.M
+	err := c.client.Database(database).RunCommand(ctx, bson.D{
+		{Key: "collStats", Value: collection},
+	}).Decode(&result)
+	if err != nil {
+		return nil, fmt.Errorf("collStats failed: %w", err)
+	}
+
+	stats := &CollectionStats{}
+	if v, ok := result["count"]; ok {
+		stats.Documents = toInt64(v)
+	}
+	if v, ok := result["avgObjSize"]; ok {
+		stats.AvgDocSize = toInt64(v)
+	}
+	if v, ok := result["size"]; ok {
+		stats.TotalSize = toInt64(v)
+	}
+	if v, ok := result["storageSize"]; ok {
+		stats.StorageSize = toInt64(v)
+	}
+	if v, ok := result["nindexes"]; ok {
+		stats.IndexCount = int(toInt64(v))
+	}
+	if v, ok := result["totalIndexSize"]; ok {
+		stats.IndexSize = toInt64(v)
+	}
+	return stats, nil
+}
+
+func toInt64(v interface{}) int64 {
+	switch val := v.(type) {
+	case int32:
+		return int64(val)
+	case int64:
+		return val
+	case float64:
+		return int64(val)
+	case int:
+		return int64(val)
+	default:
+		return 0
+	}
+}
+
 // convertFilterIDs recursively converts _id string values to ObjectID in a filter.
 func convertFilterIDs(doc bson.D) bson.D {
 	for i, elem := range doc {

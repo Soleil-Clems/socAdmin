@@ -1,10 +1,12 @@
 import { useState, useRef } from "react";
 import { useNavigationStore } from "@/stores/navigation.store";
+import { useConnectionStore } from "@/stores/connection.store";
 import { useQueryClient } from "@tanstack/react-query";
 import { databaseRequest } from "@/requests/database.request";
 
 export default function ImportView() {
   const { selectedDb, selectedTable } = useNavigationStore();
+  const isMongo = useConnectionStore((s) => s.dbType) === "mongodb";
   const queryClient = useQueryClient();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -27,7 +29,14 @@ export default function ImportView() {
 
       let res: { inserted?: number; executed?: number; errors?: string[] };
 
+      const target = isMongo ? "collection" : "table";
+
       if (ext === "sql") {
+        if (isMongo) {
+          setError("SQL import is not supported for MongoDB");
+          setImporting(false);
+          return;
+        }
         if (!selectedDb) {
           setError("Select a database first to import SQL");
           setImporting(false);
@@ -40,28 +49,28 @@ export default function ImportView() {
         );
       } else if (ext === "csv") {
         if (!selectedDb || !selectedTable) {
-          setError("Select a database and a table to import CSV");
+          setError(`Select a database and a ${target} to import CSV`);
           setImporting(false);
           return;
         }
         res = await databaseRequest.importCSV(selectedDb, selectedTable, content);
         setResult(
-          `${res.inserted} rows inserted into ${selectedTable}` +
+          `${res.inserted} documents inserted into ${selectedTable}` +
             (res.errors?.length ? `. ${res.errors.length} error(s)` : "")
         );
       } else if (ext === "json") {
         if (!selectedDb || !selectedTable) {
-          setError("Select a database and a table to import JSON");
+          setError(`Select a database and a ${target} to import JSON`);
           setImporting(false);
           return;
         }
         res = await databaseRequest.importJSON(selectedDb, selectedTable, content);
         setResult(
-          `${res.inserted} rows inserted into ${selectedTable}` +
+          `${res.inserted} documents inserted into ${selectedTable}` +
             (res.errors?.length ? `. ${res.errors.length} error(s)` : "")
         );
       } else {
-        setError("Unsupported format. Use .sql, .csv, or .json");
+        setError(isMongo ? "Unsupported format. Use .json or .csv" : "Unsupported format. Use .sql, .csv, or .json");
       }
 
       queryClient.invalidateQueries({ queryKey: ["rows"] });
@@ -87,15 +96,24 @@ export default function ImportView() {
           <div className="text-center space-y-2">
             <p className="text-sm text-foreground font-medium">Import data from a file</p>
             <p className="text-xs text-muted-foreground">
-              Supported formats: <span className="font-medium">.sql</span> (requires database),{" "}
-              <span className="font-medium">.csv</span> and <span className="font-medium">.json</span> (require database + table)
+              {isMongo ? (
+                <>
+                  Supported formats: <span className="font-medium">.json</span> and{" "}
+                  <span className="font-medium">.csv</span> (require database + collection)
+                </>
+              ) : (
+                <>
+                  Supported formats: <span className="font-medium">.sql</span> (requires database),{" "}
+                  <span className="font-medium">.csv</span> and <span className="font-medium">.json</span> (require database + table)
+                </>
+              )}
             </p>
           </div>
 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv,.json,.sql"
+            accept={isMongo ? ".csv,.json" : ".csv,.json,.sql"}
             onChange={handleFile}
             className="hidden"
           />
@@ -112,7 +130,7 @@ export default function ImportView() {
                   Click to select a file
                 </p>
                 <p className="text-[11px] text-muted-foreground/60 mt-1">
-                  .sql, .csv, .json
+                  {isMongo ? ".json, .csv" : ".sql, .csv, .json"}
                 </p>
               </>
             )}
@@ -131,9 +149,11 @@ export default function ImportView() {
           )}
 
           <div className="text-[11px] text-muted-foreground space-y-1">
-            <p><span className="font-medium">SQL:</span> Executes all statements in the selected database</p>
-            <p><span className="font-medium">CSV:</span> Inserts rows into the selected table (headers must match column names)</p>
-            <p><span className="font-medium">JSON:</span> Inserts rows into the selected table (array of objects)</p>
+            {!isMongo && (
+              <p><span className="font-medium">SQL:</span> Executes all statements in the selected database</p>
+            )}
+            <p><span className="font-medium">CSV:</span> Inserts {isMongo ? "documents" : "rows"} into the selected {isMongo ? "collection" : "table"} (headers must match {isMongo ? "field" : "column"} names)</p>
+            <p><span className="font-medium">JSON:</span> Inserts {isMongo ? "documents" : "rows"} into the selected {isMongo ? "collection" : "table"} (array of objects)</p>
           </div>
         </div>
       </div>

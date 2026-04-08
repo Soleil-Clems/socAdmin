@@ -44,6 +44,15 @@ export type MongoFindResult = {
   total: number;
 };
 
+export type MongoCollectionStats = {
+  documents: number;
+  avg_doc_size: number;
+  total_size: number;
+  index_count: number;
+  index_size: number;
+  storage_size: number;
+};
+
 export type MongoIndex = {
   name: string;
   keys: Record<string, number>;
@@ -139,6 +148,9 @@ export const databaseRequest = {
 
   mongoDropIndex: (db: string, collection: string, name: string) =>
     customfetch.delete(`/databases/${db}/tables/${collection}/indexes`, { name }),
+
+  mongoCollectionStats: (db: string, collection: string) =>
+    customfetch.get<MongoCollectionStats>(`/databases/${db}/tables/${collection}/stats`),
 
   listUsers: () => customfetch.get<Record<string, unknown>[]>("/users"),
 

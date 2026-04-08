@@ -618,6 +618,18 @@ func (s *DatabaseService) MongoDropIndex(database, collection, indexName string)
 	return mc.DropIndex(database, collection, indexName)
 }
 
+// MongoCollectionStats returns stats for a MongoDB collection.
+func (s *DatabaseService) MongoCollectionStats(database, collection string) (*connector.CollectionStats, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.CollectionStats(database, collection)
+}
+
 func (s *DatabaseService) Disconnect() error {
 	if s.conn != nil {
 		err := s.conn.Close()
