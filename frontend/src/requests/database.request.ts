@@ -211,6 +211,27 @@ export const databaseRequest = {
   mongoCreateView: (db: string, name: string, source: string, pipeline: string) =>
     customfetch.post(`/databases/${db}/views`, { name, source, pipeline }),
 
+  // Schema Validation
+  mongoGetValidation: (db: string, collection: string) =>
+    customfetch.get<{ validator?: string; validationLevel: string; validationAction: string }>(`/databases/${db}/tables/${collection}/validation`),
+
+  mongoSetValidation: (db: string, collection: string, validator: string, level: string, action: string) =>
+    customfetch.put(`/databases/${db}/tables/${collection}/validation`, { validator, validation_level: level, validation_action: action }),
+
+  // Rename Collection
+  mongoRenameCollection: (db: string, collection: string, newName: string) =>
+    customfetch.post(`/databases/${db}/tables/${collection}/rename`, { new_name: newName }),
+
+  // Database Profiler
+  mongoGetProfilingLevel: (db: string) =>
+    customfetch.get<{ was: number; slowms: number }>(`/databases/${db}/profiling`),
+
+  mongoSetProfilingLevel: (db: string, level: number, slowms: number) =>
+    customfetch.put(`/databases/${db}/profiling`, { level, slowms }),
+
+  mongoGetProfileData: (db: string, limit = 50) =>
+    customfetch.get<{ op: string; ns: string; millis: number; ts: string; command: string; nreturned: number; docsExamined: number; keysExamined: number; planSummary: string }[]>(`/databases/${db}/profiling/data?limit=${limit}`),
+
   listUsers: () => customfetch.get<Record<string, unknown>[]>("/users"),
 
   serverStatus: () => customfetch.get<Record<string, unknown>>("/status"),

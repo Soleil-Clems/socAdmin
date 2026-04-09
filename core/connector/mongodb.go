@@ -1068,6 +1068,174 @@ func (c *MongoConnector) ListViews(database string) ([]map[string]interface{}, e
 	return views, nil
 }
 
+// ── Schema Validation ──
+
+// GetValidationRules returns the validation rules for a collection.
+func (c *MongoConnector) GetValidationRules(database, collection string) (map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := c.client.Database(database).ListCollections(ctx, bson.M{"name": collection})
+	if err != nil {
+		return nil, fmt.Errorf("list collections failed: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	if !cursor.Next(ctx) {
+		return nil, fmt.Errorf("collection %s not found", collection)
+	}
+
+	var doc bson.M
+	if err := cursor.Decode(&doc); err != nil {
+		return nil, err
+	}
+
+	result := map[string]interface{}{
+		"validationLevel":  "off",
+		"validationAction": "warn",
+	}
+
+	if opts, ok := doc["options"].(bson.M); ok {
+		if v, ok := opts["validator"]; ok {
+			b, _ := json.Marshal(v)
+			result["validator"] = string(b)
+		}
+		if v, ok := opts["validationLevel"]; ok {
+			result["validationLevel"] = v
+		}
+		if v, ok := opts["validationAction"]; ok {
+			result["validationAction"] = v
+		}
+	}
+
+	return result, nil
+}
+
+// SetValidationRules sets or updates the validation rules for a collection.
+func (c *MongoConnector) SetValidationRules(database, collection, validatorJSON, level, action string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := bson.D{{Key: "collMod", Value: collection}}
+
+	if validatorJSON != "" && validatorJSON != "{}" {
+		var validator bson.D
+		if err := bson.UnmarshalExtJSON([]byte(validatorJSON), false, &validator); err != nil {
+			return fmt.Errorf("invalid validator JSON: %w", err)
+		}
+		cmd = append(cmd, bson.E{Key: "validator", Value: validator})
+	}
+
+	if level != "" {
+		cmd = append(cmd, bson.E{Key: "validationLevel", Value: level})
+	}
+	if action != "" {
+		cmd = append(cmd, bson.E{Key: "validationAction", Value: action})
+	}
+
+	var result bson.M
+	return c.client.Database(database).RunCommand(ctx, cmd).Decode(&result)
+}
+
+// ── Rename Collection ──
+
+// RenameCollection renames a collection within the same database.
+func (c *MongoConnector) RenameCollection(database, oldName, newName string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := bson.D{
+		{Key: "renameCollection", Value: database + "." + oldName},
+		{Key: "to", Value: database + "." + newName},
+	}
+
+	var result bson.M
+	return c.client.Database("admin").RunCommand(ctx, cmd).Decode(&result)
+}
+
+// ── Database Profiler ──
+
+// GetProfilingLevel returns the current profiling level and slowms threshold.
+func (c *MongoConnector) GetProfilingLevel(database string) (map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result bson.M
+	err := c.client.Database(database).RunCommand(ctx, bson.D{
+		{Key: "profile", Value: -1},
+	}).Decode(&result)
+	if err != nil {
+		return nil, fmt.Errorf("profile failed: %w", err)
+	}
+
+	return map[string]interface{}{
+		"was":    result["was"],
+		"slowms": result["slowms"],
+	}, nil
+}
+
+// SetProfilingLevel sets the profiling level (0=off, 1=slow ops, 2=all ops) and slowms.
+func (c *MongoConnector) SetProfilingLevel(database string, level int, slowms int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := bson.D{
+		{Key: "profile", Value: level},
+	}
+	if slowms > 0 {
+		cmd = append(cmd, bson.E{Key: "slowms", Value: slowms})
+	}
+
+	var result bson.M
+	return c.client.Database(database).RunCommand(ctx, cmd).Decode(&result)
+}
+
+// GetProfileData returns recent entries from system.profile.
+func (c *MongoConnector) GetProfileData(database string, limit int) ([]map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	coll := c.client.Database(database).Collection("system.profile")
+	opts := options.Find().SetSort(bson.D{{Key: "ts", Value: -1}}).SetLimit(int64(limit))
+
+	cursor, err := coll.Find(ctx, bson.D{}, opts)
+	if err != nil {
+		return nil, fmt.Errorf("profile query failed: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var entries []map[string]interface{}
+	for cursor.Next(ctx) {
+		var doc bson.M
+		if err := cursor.Decode(&doc); err != nil {
+			continue
+		}
+		entry := map[string]interface{}{
+			"op":        doc["op"],
+			"ns":        doc["ns"],
+			"millis":    doc["millis"],
+			"ts":        fmt.Sprintf("%v", doc["ts"]),
+			"nreturned": doc["nreturned"],
+			"planSummary": doc["planSummary"],
+		}
+		if cmd, ok := doc["command"].(bson.M); ok {
+			b, _ := json.Marshal(cmd)
+			if len(b) > 300 {
+				b = append(b[:297], '.', '.', '.')
+			}
+			entry["command"] = string(b)
+		}
+		if doc["docsExamined"] != nil {
+			entry["docsExamined"] = doc["docsExamined"]
+		}
+		if doc["keysExamined"] != nil {
+			entry["keysExamined"] = doc["keysExamined"]
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
 func (c *MongoConnector) Close() error {
 	if c.client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

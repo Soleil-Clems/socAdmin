@@ -805,6 +805,78 @@ func (s *DatabaseService) MongoListViews(database string) ([]map[string]interfac
 	return mc.ListViews(database)
 }
 
+// ── Schema Validation ──
+
+func (s *DatabaseService) MongoGetValidation(database, collection string) (map[string]interface{}, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.GetValidationRules(database, collection)
+}
+
+func (s *DatabaseService) MongoSetValidation(database, collection, validatorJSON, level, action string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.SetValidationRules(database, collection, validatorJSON, level, action)
+}
+
+// ── Rename Collection ──
+
+func (s *DatabaseService) MongoRenameCollection(database, oldName, newName string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.RenameCollection(database, oldName, newName)
+}
+
+// ── Database Profiler ──
+
+func (s *DatabaseService) MongoGetProfilingLevel(database string) (map[string]interface{}, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.GetProfilingLevel(database)
+}
+
+func (s *DatabaseService) MongoSetProfilingLevel(database string, level, slowms int) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.SetProfilingLevel(database, level, slowms)
+}
+
+func (s *DatabaseService) MongoGetProfileData(database string, limit int) ([]map[string]interface{}, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.GetProfileData(database, limit)
+}
+
 func (s *DatabaseService) Disconnect() error {
 	if s.conn != nil {
 		err := s.conn.Close()

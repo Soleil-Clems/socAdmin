@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useColumns } from "@/hooks/queries/use-columns";
 import { useAlterColumn } from "@/hooks/mutations/use-alter-column";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
 import { useAuthStore } from "@/stores/auth.store";
+import { databaseRequest } from "@/requests/database.request";
 import { typeOptionsFor } from "@/lib/column-types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -58,11 +60,44 @@ export default function StructureView() {
   const { data: columns, isLoading } = useColumns(selectedDb, selectedTable);
   const alter = useAlterColumn();
 
+  const queryClient = useQueryClient();
+
   const [edit, setEdit] = useState<EditState | null>(null);
   const [error, setError] = useState("");
 
+  // Rename collection
+  const [showRename, setShowRename] = useState(false);
+  const [renameInput, setRenameInput] = useState("");
+  const renameMutation = useMutation({
+    mutationFn: (newName: string) => databaseRequest.mongoRenameCollection(selectedDb, selectedTable, newName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tables", selectedDb] });
+      setShowRename(false);
+    },
+  });
+
+  // Schema validation
   const typeOptions = typeOptionsFor(dbType);
   const isMongo = dbType === "mongodb";
+
+  const { data: validation } = useQuery({
+    queryKey: ["mongo-validation", selectedDb, selectedTable],
+    queryFn: () => databaseRequest.mongoGetValidation(selectedDb, selectedTable),
+    enabled: isMongo && !!selectedDb && !!selectedTable,
+  });
+
+  const [showValidation, setShowValidation] = useState(false);
+  const [validatorInput, setValidatorInput] = useState("");
+  const [validationLevel, setValidationLevel] = useState("strict");
+  const [validationAction, setValidationAction] = useState("error");
+
+  const validationMutation = useMutation({
+    mutationFn: () => databaseRequest.mongoSetValidation(selectedDb, selectedTable, validatorInput, validationLevel, validationAction),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["mongo-validation", selectedDb, selectedTable] });
+      setShowValidation(false);
+    },
+  });
 
   const openAdd = () => {
     setError("");
@@ -156,7 +191,35 @@ export default function StructureView() {
         {isMongo && (
           <span className="text-[11px] text-muted-foreground/70 italic">Inferred from document sample</span>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1.5">
+          {isAdmin && isMongo && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={() => {
+                  setRenameInput(selectedTable);
+                  setShowRename(true);
+                }}
+              >
+                Rename
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={() => {
+                  setValidatorInput(validation?.validator || "{}");
+                  setValidationLevel(validation?.validationLevel || "strict");
+                  setValidationAction(validation?.validationAction || "error");
+                  setShowValidation(true);
+                }}
+              >
+                Validation
+              </Button>
+            </>
+          )}
           {isAdmin && !isMongo && (
             <Button size="sm" className="h-7 text-xs px-3" onClick={openAdd}>
               + Column
@@ -347,6 +410,116 @@ export default function StructureView() {
               </Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename collection dialog (MongoDB) */}
+      <Dialog open={showRename} onOpenChange={setShowRename}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">Rename Collection</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">New name</label>
+              <Input
+                value={renameInput}
+                onChange={(e) => setRenameInput(e.target.value)}
+                placeholder="new_collection_name"
+                className="h-9 text-sm"
+                autoFocus
+              />
+            </div>
+            {renameMutation.isError && (
+              <p className="text-xs text-destructive">{renameMutation.error.message}</p>
+            )}
+            <Button
+              className="w-full h-9"
+              onClick={() => renameInput.trim() && renameMutation.mutate(renameInput.trim())}
+              disabled={renameMutation.isPending || !renameInput.trim() || renameInput === selectedTable}
+            >
+              {renameMutation.isPending ? "Renaming..." : "Rename"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Schema Validation dialog (MongoDB) */}
+      <Dialog open={showValidation} onOpenChange={setShowValidation}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base">Schema Validation — {selectedTable}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Validator (JSON Schema)</label>
+              <textarea
+                value={validatorInput}
+                onChange={(e) => setValidatorInput(e.target.value)}
+                placeholder='{"$jsonSchema": {"bsonType": "object", "required": ["name"], "properties": {"name": {"bsonType": "string"}}}}'
+                className="w-full h-32 text-xs font-mono bg-background border border-border rounded p-2 resize-y"
+                spellCheck={false}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Use <code className="bg-muted px-1 rounded">$jsonSchema</code> for JSON Schema validation.
+                Leave empty <code className="bg-muted px-1 rounded">{"{}"}</code> to remove validation.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Validation Level</label>
+                <select
+                  value={validationLevel}
+                  onChange={(e) => setValidationLevel(e.target.value)}
+                  className="h-9 w-full text-sm bg-background border border-border rounded px-2"
+                >
+                  <option value="off">Off</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="strict">Strict</option>
+                </select>
+                <p className="text-[10px] text-muted-foreground">
+                  Strict: all inserts/updates. Moderate: existing valid docs only.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Validation Action</label>
+                <select
+                  value={validationAction}
+                  onChange={(e) => setValidationAction(e.target.value)}
+                  className="h-9 w-full text-sm bg-background border border-border rounded px-2"
+                >
+                  <option value="error">Error (reject)</option>
+                  <option value="warn">Warn (log only)</option>
+                </select>
+                <p className="text-[10px] text-muted-foreground">
+                  Error rejects invalid docs. Warn allows but logs.
+                </p>
+              </div>
+            </div>
+
+            {validation?.validator && (
+              <div className="border border-border rounded p-2 bg-muted/30">
+                <span className="text-[10px] font-semibold text-muted-foreground uppercase">Current validator</span>
+                <pre className="mt-1 text-[11px] font-mono overflow-x-auto max-h-20">
+                  {(() => {
+                    try { return JSON.stringify(JSON.parse(validation.validator), null, 2); }
+                    catch { return validation.validator; }
+                  })()}
+                </pre>
+              </div>
+            )}
+
+            {validationMutation.isError && (
+              <p className="text-xs text-destructive">{validationMutation.error.message}</p>
+            )}
+            <Button
+              className="w-full h-9"
+              onClick={() => validationMutation.mutate()}
+              disabled={validationMutation.isPending}
+            >
+              {validationMutation.isPending ? "Saving..." : "Save Validation Rules"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

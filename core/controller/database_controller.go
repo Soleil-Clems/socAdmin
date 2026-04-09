@@ -1160,6 +1160,135 @@ func (c *DatabaseController) MongoListViews(w http.ResponseWriter, r *http.Reque
 	jsonResponse(w, http.StatusOK, views)
 }
 
+// ── Schema Validation ──
+
+func (c *DatabaseController) MongoGetValidation(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	rules, err := c.dbService.MongoGetValidation(db, table)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, rules)
+}
+
+type MongoSetValidationRequest struct {
+	Validator       string `json:"validator"`
+	ValidationLevel string `json:"validation_level"`
+	ValidationAction string `json:"validation_action"`
+}
+
+func (c *DatabaseController) MongoSetValidation(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req MongoSetValidationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := c.dbService.MongoSetValidation(db, table, req.Validator, req.ValidationLevel, req.ValidationAction); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "set_validation", fmt.Sprintf("%s.%s", db, table))
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+// ── Rename Collection ──
+
+type MongoRenameCollectionRequest struct {
+	NewName string `json:"new_name"`
+}
+
+func (c *DatabaseController) MongoRenameCollection(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req MongoRenameCollectionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.NewName == "" {
+		jsonError(w, http.StatusBadRequest, "new_name is required")
+		return
+	}
+
+	if err := c.dbService.MongoRenameCollection(db, table, req.NewName); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "rename_collection", fmt.Sprintf("%s.%s → %s", db, table, req.NewName))
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "renamed"})
+}
+
+// ── Database Profiler ──
+
+func (c *DatabaseController) MongoGetProfilingLevel(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	data, err := c.dbService.MongoGetProfilingLevel(db)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, data)
+}
+
+type MongoSetProfilingRequest struct {
+	Level  int `json:"level"`
+	SlowMs int `json:"slowms"`
+}
+
+func (c *DatabaseController) MongoSetProfilingLevel(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	var req MongoSetProfilingRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Level < 0 || req.Level > 2 {
+		jsonError(w, http.StatusBadRequest, "level must be 0, 1, or 2")
+		return
+	}
+
+	if err := c.dbService.MongoSetProfilingLevel(db, req.Level, req.SlowMs); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "set_profiling", fmt.Sprintf("%s level=%d slowms=%d", db, req.Level, req.SlowMs))
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (c *DatabaseController) MongoGetProfileData(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 500 {
+			limit = v
+		}
+	}
+
+	data, err := c.dbService.MongoGetProfileData(db, limit)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if data == nil {
+		data = []map[string]interface{}{}
+	}
+	jsonResponse(w, http.StatusOK, data)
+}
+
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

@@ -75,6 +75,9 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("GET "+p+"/status", dbController.ServerStatus)
 	protected.HandleFunc("GET "+p+"/mongo/currentop", dbController.MongoCurrentOp)
 	protected.HandleFunc("GET "+p+"/databases/{db}/views", dbController.MongoListViews)
+	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/validation", dbController.MongoGetValidation)
+	protected.HandleFunc("GET "+p+"/databases/{db}/profiling", dbController.MongoGetProfilingLevel)
+	protected.HandleFunc("GET "+p+"/databases/{db}/profiling/data", dbController.MongoGetProfileData)
 	protected.HandleFunc("GET "+p+"/security/whitelist", secController.GetWhitelist)
 
 	// Saved connections — tout le monde peut lister et utiliser
@@ -104,6 +107,9 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/deleteMany", auth.RequireAdmin(dbController.MongoDeleteMany))
 	protected.HandleFunc("POST "+p+"/mongo/killop", auth.RequireAdmin(dbController.MongoKillOp))
 	protected.HandleFunc("POST "+p+"/databases/{db}/views", auth.RequireAdmin(dbController.MongoCreateView))
+	protected.HandleFunc("PUT "+p+"/databases/{db}/tables/{table}/validation", auth.RequireAdmin(dbController.MongoSetValidation))
+	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/rename", auth.RequireAdmin(dbController.MongoRenameCollection))
+	protected.HandleFunc("PUT "+p+"/databases/{db}/profiling", auth.RequireAdmin(dbController.MongoSetProfilingLevel))
 	protected.HandleFunc("POST "+p+"/mongo/users", auth.RequireAdmin(dbController.MongoCreateUser))
 	protected.HandleFunc("DELETE "+p+"/mongo/users", auth.RequireAdmin(dbController.MongoDropUser))
 	protected.HandleFunc("PUT "+p+"/mongo/users/roles", auth.RequireAdmin(dbController.MongoUpdateUserRoles))
