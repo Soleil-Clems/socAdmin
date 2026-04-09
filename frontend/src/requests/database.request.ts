@@ -232,6 +232,21 @@ export const databaseRequest = {
   mongoGetProfileData: (db: string, limit = 50) =>
     customfetch.get<{ op: string; ns: string; millis: number; ts: string; command: string; nreturned: number; docsExamined: number; keysExamined: number; planSummary: string }[]>(`/databases/${db}/profiling/data?limit=${limit}`),
 
+  // Database Stats
+  mongoDatabaseStats: (db: string) =>
+    customfetch.get<Record<string, unknown>>(`/databases/${db}/dbstats`),
+
+  // Capped Collections
+  mongoCreateCappedCollection: (db: string, name: string, sizeBytes: number, maxDocs: number) =>
+    customfetch.post(`/databases/${db}/capped`, { name, size_bytes: sizeBytes, max_docs: maxDocs }),
+
+  mongoIsCollectionCapped: (db: string, collection: string) =>
+    customfetch.get<{ capped: boolean }>(`/databases/${db}/tables/${collection}/capped`),
+
+  // Compact
+  mongoCompactCollection: (db: string, collection: string) =>
+    customfetch.post(`/databases/${db}/tables/${collection}/compact`, {}),
+
   listUsers: () => customfetch.get<Record<string, unknown>[]>("/users"),
 
   serverStatus: () => customfetch.get<Record<string, unknown>>("/status"),

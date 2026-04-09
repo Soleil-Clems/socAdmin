@@ -78,6 +78,8 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/validation", dbController.MongoGetValidation)
 	protected.HandleFunc("GET "+p+"/databases/{db}/profiling", dbController.MongoGetProfilingLevel)
 	protected.HandleFunc("GET "+p+"/databases/{db}/profiling/data", dbController.MongoGetProfileData)
+	protected.HandleFunc("GET "+p+"/databases/{db}/dbstats", dbController.MongoDatabaseStats)
+	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/capped", dbController.MongoIsCollectionCapped)
 	protected.HandleFunc("GET "+p+"/security/whitelist", secController.GetWhitelist)
 
 	// Saved connections — tout le monde peut lister et utiliser
@@ -110,6 +112,8 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("PUT "+p+"/databases/{db}/tables/{table}/validation", auth.RequireAdmin(dbController.MongoSetValidation))
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/rename", auth.RequireAdmin(dbController.MongoRenameCollection))
 	protected.HandleFunc("PUT "+p+"/databases/{db}/profiling", auth.RequireAdmin(dbController.MongoSetProfilingLevel))
+	protected.HandleFunc("POST "+p+"/databases/{db}/capped", auth.RequireAdmin(dbController.MongoCreateCappedCollection))
+	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/compact", auth.RequireAdmin(dbController.MongoCompactCollection))
 	protected.HandleFunc("POST "+p+"/mongo/users", auth.RequireAdmin(dbController.MongoCreateUser))
 	protected.HandleFunc("DELETE "+p+"/mongo/users", auth.RequireAdmin(dbController.MongoDropUser))
 	protected.HandleFunc("PUT "+p+"/mongo/users/roles", auth.RequireAdmin(dbController.MongoUpdateUserRoles))

@@ -1,4 +1,5 @@
-import { useState} from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTables } from "@/hooks/queries/use-tables";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
@@ -6,7 +7,7 @@ import { useAuthStore } from "@/stores/auth.store";
 import { useDropTable } from "@/hooks/mutations/use-drop-table";
 import { useTruncateTable } from "@/hooks/mutations/use-truncate-table";
 import { useCreateTable } from "@/hooks/mutations/use-create-table";
-import type { TableColumnDef } from "@/requests/database.request";
+import { databaseRequest, type TableColumnDef } from "@/requests/database.request";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,15 @@ import {
 
 import { typeOptionsFor } from "@/lib/column-types";
 
+function formatSize(bytes: unknown): string {
+  const n = Number(bytes);
+  if (!n || isNaN(n)) return "0 B";
+  if (n > 1073741824) return `${(n / 1073741824).toFixed(1)} GB`;
+  if (n > 1048576) return `${(n / 1048576).toFixed(1)} MB`;
+  if (n > 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
+}
+
 const emptyColumn = (): TableColumnDef => ({
   name: "",
   type: "",
@@ -46,10 +56,36 @@ export default function DatabaseView() {
   const truncateTable = useTruncateTable();
   const createTable = useCreateTable();
 
+  const isMongo = dbType === "mongodb";
+  const queryClient = useQueryClient();
+
+  const { data: dbStats } = useQuery({
+    queryKey: ["mongo-dbstats", selectedDb],
+    queryFn: () => databaseRequest.mongoDatabaseStats(selectedDb),
+    enabled: isMongo && !!selectedDb,
+  });
+
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showCreateTable, setShowCreateTable] = useState(false);
   const [tableName, setTableName] = useState("");
   const [columns, setColumns] = useState<TableColumnDef[]>([emptyColumn()]);
+
+  // Capped collection
+  const [showCapped, setShowCapped] = useState(false);
+  const [cappedName, setCappedName] = useState("");
+  const [cappedSize, setCappedSize] = useState("10485760"); // 10MB default
+  const [cappedMax, setCappedMax] = useState("");
+  const cappedMutation = useMutation({
+    mutationFn: () =>
+      databaseRequest.mongoCreateCappedCollection(selectedDb, cappedName, parseInt(cappedSize, 10), cappedMax ? parseInt(cappedMax, 10) : 0),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tables", selectedDb] });
+      setShowCapped(false);
+      setCappedName("");
+      setCappedSize("10485760");
+      setCappedMax("");
+    },
+  });
 
   const typeOptions = typeOptionsFor(dbType);
 
@@ -171,14 +207,37 @@ export default function DatabaseView() {
             </Button>
           </>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1.5">
+          {isAdmin && isMongo && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              onClick={() => setShowCapped(true)}
+            >
+              + Capped
+            </Button>
+          )}
           {isAdmin && (
             <Button size="sm" className="h-7 text-xs px-3" onClick={openCreateTable}>
-              + Table
+              + {isMongo ? "Collection" : "Table"}
             </Button>
           )}
         </div>
       </div>
+
+      {/* MongoDB dbStats */}
+      {isMongo && dbStats && (
+        <div className="px-3 py-2 border-b border-border bg-muted/20 flex flex-wrap gap-x-6 gap-y-1 text-[11px]">
+          <div><span className="text-muted-foreground">Collections:</span> <span className="font-medium">{String(dbStats.collections ?? 0)}</span></div>
+          <div><span className="text-muted-foreground">Views:</span> <span className="font-medium">{String(dbStats.views ?? 0)}</span></div>
+          <div><span className="text-muted-foreground">Objects:</span> <span className="font-medium">{Number(dbStats.objects ?? 0).toLocaleString()}</span></div>
+          <div><span className="text-muted-foreground">Data:</span> <span className="font-medium">{formatSize(dbStats.dataSize)}</span></div>
+          <div><span className="text-muted-foreground">Storage:</span> <span className="font-medium">{formatSize(dbStats.storageSize)}</span></div>
+          <div><span className="text-muted-foreground">Indexes:</span> <span className="font-medium">{String(dbStats.indexes ?? 0)} ({formatSize(dbStats.indexSize)})</span></div>
+          <div><span className="text-muted-foreground">Total:</span> <span className="font-medium">{formatSize(dbStats.totalSize)}</span></div>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="p-3 space-y-1">
@@ -365,6 +424,61 @@ export default function DatabaseView() {
             {createTable.isError && (
               <p className="text-xs text-destructive">{createTable.error.message}</p>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create capped collection dialog (MongoDB) */}
+      <Dialog open={showCapped} onOpenChange={setShowCapped}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">Create Capped Collection</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Collection name</label>
+              <Input
+                value={cappedName}
+                onChange={(e) => setCappedName(e.target.value)}
+                placeholder="logs"
+                className="h-9 text-sm"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Max size (bytes)</label>
+              <Input
+                type="number"
+                value={cappedSize}
+                onChange={(e) => setCappedSize(e.target.value)}
+                className="h-9 text-sm"
+                min={1}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                {formatSize(parseInt(cappedSize, 10) || 0)} — oldest documents are removed when limit is reached
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Max documents (optional)</label>
+              <Input
+                type="number"
+                value={cappedMax}
+                onChange={(e) => setCappedMax(e.target.value)}
+                placeholder="No limit"
+                className="h-9 text-sm"
+                min={0}
+              />
+            </div>
+            {cappedMutation.isError && (
+              <p className="text-xs text-destructive">{cappedMutation.error.message}</p>
+            )}
+            <Button
+              className="w-full h-9"
+              onClick={() => cappedMutation.mutate()}
+              disabled={cappedMutation.isPending || !cappedName.trim() || !cappedSize}
+            >
+              {cappedMutation.isPending ? "Creating..." : "Create Capped Collection"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

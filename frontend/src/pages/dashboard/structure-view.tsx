@@ -65,6 +65,11 @@ export default function StructureView() {
   const [edit, setEdit] = useState<EditState | null>(null);
   const [error, setError] = useState("");
 
+  // Compact
+  const compactMutation = useMutation({
+    mutationFn: () => databaseRequest.mongoCompactCollection(selectedDb, selectedTable),
+  });
+
   // Rename collection
   const [showRename, setShowRename] = useState(false);
   const [renameInput, setRenameInput] = useState("");
@@ -199,6 +204,18 @@ export default function StructureView() {
                 variant="outline"
                 className="h-7 text-xs px-2.5"
                 onClick={() => {
+                  if (!confirm(`Compact "${selectedTable}"? This reclaims disk space but may take a moment.`)) return;
+                  compactMutation.mutate();
+                }}
+                disabled={compactMutation.isPending}
+              >
+                {compactMutation.isPending ? "Compacting..." : "Compact"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={() => {
                   setRenameInput(selectedTable);
                   setShowRename(true);
                 }}
@@ -231,6 +248,16 @@ export default function StructureView() {
       {error && (
         <div className="mx-3 mt-3 px-3 py-2 text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded">
           {error}
+        </div>
+      )}
+      {compactMutation.isSuccess && (
+        <div className="mx-3 mt-2 px-3 py-2 text-xs text-green-700 dark:text-green-400 bg-green-500/10 border border-green-500/30 rounded">
+          Collection compacted successfully
+        </div>
+      )}
+      {compactMutation.isError && (
+        <div className="mx-3 mt-2 px-3 py-2 text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded">
+          {compactMutation.error.message}
         </div>
       )}
 

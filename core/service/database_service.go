@@ -877,6 +877,56 @@ func (s *DatabaseService) MongoGetProfileData(database string, limit int) ([]map
 	return mc.GetProfileData(database, limit)
 }
 
+// ── Database Stats ──
+
+func (s *DatabaseService) MongoDatabaseStats(database string) (map[string]interface{}, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.DatabaseStats(database)
+}
+
+// ── Capped Collections ──
+
+func (s *DatabaseService) MongoCreateCappedCollection(database, collection string, sizeBytes, maxDocs int64) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.CreateCappedCollection(database, collection, sizeBytes, maxDocs)
+}
+
+func (s *DatabaseService) MongoIsCollectionCapped(database, collection string) (bool, error) {
+	if s.conn == nil {
+		return false, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return false, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.IsCollectionCapped(database, collection)
+}
+
+// ── Compact Collection ──
+
+func (s *DatabaseService) MongoCompactCollection(database, collection string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.CompactCollection(database, collection)
+}
+
 func (s *DatabaseService) Disconnect() error {
 	if s.conn != nil {
 		err := s.conn.Close()

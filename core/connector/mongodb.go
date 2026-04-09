@@ -1236,6 +1236,103 @@ func (c *MongoConnector) GetProfileData(database string, limit int) ([]map[strin
 	return entries, nil
 }
 
+// ── Database Stats ──
+
+// DatabaseStats returns detailed stats for a database via dbStats command.
+func (c *MongoConnector) DatabaseStats(database string) (map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result bson.M
+	err := c.client.Database(database).RunCommand(ctx, bson.D{
+		{Key: "dbStats", Value: 1},
+		{Key: "scale", Value: 1},
+	}).Decode(&result)
+	if err != nil {
+		return nil, fmt.Errorf("dbStats failed: %w", err)
+	}
+
+	stats := map[string]interface{}{
+		"db":          result["db"],
+		"collections": result["collections"],
+		"views":       result["views"],
+		"objects":     result["objects"],
+		"dataSize":    result["dataSize"],
+		"storageSize": result["storageSize"],
+		"indexes":     result["indexes"],
+		"indexSize":   result["indexSize"],
+		"totalSize":   result["totalSize"],
+		"fsUsedSize":  result["fsUsedSize"],
+		"fsTotalSize": result["fsTotalSize"],
+	}
+	return stats, nil
+}
+
+// ── Capped Collections ──
+
+// CreateCappedCollection creates a capped collection with size and optional max documents.
+func (c *MongoConnector) CreateCappedCollection(database, collection string, sizeBytes int64, maxDocs int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := bson.D{
+		{Key: "create", Value: collection},
+		{Key: "capped", Value: true},
+		{Key: "size", Value: sizeBytes},
+	}
+	if maxDocs > 0 {
+		cmd = append(cmd, bson.E{Key: "max", Value: maxDocs})
+	}
+
+	var result bson.M
+	return c.client.Database(database).RunCommand(ctx, cmd).Decode(&result)
+}
+
+// IsCollectionCapped checks if a collection is capped.
+func (c *MongoConnector) IsCollectionCapped(database, collection string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := c.client.Database(database).ListCollections(ctx, bson.M{"name": collection})
+	if err != nil {
+		return false, err
+	}
+	defer cursor.Close(ctx)
+
+	if !cursor.Next(ctx) {
+		return false, nil
+	}
+
+	var doc bson.M
+	if err := cursor.Decode(&doc); err != nil {
+		return false, err
+	}
+
+	if opts, ok := doc["options"].(bson.M); ok {
+		if capped, ok := opts["capped"].(bool); ok {
+			return capped, nil
+		}
+	}
+	return false, nil
+}
+
+// ── Compact Collection ──
+
+// CompactCollection runs the compact command to defragment and reclaim disk space.
+func (c *MongoConnector) CompactCollection(database, collection string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	var result bson.M
+	err := c.client.Database(database).RunCommand(ctx, bson.D{
+		{Key: "compact", Value: collection},
+	}).Decode(&result)
+	if err != nil {
+		return fmt.Errorf("compact failed: %w", err)
+	}
+	return nil
+}
+
 func (c *MongoConnector) Close() error {
 	if c.client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

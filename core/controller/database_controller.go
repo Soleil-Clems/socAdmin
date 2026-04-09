@@ -1289,6 +1289,80 @@ func (c *DatabaseController) MongoGetProfileData(w http.ResponseWriter, r *http.
 	jsonResponse(w, http.StatusOK, data)
 }
 
+// ── Database Stats ──
+
+func (c *DatabaseController) MongoDatabaseStats(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	stats, err := c.dbService.MongoDatabaseStats(db)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, stats)
+}
+
+// ── Capped Collections ──
+
+type MongoCreateCappedRequest struct {
+	Name      string `json:"name"`
+	SizeBytes int64  `json:"size_bytes"`
+	MaxDocs   int64  `json:"max_docs"`
+}
+
+func (c *DatabaseController) MongoCreateCappedCollection(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	var req MongoCreateCappedRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Name == "" {
+		jsonError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if req.SizeBytes <= 0 {
+		jsonError(w, http.StatusBadRequest, "size_bytes must be positive")
+		return
+	}
+
+	if err := c.dbService.MongoCreateCappedCollection(db, req.Name, req.SizeBytes, req.MaxDocs); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "create_capped_collection", fmt.Sprintf("%s.%s", db, req.Name))
+	jsonResponse(w, http.StatusCreated, map[string]string{"status": "created"})
+}
+
+func (c *DatabaseController) MongoIsCollectionCapped(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	capped, err := c.dbService.MongoIsCollectionCapped(db, table)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]interface{}{"capped": capped})
+}
+
+// ── Compact Collection ──
+
+func (c *DatabaseController) MongoCompactCollection(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	if err := c.dbService.MongoCompactCollection(db, table); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "compact_collection", fmt.Sprintf("%s.%s", db, table))
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "compacted"})
+}
+
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
