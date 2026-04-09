@@ -58,6 +58,7 @@ export default function StatusView() {
   const result = data as QueryResult | undefined;
 
   const [showOps, setShowOps] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
 
   const dbTypeLabel: Record<string, string> = {
     mysql: "MySQL",
@@ -77,6 +78,12 @@ export default function StatusView() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mongo-currentop"] });
     },
+  });
+
+  const { data: logData, isLoading: logLoading, refetch: refetchLog } = useQuery({
+    queryKey: ["mongo-serverlog"],
+    queryFn: () => databaseRequest.mongoGetServerLog("global"),
+    enabled: isMongo && showLogs,
   });
 
   const handleKill = (opid: unknown) => {
@@ -100,6 +107,16 @@ export default function StatusView() {
               onClick={() => setShowOps(!showOps)}
             >
               {showOps ? "Hide Operations" : "Running Operations"}
+            </Button>
+          )}
+          {isMongo && (
+            <Button
+              size="sm"
+              variant={showLogs ? "secondary" : "outline"}
+              className="h-6 text-[11px] px-2"
+              onClick={() => setShowLogs(!showLogs)}
+            >
+              {showLogs ? "Hide Logs" : "Server Logs"}
             </Button>
           )}
           <span className="text-[10px] text-muted-foreground">Auto-refresh 30s</span>
@@ -191,6 +208,45 @@ export default function StatusView() {
           {killMutation.isError && (
             <div className="px-3 py-1.5 text-[11px] text-destructive">
               {killMutation.error.message}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Server Logs panel */}
+      {isMongo && showLogs && (
+        <div className="border-b border-border bg-muted/30">
+          <div className="px-3 py-1.5 flex items-center gap-2 border-b border-border/50">
+            <span className="text-xs font-semibold">Server Logs</span>
+            <span className="text-[11px] text-muted-foreground">{logData?.total ?? 0} entries</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-5 text-[10px] px-1.5 ml-auto"
+              onClick={() => refetchLog()}
+            >
+              Refresh
+            </Button>
+          </div>
+          {logLoading ? (
+            <div className="p-3 space-y-1">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+          ) : logData?.log && logData.log.length > 0 ? (
+            <ScrollArea className="max-h-64">
+              <div className="p-2 space-y-0.5 font-mono text-[10px] leading-relaxed">
+                {logData.log.map((line, i) => (
+                  <div key={i} className="px-1 py-0.5 hover:bg-accent/40 rounded whitespace-pre-wrap break-all text-muted-foreground">
+                    {line}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          ) : (
+            <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">
+              No log entries available
             </div>
           )}
         </div>

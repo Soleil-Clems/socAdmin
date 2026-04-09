@@ -1363,6 +1363,87 @@ func (c *DatabaseController) MongoCompactCollection(w http.ResponseWriter, r *ht
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "compacted"})
 }
 
+// ── Duplicate Collection ──
+
+type MongoDuplicateRequest struct {
+	Target string `json:"target"`
+}
+
+func (c *DatabaseController) MongoDuplicateCollection(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req MongoDuplicateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Target == "" {
+		jsonError(w, http.StatusBadRequest, "target name is required")
+		return
+	}
+
+	if err := c.dbService.MongoDuplicateCollection(db, table, req.Target); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "duplicate_collection", fmt.Sprintf("%s.%s → %s", db, table, req.Target))
+	jsonResponse(w, http.StatusCreated, map[string]string{"status": "duplicated"})
+}
+
+// ── Server Log ──
+
+func (c *DatabaseController) MongoGetServerLog(w http.ResponseWriter, r *http.Request) {
+	logType := r.URL.Query().Get("type")
+	if logType == "" {
+		logType = "global"
+	}
+
+	lines, err := c.dbService.MongoGetServerLog(logType)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if lines == nil {
+		lines = []string{}
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"log":   lines,
+		"total": len(lines),
+	})
+}
+
+// ── Convert to Capped ──
+
+type MongoConvertToCappedRequest struct {
+	SizeBytes int64 `json:"size_bytes"`
+}
+
+func (c *DatabaseController) MongoConvertToCapped(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req MongoConvertToCappedRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.SizeBytes <= 0 {
+		jsonError(w, http.StatusBadRequest, "size_bytes must be positive")
+		return
+	}
+
+	if err := c.dbService.MongoConvertToCapped(db, table, req.SizeBytes); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "convert_to_capped", fmt.Sprintf("%s.%s size=%d", db, table, req.SizeBytes))
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "converted"})
+}
+
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

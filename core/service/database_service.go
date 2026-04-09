@@ -927,6 +927,45 @@ func (s *DatabaseService) MongoCompactCollection(database, collection string) er
 	return mc.CompactCollection(database, collection)
 }
 
+// ── Duplicate Collection ──
+
+func (s *DatabaseService) MongoDuplicateCollection(database, source, target string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.DuplicateCollection(database, source, target)
+}
+
+// ── Server Log ──
+
+func (s *DatabaseService) MongoGetServerLog(logType string) ([]string, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.GetServerLog(logType)
+}
+
+// ── Convert to Capped ──
+
+func (s *DatabaseService) MongoConvertToCapped(database, collection string, sizeBytes int64) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.ConvertToCapped(database, collection, sizeBytes)
+}
+
 func (s *DatabaseService) Disconnect() error {
 	if s.conn != nil {
 		err := s.conn.Close()

@@ -70,6 +70,25 @@ export default function StructureView() {
     mutationFn: () => databaseRequest.mongoCompactCollection(selectedDb, selectedTable),
   });
 
+  // Duplicate
+  const [showDuplicate, setShowDuplicate] = useState(false);
+  const [duplicateInput, setDuplicateInput] = useState("");
+  const duplicateMutation = useMutation({
+    mutationFn: (target: string) => databaseRequest.mongoDuplicateCollection(selectedDb, selectedTable, target),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tables", selectedDb] });
+      setShowDuplicate(false);
+    },
+  });
+
+  // Convert to Capped
+  const [showConvertCapped, setShowConvertCapped] = useState(false);
+  const [convertSize, setConvertSize] = useState("10485760");
+  const convertCappedMutation = useMutation({
+    mutationFn: () => databaseRequest.mongoConvertToCapped(selectedDb, selectedTable, parseInt(convertSize, 10)),
+    onSuccess: () => setShowConvertCapped(false),
+  });
+
   // Rename collection
   const [showRename, setShowRename] = useState(false);
   const [renameInput, setRenameInput] = useState("");
@@ -204,12 +223,31 @@ export default function StructureView() {
                 variant="outline"
                 className="h-7 text-xs px-2.5"
                 onClick={() => {
+                  setDuplicateInput(selectedTable + "_copy");
+                  setShowDuplicate(true);
+                }}
+              >
+                Duplicate
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={() => {
                   if (!confirm(`Compact "${selectedTable}"? This reclaims disk space but may take a moment.`)) return;
                   compactMutation.mutate();
                 }}
                 disabled={compactMutation.isPending}
               >
                 {compactMutation.isPending ? "Compacting..." : "Compact"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={() => setShowConvertCapped(true)}
+              >
+                To Capped
               </Button>
               <Button
                 size="sm"
@@ -466,6 +504,81 @@ export default function StructureView() {
               disabled={renameMutation.isPending || !renameInput.trim() || renameInput === selectedTable}
             >
               {renameMutation.isPending ? "Renaming..." : "Rename"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate collection dialog (MongoDB) */}
+      <Dialog open={showDuplicate} onOpenChange={setShowDuplicate}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">Duplicate Collection</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Clone <span className="font-medium text-foreground">{selectedTable}</span> to a new collection.
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">New collection name</label>
+              <Input
+                value={duplicateInput}
+                onChange={(e) => setDuplicateInput(e.target.value)}
+                placeholder="collection_copy"
+                className="h-9 text-sm"
+                autoFocus
+              />
+            </div>
+            {duplicateMutation.isError && (
+              <p className="text-xs text-destructive">{duplicateMutation.error.message}</p>
+            )}
+            <Button
+              className="w-full h-9"
+              onClick={() => duplicateInput.trim() && duplicateMutation.mutate(duplicateInput.trim())}
+              disabled={duplicateMutation.isPending || !duplicateInput.trim()}
+            >
+              {duplicateMutation.isPending ? "Duplicating..." : "Duplicate"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Convert to Capped dialog (MongoDB) */}
+      <Dialog open={showConvertCapped} onOpenChange={setShowConvertCapped}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">Convert to Capped</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Convert <span className="font-medium text-foreground">{selectedTable}</span> to a capped collection. This is irreversible.
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Max size (bytes)</label>
+              <Input
+                type="number"
+                value={convertSize}
+                onChange={(e) => setConvertSize(e.target.value)}
+                className="h-9 text-sm"
+                min={1}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Oldest documents are automatically removed when size is reached.
+              </p>
+            </div>
+            {convertCappedMutation.isError && (
+              <p className="text-xs text-destructive">{convertCappedMutation.error.message}</p>
+            )}
+            <Button
+              className="w-full h-9"
+              variant="destructive"
+              onClick={() => {
+                if (!confirm("This will permanently convert the collection to capped. Continue?")) return;
+                convertCappedMutation.mutate();
+              }}
+              disabled={convertCappedMutation.isPending || !convertSize}
+            >
+              {convertCappedMutation.isPending ? "Converting..." : "Convert to Capped"}
             </Button>
           </div>
         </DialogContent>

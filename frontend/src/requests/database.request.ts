@@ -247,6 +247,18 @@ export const databaseRequest = {
   mongoCompactCollection: (db: string, collection: string) =>
     customfetch.post(`/databases/${db}/tables/${collection}/compact`, {}),
 
+  // Duplicate Collection
+  mongoDuplicateCollection: (db: string, collection: string, target: string) =>
+    customfetch.post(`/databases/${db}/tables/${collection}/duplicate`, { target }),
+
+  // Server Log
+  mongoGetServerLog: (type = "global") =>
+    customfetch.get<{ log: string[]; total: number }>(`/mongo/log?type=${type}`),
+
+  // Convert to Capped
+  mongoConvertToCapped: (db: string, collection: string, sizeBytes: number) =>
+    customfetch.post(`/databases/${db}/tables/${collection}/convert-capped`, { size_bytes: sizeBytes }),
+
   listUsers: () => customfetch.get<Record<string, unknown>[]>("/users"),
 
   serverStatus: () => customfetch.get<Record<string, unknown>>("/status"),

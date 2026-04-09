@@ -1333,6 +1333,89 @@ func (c *MongoConnector) CompactCollection(database, collection string) error {
 	return nil
 }
 
+// ── Duplicate Collection ──
+
+// DuplicateCollection clones a collection using an aggregation $out pipeline.
+func (c *MongoConnector) DuplicateCollection(database, source, target string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Check target doesn't exist
+	existing, err := c.client.Database(database).ListCollectionNames(ctx, bson.M{"name": target})
+	if err == nil && len(existing) > 0 {
+		return fmt.Errorf("collection %q already exists", target)
+	}
+
+	pipeline := bson.A{
+		bson.D{{Key: "$out", Value: target}},
+	}
+
+	coll := c.client.Database(database).Collection(source)
+	cursor, err := coll.Aggregate(ctx, pipeline)
+	if err != nil {
+		return fmt.Errorf("duplicate failed: %w", err)
+	}
+	cursor.Close(ctx)
+	return nil
+}
+
+// ── Server Log ──
+
+// GetServerLog returns recent log entries from MongoDB's in-memory log.
+func (c *MongoConnector) GetServerLog(logType string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if logType == "" {
+		logType = "global"
+	}
+
+	var result bson.M
+	err := c.client.Database("admin").RunCommand(ctx, bson.D{
+		{Key: "getLog", Value: logType},
+	}).Decode(&result)
+	if err != nil {
+		return nil, fmt.Errorf("getLog failed: %w", err)
+	}
+
+	logArr, ok := result["log"].(bson.A)
+	if !ok {
+		return nil, nil
+	}
+
+	// Return last 200 entries max
+	start := 0
+	if len(logArr) > 200 {
+		start = len(logArr) - 200
+	}
+
+	var lines []string
+	for _, item := range logArr[start:] {
+		lines = append(lines, fmt.Sprintf("%v", item))
+	}
+	return lines, nil
+}
+
+// ── Convert to Capped ──
+
+// ConvertToCapped converts a regular collection to a capped collection.
+func (c *MongoConnector) ConvertToCapped(database, collection string, sizeBytes int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := bson.D{
+		{Key: "convertToCapped", Value: collection},
+		{Key: "size", Value: sizeBytes},
+	}
+
+	var result bson.M
+	err := c.client.Database(database).RunCommand(ctx, cmd).Decode(&result)
+	if err != nil {
+		return fmt.Errorf("convertToCapped failed: %w", err)
+	}
+	return nil
+}
+
 func (c *MongoConnector) Close() error {
 	if c.client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
