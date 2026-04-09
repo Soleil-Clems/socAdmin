@@ -140,6 +140,43 @@ export const databaseRequest = {
   mongoExplain: (db: string, collection: string, filter: string, sort: string) =>
     customfetch.post<Record<string, unknown>>(`/databases/${db}/tables/${collection}/explain`, { filter, sort }),
 
+  mongoInsertMany: async (db: string, collection: string, docs: Record<string, unknown>[]) => {
+    const token = localStorage.getItem("access_token");
+    const res = await fetch(`${API_URL}/databases/${db}/tables/${collection}/insertMany`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(docs),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Insert failed");
+    return data as { inserted: number };
+  },
+
+  mongoUpdateMany: (db: string, collection: string, filter: string, update: string) =>
+    customfetch.post<{ matched: number; modified: number }>(`/databases/${db}/tables/${collection}/updateMany`, { filter, update }),
+
+  mongoDeleteMany: (db: string, collection: string, filter: string) =>
+    customfetch.post<{ deleted: number }>(`/databases/${db}/tables/${collection}/deleteMany`, { filter }),
+
+  mongoDistinct: (db: string, collection: string, field: string, filter = "{}") =>
+    customfetch.post<{ field: string; values: unknown[]; count: number }>(`/databases/${db}/tables/${collection}/distinct`, { field, filter }),
+
+  // MongoDB user management
+  mongoCreateUser: (username: string, password: string, database: string, roles: { role: string; db: string }[]) =>
+    customfetch.post("/mongo/users", { username, password, database, roles }),
+
+  mongoDropUser: (username: string, database: string) =>
+    customfetch.delete("/mongo/users", { username, database }),
+
+  mongoUpdateUserRoles: (username: string, database: string, roles: { role: string; db: string }[]) =>
+    customfetch.put("/mongo/users/roles", { username, database, roles }),
+
+  mongoListRoles: (db = "admin") =>
+    customfetch.get<string[]>(`/mongo/roles?db=${db}`),
+
   mongoCount: (db: string, collection: string) =>
     customfetch.get<{ count: number }>(`/databases/${db}/tables/${collection}/count`),
 

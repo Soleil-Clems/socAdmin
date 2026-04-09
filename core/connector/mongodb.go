@@ -418,6 +418,181 @@ func (c *MongoConnector) AlterColumn(database, collection string, op AlterColumn
 	return fmt.Errorf("ALTER COLUMN is not supported for MongoDB (schemaless)")
 }
 
+// ── Bulk Operations ──
+
+// InsertMany inserts multiple documents at once.
+func (c *MongoConnector) InsertMany(database, collection string, docs []map[string]interface{}) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	coll := c.client.Database(database).Collection(collection)
+	ifaces := make([]interface{}, len(docs))
+	for i, d := range docs {
+		// Remove empty _id to let MongoDB generate
+		if id, ok := d["_id"]; ok && (id == nil || id == "") {
+			delete(d, "_id")
+		}
+		ifaces[i] = d
+	}
+
+	result, err := coll.InsertMany(ctx, ifaces)
+	if err != nil {
+		return 0, fmt.Errorf("insertMany failed: %w", err)
+	}
+	return len(result.InsertedIDs), nil
+}
+
+// UpdateMany updates all documents matching the filter.
+func (c *MongoConnector) UpdateMany(database, collection, filterJSON, updateJSON string) (int64, int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	filter := bson.D{}
+	if filterJSON != "" && filterJSON != "{}" {
+		if err := bson.UnmarshalExtJSON([]byte(filterJSON), false, &filter); err != nil {
+			return 0, 0, fmt.Errorf("invalid filter JSON: %w", err)
+		}
+		filter = convertFilterIDs(filter)
+	}
+
+	var update bson.D
+	if err := bson.UnmarshalExtJSON([]byte(updateJSON), false, &update); err != nil {
+		return 0, 0, fmt.Errorf("invalid update JSON: %w", err)
+	}
+
+	coll := c.client.Database(database).Collection(collection)
+	result, err := coll.UpdateMany(ctx, filter, update)
+	if err != nil {
+		return 0, 0, fmt.Errorf("updateMany failed: %w", err)
+	}
+	return result.MatchedCount, result.ModifiedCount, nil
+}
+
+// DeleteMany deletes all documents matching the filter.
+func (c *MongoConnector) DeleteMany(database, collection, filterJSON string) (int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	filter := bson.D{}
+	if filterJSON != "" && filterJSON != "{}" {
+		if err := bson.UnmarshalExtJSON([]byte(filterJSON), false, &filter); err != nil {
+			return 0, fmt.Errorf("invalid filter JSON: %w", err)
+		}
+		filter = convertFilterIDs(filter)
+	}
+	if len(filter) == 0 {
+		return 0, fmt.Errorf("empty filter not allowed for deleteMany (use truncate instead)")
+	}
+
+	coll := c.client.Database(database).Collection(collection)
+	result, err := coll.DeleteMany(ctx, filter)
+	if err != nil {
+		return 0, fmt.Errorf("deleteMany failed: %w", err)
+	}
+	return result.DeletedCount, nil
+}
+
+// ── Distinct ──
+
+// Distinct returns the distinct values for a field in a collection.
+func (c *MongoConnector) Distinct(database, collection, field, filterJSON string) ([]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	filter := bson.D{}
+	if filterJSON != "" && filterJSON != "{}" {
+		if err := bson.UnmarshalExtJSON([]byte(filterJSON), false, &filter); err != nil {
+			return nil, fmt.Errorf("invalid filter JSON: %w", err)
+		}
+		filter = convertFilterIDs(filter)
+	}
+
+	coll := c.client.Database(database).Collection(collection)
+	dr := coll.Distinct(ctx, field, filter)
+	if dr.Err() != nil {
+		return nil, fmt.Errorf("distinct failed: %w", dr.Err())
+	}
+
+	var rawValues bson.A
+	if err := dr.Decode(&rawValues); err != nil {
+		return nil, fmt.Errorf("distinct decode failed: %w", err)
+	}
+
+	// Convert BSON values to display-friendly types
+	values := make([]interface{}, len(rawValues))
+	for i, v := range rawValues {
+		values[i] = formatBsonValue(v)
+	}
+	return values, nil
+}
+
+// ── User Management ──
+
+// MongoCreateUser creates a MongoDB user.
+func (c *MongoConnector) MongoCreateUser(database, username, password string, roles []bson.M) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := bson.D{
+		{Key: "createUser", Value: username},
+		{Key: "pwd", Value: password},
+		{Key: "roles", Value: roles},
+	}
+
+	var result bson.M
+	return c.client.Database(database).RunCommand(ctx, cmd).Decode(&result)
+}
+
+// MongoDropUser drops a MongoDB user.
+func (c *MongoConnector) MongoDropUser(database, username string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := bson.D{{Key: "dropUser", Value: username}}
+	var result bson.M
+	return c.client.Database(database).RunCommand(ctx, cmd).Decode(&result)
+}
+
+// MongoUpdateUserRoles updates the roles for a MongoDB user.
+func (c *MongoConnector) MongoUpdateUserRoles(database, username string, roles []bson.M) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := bson.D{
+		{Key: "updateUser", Value: username},
+		{Key: "roles", Value: roles},
+	}
+
+	var result bson.M
+	return c.client.Database(database).RunCommand(ctx, cmd).Decode(&result)
+}
+
+// MongoListRoles returns available built-in roles.
+func (c *MongoConnector) MongoListRoles(database string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := bson.D{
+		{Key: "rolesInfo", Value: 1},
+		{Key: "showBuiltinRoles", Value: true},
+	}
+	var result bson.M
+	err := c.client.Database(database).RunCommand(ctx, cmd).Decode(&result)
+	if err != nil {
+		return nil, err
+	}
+
+	var roleNames []string
+	if roles, ok := result["roles"].(bson.A); ok {
+		for _, r := range roles {
+			if doc, ok := r.(bson.M); ok {
+				roleNames = append(roleNames, fmt.Sprintf("%v", doc["role"]))
+			}
+		}
+	}
+	return roleNames, nil
+}
+
 // ── MongoDB-specific methods (not in Connector interface) ──
 
 // FindDocuments performs a server-side find with filter, sort, projection, limit, skip.

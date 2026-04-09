@@ -69,6 +69,8 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/indexes", dbController.MongoListIndexes)
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/stats", dbController.MongoCollectionStats)
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/explain", dbController.MongoExplain)
+	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/distinct", dbController.MongoDistinct)
+	protected.HandleFunc("GET "+p+"/mongo/roles", dbController.MongoListRoles)
 	protected.HandleFunc("GET "+p+"/users", dbController.ListUsers)
 	protected.HandleFunc("GET "+p+"/status", dbController.ServerStatus)
 	protected.HandleFunc("GET "+p+"/security/whitelist", secController.GetWhitelist)
@@ -95,6 +97,12 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	// MongoDB-specific (write, admin only)
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/indexes", auth.RequireAdmin(dbController.MongoCreateIndex))
 	protected.HandleFunc("DELETE "+p+"/databases/{db}/tables/{table}/indexes", auth.RequireAdmin(dbController.MongoDropIndex))
+	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/insertMany", auth.RequireAdmin(dbController.MongoInsertMany))
+	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/updateMany", auth.RequireAdmin(dbController.MongoUpdateMany))
+	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/deleteMany", auth.RequireAdmin(dbController.MongoDeleteMany))
+	protected.HandleFunc("POST "+p+"/mongo/users", auth.RequireAdmin(dbController.MongoCreateUser))
+	protected.HandleFunc("DELETE "+p+"/mongo/users", auth.RequireAdmin(dbController.MongoDropUser))
+	protected.HandleFunc("PUT "+p+"/mongo/users/roles", auth.RequireAdmin(dbController.MongoUpdateUserRoles))
 
 	// Saved connections — admin only pour save/delete
 	protected.HandleFunc("POST "+p+"/connections", auth.RequireAdmin(connController.SaveConnection))

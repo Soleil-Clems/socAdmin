@@ -542,6 +542,89 @@ export default function DocumentView() {
     }
   };
 
+  // Distinct
+  const [showDistinct, setShowDistinct] = useState(false);
+  const [distinctField, setDistinctField] = useState("");
+  const [distinctResult, setDistinctResult] = useState<{ values: unknown[]; count: number } | null>(null);
+  const [distinctLoading, setDistinctLoading] = useState(false);
+
+  const handleDistinct = async () => {
+    if (!selectedDb || !selectedTable || !distinctField.trim()) return;
+    setDistinctLoading(true);
+    try {
+      const filter = filterMode === "simple" ? buildFilterJSON(filterRows) : (activeFilter || "{}");
+      const result = await databaseRequest.mongoDistinct(selectedDb, selectedTable, distinctField.trim(), filter);
+      setDistinctResult(result);
+    } catch (err) {
+      setDistinctResult({ values: [(err as Error).message], count: 0 });
+    } finally {
+      setDistinctLoading(false);
+    }
+  };
+
+  // Bulk operations
+  const [showBulkInsert, setShowBulkInsert] = useState(false);
+  const [bulkJson, setBulkJson] = useState("");
+  const [bulkError, setBulkError] = useState("");
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [showBulkUpdate, setShowBulkUpdate] = useState(false);
+  const [bulkUpdateFilter, setBulkUpdateFilter] = useState("");
+  const [bulkUpdateOp, setBulkUpdateOp] = useState("");
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
+  const [bulkDeleteFilter, setBulkDeleteFilter] = useState("");
+
+  const handleBulkInsert = async () => {
+    if (!selectedDb || !selectedTable) return;
+    try {
+      const docs = JSON.parse(bulkJson);
+      if (!Array.isArray(docs)) { setBulkError("Must be a JSON array of objects"); return; }
+      setBulkError("");
+      setBulkLoading(true);
+      const result = await databaseRequest.mongoInsertMany(selectedDb, selectedTable, docs);
+      setShowBulkInsert(false);
+      setBulkJson("");
+      invalidateFind();
+      alert(`${result.inserted} documents inserted`);
+    } catch (e) {
+      setBulkError((e as Error).message);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkUpdate = async () => {
+    if (!selectedDb || !selectedTable || !bulkUpdateFilter || !bulkUpdateOp) return;
+    try {
+      setBulkError("");
+      setBulkLoading(true);
+      const result = await databaseRequest.mongoUpdateMany(selectedDb, selectedTable, bulkUpdateFilter, bulkUpdateOp);
+      setShowBulkUpdate(false);
+      invalidateFind();
+      alert(`${result.matched} matched, ${result.modified} modified`);
+    } catch (e) {
+      setBulkError((e as Error).message);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!selectedDb || !selectedTable || !bulkDeleteFilter) return;
+    if (!confirm("Delete all documents matching this filter?")) return;
+    try {
+      setBulkError("");
+      setBulkLoading(true);
+      const result = await databaseRequest.mongoDeleteMany(selectedDb, selectedTable, bulkDeleteFilter);
+      setShowBulkDelete(false);
+      invalidateFind();
+      alert(`${result.deleted} documents deleted`);
+    } catch (e) {
+      setBulkError((e as Error).message);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   const hasActiveFilter = activeFilter !== "" && activeFilter !== "{}";
 
   return (
@@ -565,6 +648,14 @@ export default function DocumentView() {
             size="sm"
             variant="outline"
             className="h-7 text-xs px-2"
+            onClick={() => setShowDistinct(!showDistinct)}
+          >
+            Distinct
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs px-2"
             onClick={() => setShowFieldPicker(!showFieldPicker)}
           >
             Fields{hiddenFields.size > 0 && ` (${allColumns.length - hiddenFields.size}/${allColumns.length})`}
@@ -579,9 +670,25 @@ export default function DocumentView() {
             {explainLoading ? "..." : "Explain"}
           </Button>
           {isAdmin && (
-            <Button size="sm" className="h-7 text-xs px-3" onClick={handleInsertOpen}>
-              + Document
-            </Button>
+            <>
+              <Select onValueChange={(v) => {
+                if (v === "insertMany") setShowBulkInsert(true);
+                else if (v === "updateMany") setShowBulkUpdate(true);
+                else if (v === "deleteMany") setShowBulkDelete(true);
+              }}>
+                <SelectTrigger className="h-7 w-24 text-[11px]">
+                  <SelectValue placeholder="Bulk..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="insertMany">insertMany</SelectItem>
+                  <SelectItem value="updateMany">updateMany</SelectItem>
+                  <SelectItem value="deleteMany">deleteMany</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" className="h-7 text-xs px-3" onClick={handleInsertOpen}>
+                + Document
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -1023,6 +1130,148 @@ export default function DocumentView() {
             {updateRow.isError && <p className="text-xs text-destructive">{updateRow.error.message}</p>}
             <Button className="w-full h-8" onClick={handleUpdateSubmit} disabled={updateRow.isPending}>
               {updateRow.isPending ? "Updating..." : "Update Document"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Distinct panel */}
+      {showDistinct && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/30" onClick={() => setShowDistinct(false)}>
+          <div className="bg-card border border-border rounded-lg shadow-lg w-full max-w-md max-h-[60vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+              <span className="text-sm font-semibold">Distinct Values</span>
+              <button onClick={() => setShowDistinct(false)} className="ml-auto text-muted-foreground hover:text-foreground text-sm">×</button>
+            </div>
+            <div className="px-4 py-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    value={distinctField}
+                    onChange={(e) => setDistinctField(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleDistinct()}
+                    placeholder="field name"
+                    list="distinct-fields"
+                    className="h-8 w-full px-2 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  />
+                  {columns.length > 0 && (
+                    <datalist id="distinct-fields">
+                      {columns.map((c) => <option key={c} value={c} />)}
+                    </datalist>
+                  )}
+                </div>
+                <Button size="sm" className="h-8 text-xs px-3" onClick={handleDistinct} disabled={distinctLoading || !distinctField.trim()}>
+                  {distinctLoading ? "..." : "Get"}
+                </Button>
+              </div>
+              {hasActiveFilter && (
+                <p className="text-[11px] text-muted-foreground">Using current filter</p>
+              )}
+            </div>
+            {distinctResult && (
+              <ScrollArea className="flex-1 min-h-0 px-4 pb-3">
+                <p className="text-[11px] text-muted-foreground mb-2">
+                  {distinctResult.count} unique value{distinctResult.count !== 1 && "s"}
+                </p>
+                <div className="space-y-0.5">
+                  {distinctResult.values.map((v, i) => (
+                    <div key={i} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-accent/30 text-xs font-mono">
+                      <span className="text-muted-foreground w-6 shrink-0 text-right">{i + 1}</span>
+                      <span className="truncate">
+                        {v === null ? <span className="text-muted-foreground/50 italic">null</span> : String(v)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Insert dialog */}
+      <Dialog open={showBulkInsert} onOpenChange={setShowBulkInsert}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base">Insert Many — {selectedTable}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-[11px] text-muted-foreground">
+              Paste a JSON array of documents to insert in bulk.
+            </p>
+            <Textarea
+              value={bulkJson}
+              onChange={(e) => { setBulkJson(e.target.value); setBulkError(""); }}
+              placeholder={'[\n  { "name": "Alice", "age": 30 },\n  { "name": "Bob", "age": 25 }\n]'}
+              className="font-mono text-sm min-h-[200px] resize-y bg-background"
+              spellCheck={false}
+            />
+            {bulkError && <p className="text-xs text-destructive">{bulkError}</p>}
+            <Button className="w-full h-8" onClick={handleBulkInsert} disabled={bulkLoading}>
+              {bulkLoading ? "Inserting..." : "Insert All"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Update dialog */}
+      <Dialog open={showBulkUpdate} onOpenChange={setShowBulkUpdate}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base">Update Many — {selectedTable}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Filter (which documents to update)</label>
+              <Textarea
+                value={bulkUpdateFilter}
+                onChange={(e) => { setBulkUpdateFilter(e.target.value); setBulkError(""); }}
+                placeholder={'{"status": "pending"}'}
+                className="font-mono text-xs min-h-[60px] resize-y bg-background"
+                spellCheck={false}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Update operation</label>
+              <Textarea
+                value={bulkUpdateOp}
+                onChange={(e) => { setBulkUpdateOp(e.target.value); setBulkError(""); }}
+                placeholder={'{"$set": {"status": "active"}}'}
+                className="font-mono text-xs min-h-[60px] resize-y bg-background"
+                spellCheck={false}
+              />
+            </div>
+            {bulkError && <p className="text-xs text-destructive">{bulkError}</p>}
+            <Button className="w-full h-8" onClick={handleBulkUpdate} disabled={bulkLoading}>
+              {bulkLoading ? "Updating..." : "Update All Matching"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete dialog */}
+      <Dialog open={showBulkDelete} onOpenChange={setShowBulkDelete}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">Delete Many — {selectedTable}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Filter (which documents to delete)</label>
+              <Textarea
+                value={bulkDeleteFilter}
+                onChange={(e) => { setBulkDeleteFilter(e.target.value); setBulkError(""); }}
+                placeholder={'{"status": "inactive"}'}
+                className="font-mono text-xs min-h-[80px] resize-y bg-background"
+                spellCheck={false}
+              />
+            </div>
+            <p className="text-[11px] text-destructive/80">
+              This will permanently delete all matching documents.
+            </p>
+            {bulkError && <p className="text-xs text-destructive">{bulkError}</p>}
+            <Button variant="destructive" className="w-full h-8" onClick={handleBulkDelete} disabled={bulkLoading}>
+              {bulkLoading ? "Deleting..." : "Delete All Matching"}
             </Button>
           </div>
         </DialogContent>

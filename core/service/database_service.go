@@ -5,7 +5,16 @@ import (
 	"strings"
 
 	"github.com/soleilouisol/socAdmin/core/connector"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
+
+func toBsonMSlice(roles []map[string]interface{}) []bson.M {
+	out := make([]bson.M, len(roles))
+	for i, r := range roles {
+		out[i] = bson.M(r)
+	}
+	return out
+}
 
 type DatabaseService struct {
 	conn   connector.Connector
@@ -640,6 +649,100 @@ func (s *DatabaseService) MongoCollectionStats(database, collection string) (*co
 		return nil, fmt.Errorf("not a MongoDB connection")
 	}
 	return mc.CollectionStats(database, collection)
+}
+
+// ── Bulk Operations ──
+
+func (s *DatabaseService) MongoInsertMany(database, collection string, docs []map[string]interface{}) (int, error) {
+	if s.conn == nil {
+		return 0, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return 0, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.InsertMany(database, collection, docs)
+}
+
+func (s *DatabaseService) MongoUpdateMany(database, collection, filter, update string) (int64, int64, error) {
+	if s.conn == nil {
+		return 0, 0, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return 0, 0, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.UpdateMany(database, collection, filter, update)
+}
+
+func (s *DatabaseService) MongoDeleteMany(database, collection, filter string) (int64, error) {
+	if s.conn == nil {
+		return 0, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return 0, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.DeleteMany(database, collection, filter)
+}
+
+// ── Distinct ──
+
+func (s *DatabaseService) MongoDistinct(database, collection, field, filter string) ([]interface{}, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.Distinct(database, collection, field, filter)
+}
+
+// ── User Management ──
+
+func (s *DatabaseService) MongoCreateUser(database, username, password string, roles []map[string]interface{}) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.MongoCreateUser(database, username, password, toBsonMSlice(roles))
+}
+
+func (s *DatabaseService) MongoDropUser(database, username string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.MongoDropUser(database, username)
+}
+
+func (s *DatabaseService) MongoUpdateUserRoles(database, username string, roles []map[string]interface{}) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.MongoUpdateUserRoles(database, username, toBsonMSlice(roles))
+}
+
+func (s *DatabaseService) MongoListRoles(database string) ([]string, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.MongoListRoles(database)
 }
 
 func (s *DatabaseService) Disconnect() error {

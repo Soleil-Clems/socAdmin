@@ -855,6 +855,228 @@ func (c *DatabaseController) MongoExplain(w http.ResponseWriter, r *http.Request
 	jsonResponse(w, http.StatusOK, plan)
 }
 
+// ── Bulk Operations ──
+
+func (c *DatabaseController) MongoInsertMany(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var docs []map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&docs); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid JSON array: "+err.Error())
+		return
+	}
+	if len(docs) == 0 {
+		jsonError(w, http.StatusBadRequest, "at least one document is required")
+		return
+	}
+
+	inserted, err := c.dbService.MongoInsertMany(db, table, docs)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusCreated, map[string]interface{}{"inserted": inserted})
+}
+
+type MongoUpdateManyRequest struct {
+	Filter string `json:"filter"`
+	Update string `json:"update"`
+}
+
+func (c *DatabaseController) MongoUpdateMany(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req MongoUpdateManyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Filter == "" || req.Update == "" {
+		jsonError(w, http.StatusBadRequest, "filter and update are required")
+		return
+	}
+
+	matched, modified, err := c.dbService.MongoUpdateMany(db, table, req.Filter, req.Update)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"matched":  matched,
+		"modified": modified,
+	})
+}
+
+type MongoDeleteManyRequest struct {
+	Filter string `json:"filter"`
+}
+
+func (c *DatabaseController) MongoDeleteMany(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req MongoDeleteManyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Filter == "" || req.Filter == "{}" {
+		jsonError(w, http.StatusBadRequest, "a non-empty filter is required (use truncate to delete all)")
+		return
+	}
+
+	deleted, err := c.dbService.MongoDeleteMany(db, table, req.Filter)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "delete_many", fmt.Sprintf("%s.%s (%d deleted)", db, table, deleted))
+	jsonResponse(w, http.StatusOK, map[string]interface{}{"deleted": deleted})
+}
+
+// ── Distinct ──
+
+type MongoDistinctRequest struct {
+	Field  string `json:"field"`
+	Filter string `json:"filter"`
+}
+
+func (c *DatabaseController) MongoDistinct(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req MongoDistinctRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Field == "" {
+		jsonError(w, http.StatusBadRequest, "field is required")
+		return
+	}
+
+	values, err := c.dbService.MongoDistinct(db, table, req.Field, req.Filter)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"field":  req.Field,
+		"values": values,
+		"count":  len(values),
+	})
+}
+
+// ── MongoDB User Management ──
+
+type MongoCreateUserRequest struct {
+	Username string                   `json:"username"`
+	Password string                   `json:"password"`
+	Database string                   `json:"database"`
+	Roles    []map[string]interface{} `json:"roles"`
+}
+
+func (c *DatabaseController) MongoCreateUser(w http.ResponseWriter, r *http.Request) {
+	var req MongoCreateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Username == "" || req.Password == "" {
+		jsonError(w, http.StatusBadRequest, "username and password are required")
+		return
+	}
+	if req.Database == "" {
+		req.Database = "admin"
+	}
+
+	if err := c.dbService.MongoCreateUser(req.Database, req.Username, req.Password, req.Roles); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "create_mongo_user", req.Username+"@"+req.Database)
+	jsonResponse(w, http.StatusCreated, map[string]string{"status": "created"})
+}
+
+type MongoDropUserRequest struct {
+	Username string `json:"username"`
+	Database string `json:"database"`
+}
+
+func (c *DatabaseController) MongoDropUser(w http.ResponseWriter, r *http.Request) {
+	var req MongoDropUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Username == "" {
+		jsonError(w, http.StatusBadRequest, "username is required")
+		return
+	}
+	if req.Database == "" {
+		req.Database = "admin"
+	}
+
+	if err := c.dbService.MongoDropUser(req.Database, req.Username); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "drop_mongo_user", req.Username+"@"+req.Database)
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "dropped"})
+}
+
+type MongoUpdateUserRolesRequest struct {
+	Username string                   `json:"username"`
+	Database string                   `json:"database"`
+	Roles    []map[string]interface{} `json:"roles"`
+}
+
+func (c *DatabaseController) MongoUpdateUserRoles(w http.ResponseWriter, r *http.Request) {
+	var req MongoUpdateUserRolesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Username == "" {
+		jsonError(w, http.StatusBadRequest, "username is required")
+		return
+	}
+	if req.Database == "" {
+		req.Database = "admin"
+	}
+
+	if err := c.dbService.MongoUpdateUserRoles(req.Database, req.Username, req.Roles); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "update_mongo_user_roles", req.Username+"@"+req.Database)
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (c *DatabaseController) MongoListRoles(w http.ResponseWriter, r *http.Request) {
+	db := r.URL.Query().Get("db")
+	if db == "" {
+		db = "admin"
+	}
+
+	roles, err := c.dbService.MongoListRoles(db)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, roles)
+}
+
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
