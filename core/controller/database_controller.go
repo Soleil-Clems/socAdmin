@@ -699,10 +699,11 @@ func splitSQL(sql string) []string {
 // ── MongoDB-specific handlers ──
 
 type MongoFindRequest struct {
-	Filter string `json:"filter"` // JSON string, e.g. {"age": {"$gt": 25}}
-	Sort   string `json:"sort"`   // JSON string, e.g. {"name": 1}
-	Limit  int    `json:"limit"`
-	Skip   int    `json:"skip"`
+	Filter     string `json:"filter"`     // JSON string, e.g. {"age": {"$gt": 25}}
+	Sort       string `json:"sort"`       // JSON string, e.g. {"name": 1}
+	Projection string `json:"projection"` // JSON string, e.g. {"name": 1, "age": 1}
+	Limit      int    `json:"limit"`
+	Skip       int    `json:"skip"`
 }
 
 func (c *DatabaseController) MongoFind(w http.ResponseWriter, r *http.Request) {
@@ -722,7 +723,7 @@ func (c *DatabaseController) MongoFind(w http.ResponseWriter, r *http.Request) {
 		req.Skip = 0
 	}
 
-	result, total, err := c.dbService.MongoFind(db, table, req.Filter, req.Sort, req.Limit, req.Skip)
+	result, total, err := c.dbService.MongoFind(db, table, req.Filter, req.Sort, req.Projection, req.Limit, req.Skip)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -828,6 +829,30 @@ func (c *DatabaseController) MongoCollectionStats(w http.ResponseWriter, r *http
 	}
 
 	jsonResponse(w, http.StatusOK, stats)
+}
+
+type MongoExplainRequest struct {
+	Filter string `json:"filter"`
+	Sort   string `json:"sort"`
+}
+
+func (c *DatabaseController) MongoExplain(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req MongoExplainRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	plan, err := c.dbService.MongoExplain(db, table, req.Filter, req.Sort)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, plan)
 }
 
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {

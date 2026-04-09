@@ -68,6 +68,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/count", dbController.MongoCount)
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/indexes", dbController.MongoListIndexes)
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/stats", dbController.MongoCollectionStats)
+	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/explain", dbController.MongoExplain)
 	protected.HandleFunc("GET "+p+"/users", dbController.ListUsers)
 	protected.HandleFunc("GET "+p+"/status", dbController.ServerStatus)
 	protected.HandleFunc("GET "+p+"/security/whitelist", secController.GetWhitelist)

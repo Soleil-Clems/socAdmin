@@ -103,6 +103,25 @@ export default function QueryEditor() {
     return d.toLocaleString();
   };
 
+  const mongoTemplates = [
+    {
+      label: "find",
+      query: `{"find": "${selectedDb ? "collection" : "users"}", "filter": {}, "limit": 50}`,
+    },
+    {
+      label: "aggregate",
+      query: `{"aggregate": "${selectedDb ? "collection" : "users"}", "pipeline": [\n  {"$match": {}},\n  {"$group": {"_id": "$field", "count": {"$sum": 1}}},\n  {"$sort": {"count": -1}}\n], "cursor": {}}`,
+    },
+    {
+      label: "count",
+      query: `{"count": "${selectedDb ? "collection" : "users"}", "query": {}}`,
+    },
+    {
+      label: "distinct",
+      query: `{"distinct": "${selectedDb ? "collection" : "users"}", "key": "field", "query": {}}`,
+    },
+  ];
+
   return (
     <div className="flex flex-col h-full">
       {/* Editor area */}
@@ -114,6 +133,20 @@ export default function QueryEditor() {
             </span>
           ) : (
             <span className="text-muted-foreground">No DB selected — use USE db;</span>
+          )}
+          {isMongo && (
+            <div className="flex items-center gap-1">
+              {mongoTemplates.map((t) => (
+                <button
+                  key={t.label}
+                  onClick={() => setQuery(t.query)}
+                  className="px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
+                  title={`Insert ${t.label} template`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           )}
           <div className="ml-auto">
             <button
@@ -134,7 +167,7 @@ export default function QueryEditor() {
           onKeyDown={handleKeyDown}
           placeholder={
             isMongo
-              ? `{"find": "collection", "filter": {"field": "value"}}`
+              ? `{"aggregate": "collection", "pipeline": [...], "cursor": {}}`
               : selectedDb
                 ? `SELECT * FROM ${selectedDb}...`
                 : "SELECT * FROM ..."

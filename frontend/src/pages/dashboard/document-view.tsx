@@ -294,6 +294,14 @@ export default function DocumentView() {
   const [activeFilter, setActiveFilter] = useState("");
   const [activeSort, setActiveSort] = useState("");
 
+  // Projection: selected fields to show (empty = all)
+  const [hiddenFields, setHiddenFields] = useState<Set<string>>(new Set());
+  const [showFieldPicker, setShowFieldPicker] = useState(false);
+
+  // Explain
+  const [explainData, setExplainData] = useState<Record<string, unknown> | null>(null);
+  const [explainLoading, setExplainLoading] = useState(false);
+
   // Insert/edit mode: "form" or "json"
   const [editMode, setEditMode] = useState<"form" | "json">("form");
 
@@ -304,9 +312,14 @@ export default function DocumentView() {
     enabled: !!selectedDb && !!selectedTable,
   });
 
+  // Build projection JSON from hidden fields
+  const projectionJSON = hiddenFields.size > 0
+    ? JSON.stringify(Object.fromEntries([...hiddenFields].map((f) => [f, 0])))
+    : "{}";
+
   // Server-side find
   const { data: findResult, isLoading } = useQuery<MongoFindResult>({
-    queryKey: ["mongo-find", selectedDb, selectedTable, activeFilter, activeSort, pageSize, page],
+    queryKey: ["mongo-find", selectedDb, selectedTable, activeFilter, activeSort, projectionJSON, pageSize, page],
     queryFn: () =>
       databaseRequest.mongoFind(
         selectedDb,
@@ -314,7 +327,8 @@ export default function DocumentView() {
         activeFilter || "{}",
         activeSort || "{}",
         pageSize,
-        page * pageSize
+        page * pageSize,
+        projectionJSON
       ),
     enabled: !!selectedDb && !!selectedTable,
   });
@@ -323,6 +337,17 @@ export default function DocumentView() {
   const columns = findResult?.Columns || [];
   const totalDocs = findResult?.total ?? 0;
   const totalPages = Math.ceil(totalDocs / pageSize);
+
+  // Track all known columns (for projection picker even when some are hidden)
+  const [allColumns, setAllColumns] = useState<string[]>([]);
+  const [prevCols, setPrevCols] = useState(columns);
+  if (columns.length > 0 && columns !== prevCols) {
+    setPrevCols(columns);
+    setAllColumns((prev) => {
+      const set = new Set([...prev, ...columns]);
+      return [...set].sort((a, b) => a === "_id" ? -1 : b === "_id" ? 1 : a.localeCompare(b));
+    });
+  }
 
   const insertRow = useInsertRow();
   const updateRow = useUpdateRow();
@@ -345,6 +370,9 @@ export default function DocumentView() {
     setSortInput("");
     setActiveFilter("");
     setActiveSort("");
+    setHiddenFields(new Set());
+    setAllColumns([]);
+    setExplainData(null);
   }
 
   const applyFilter = useCallback(() => {
@@ -375,6 +403,21 @@ export default function DocumentView() {
   const invalidateFind = () => {
     queryClient.invalidateQueries({ queryKey: ["mongo-find", selectedDb, selectedTable] });
     queryClient.invalidateQueries({ queryKey: ["mongo-stats", selectedDb, selectedTable] });
+  };
+
+  const handleExplain = async () => {
+    if (!selectedDb || !selectedTable) return;
+    setExplainLoading(true);
+    try {
+      const filter = filterMode === "simple" ? buildFilterJSON(filterRows) : (filterInput || "{}");
+      const sort = filterMode === "simple" ? buildSortJSON(sortRule) : (sortInput || "{}");
+      const result = await databaseRequest.mongoExplain(selectedDb, selectedTable, filter, sort);
+      setExplainData(result);
+    } catch (err) {
+      setExplainData({ error: (err as Error).message });
+    } finally {
+      setExplainLoading(false);
+    }
   };
 
   // ── Insert ──
@@ -518,6 +561,23 @@ export default function DocumentView() {
           )}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs px-2"
+            onClick={() => setShowFieldPicker(!showFieldPicker)}
+          >
+            Fields{hiddenFields.size > 0 && ` (${allColumns.length - hiddenFields.size}/${allColumns.length})`}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs px-2"
+            onClick={handleExplain}
+            disabled={explainLoading}
+          >
+            {explainLoading ? "..." : "Explain"}
+          </Button>
           {isAdmin && (
             <Button size="sm" className="h-7 text-xs px-3" onClick={handleInsertOpen}>
               + Document
@@ -668,6 +728,92 @@ export default function DocumentView() {
           </div>
         )}
       </div>
+
+      {/* Field picker */}
+      {showFieldPicker && allColumns.length > 0 && (
+        <div className="px-3 py-2 border-b border-border bg-muted/20 flex flex-wrap gap-2 items-center">
+          <span className="text-[11px] text-muted-foreground font-medium shrink-0">Show fields:</span>
+          {allColumns.map((col) => (
+            <label key={col} className="flex items-center gap-1 text-[11px] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!hiddenFields.has(col)}
+                onChange={() => {
+                  const next = new Set(hiddenFields);
+                  if (next.has(col)) next.delete(col);
+                  else next.add(col);
+                  setHiddenFields(next);
+                }}
+                className="w-3 h-3 rounded border-border"
+              />
+              <span className={hiddenFields.has(col) ? "text-muted-foreground line-through" : "text-foreground"}>
+                {col}
+              </span>
+            </label>
+          ))}
+          {hiddenFields.size > 0 && (
+            <button
+              onClick={() => setHiddenFields(new Set())}
+              className="text-[11px] text-primary hover:underline ml-2"
+            >
+              Show all
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Explain panel */}
+      {explainData && (
+        <div className="px-3 py-2 border-b border-border bg-muted/20">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[11px] font-semibold text-foreground">Explain Plan</span>
+            <button
+              onClick={() => setExplainData(null)}
+              className="text-[11px] text-muted-foreground hover:text-foreground ml-auto"
+            >
+              Close
+            </button>
+          </div>
+          {"error" in explainData ? (
+            <p className="text-xs text-destructive">{String(explainData.error)}</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              {explainData.nReturned != null && (
+                <div>
+                  <span className="text-muted-foreground">Returned</span>
+                  <p className="font-semibold text-foreground">{String(explainData.nReturned)}</p>
+                </div>
+              )}
+              {explainData.totalDocsExamined != null && (
+                <div>
+                  <span className="text-muted-foreground">Docs examined</span>
+                  <p className="font-semibold text-foreground">{String(explainData.totalDocsExamined)}</p>
+                </div>
+              )}
+              {explainData.totalKeysExamined != null && (
+                <div>
+                  <span className="text-muted-foreground">Keys examined</span>
+                  <p className="font-semibold text-foreground">{String(explainData.totalKeysExamined)}</p>
+                </div>
+              )}
+              {explainData.executionTimeMs != null && (
+                <div>
+                  <span className="text-muted-foreground">Execution time</span>
+                  <p className="font-semibold text-foreground">{String(explainData.executionTimeMs)} ms</p>
+                </div>
+              )}
+              {explainData.winningPlan != null && (
+                <div className="col-span-full">
+                  <span className="text-muted-foreground">Winning plan</span>
+                  <pre className="text-[11px] font-mono bg-background rounded p-2 mt-1 overflow-x-auto">
+                    {JSON.stringify(explainData.winningPlan, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Documents */}
       {isLoading ? (

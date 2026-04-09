@@ -134,8 +134,11 @@ export const databaseRequest = {
     customfetch.post<QueryResult>("/query", { query, database }),
 
   // MongoDB-specific
-  mongoFind: (db: string, collection: string, filter: string, sort: string, limit: number, skip: number) =>
-    customfetch.post<MongoFindResult>(`/databases/${db}/tables/${collection}/find`, { filter, sort, limit, skip }),
+  mongoFind: (db: string, collection: string, filter: string, sort: string, limit: number, skip: number, projection = "{}") =>
+    customfetch.post<MongoFindResult>(`/databases/${db}/tables/${collection}/find`, { filter, sort, projection, limit, skip }),
+
+  mongoExplain: (db: string, collection: string, filter: string, sort: string) =>
+    customfetch.post<Record<string, unknown>>(`/databases/${db}/tables/${collection}/explain`, { filter, sort }),
 
   mongoCount: (db: string, collection: string) =>
     customfetch.get<{ count: number }>(`/databases/${db}/tables/${collection}/count`),

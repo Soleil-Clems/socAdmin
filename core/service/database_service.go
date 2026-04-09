@@ -558,8 +558,8 @@ func (s *DatabaseService) getForeignKeys(database string) map[string]connector.F
 
 // ── MongoDB-specific methods ──
 
-// MongoFind performs a server-side find with filter, sort, limit, skip.
-func (s *DatabaseService) MongoFind(database, collection, filter, sort string, limit, skip int) (*connector.QueryResult, int64, error) {
+// MongoFind performs a server-side find with filter, sort, projection, limit, skip.
+func (s *DatabaseService) MongoFind(database, collection, filter, sort, projection string, limit, skip int) (*connector.QueryResult, int64, error) {
 	if s.conn == nil {
 		return nil, 0, fmt.Errorf("not connected")
 	}
@@ -567,7 +567,19 @@ func (s *DatabaseService) MongoFind(database, collection, filter, sort string, l
 	if !ok {
 		return nil, 0, fmt.Errorf("not a MongoDB connection")
 	}
-	return mc.FindDocuments(database, collection, filter, sort, limit, skip)
+	return mc.FindDocuments(database, collection, filter, sort, projection, limit, skip)
+}
+
+// MongoExplain runs explain on a find query.
+func (s *DatabaseService) MongoExplain(database, collection, filter, sort string) (map[string]interface{}, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.ExplainFind(database, collection, filter, sort)
 }
 
 // MongoCount returns total document count for a collection.

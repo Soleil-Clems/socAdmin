@@ -420,9 +420,9 @@ func (c *MongoConnector) AlterColumn(database, collection string, op AlterColumn
 
 // ── MongoDB-specific methods (not in Connector interface) ──
 
-// FindDocuments performs a server-side find with filter, sort, limit, skip.
-// filterJSON and sortJSON are raw JSON strings (e.g. `{"age":{"$gt":25}}`, `{"name":1}`).
-func (c *MongoConnector) FindDocuments(database, collection, filterJSON, sortJSON string, limit, skip int) (*QueryResult, int64, error) {
+// FindDocuments performs a server-side find with filter, sort, projection, limit, skip.
+// filterJSON, sortJSON, projectionJSON are raw JSON strings.
+func (c *MongoConnector) FindDocuments(database, collection, filterJSON, sortJSON, projectionJSON string, limit, skip int) (*QueryResult, int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -456,6 +456,14 @@ func (c *MongoConnector) FindDocuments(database, collection, filterJSON, sortJSO
 		}
 	}
 
+	// Parse projection
+	if projectionJSON != "" && projectionJSON != "{}" {
+		var projDoc bson.D
+		if err := bson.UnmarshalExtJSON([]byte(projectionJSON), false, &projDoc); err == nil && len(projDoc) > 0 {
+			opts.SetProjection(projDoc)
+		}
+	}
+
 	cursor, err := coll.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, 0, fmt.Errorf("find failed: %w", err)
@@ -467,6 +475,85 @@ func (c *MongoConnector) FindDocuments(database, collection, filterJSON, sortJSO
 		return nil, 0, err
 	}
 	return result, total, nil
+}
+
+// ExplainFind runs explain on a find query and returns the execution plan.
+func (c *MongoConnector) ExplainFind(database, collection, filterJSON, sortJSON string) (map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	filter := bson.D{}
+	if filterJSON != "" && filterJSON != "{}" {
+		if err := bson.UnmarshalExtJSON([]byte(filterJSON), false, &filter); err != nil {
+			return nil, fmt.Errorf("invalid filter JSON: %w", err)
+		}
+		filter = convertFilterIDs(filter)
+	}
+
+	findCmd := bson.D{
+		{Key: "find", Value: collection},
+		{Key: "filter", Value: filter},
+	}
+	if sortJSON != "" && sortJSON != "{}" {
+		var sortDoc bson.D
+		if err := bson.UnmarshalExtJSON([]byte(sortJSON), false, &sortDoc); err == nil && len(sortDoc) > 0 {
+			findCmd = append(findCmd, bson.E{Key: "sort", Value: sortDoc})
+		}
+	}
+
+	explainCmd := bson.D{
+		{Key: "explain", Value: findCmd},
+		{Key: "verbosity", Value: "executionStats"},
+	}
+
+	var result bson.M
+	err := c.client.Database(database).RunCommand(ctx, explainCmd).Decode(&result)
+	if err != nil {
+		return nil, fmt.Errorf("explain failed: %w", err)
+	}
+
+	// Extract useful info
+	plan := make(map[string]interface{})
+	plan["raw"] = result
+
+	// Try to extract executionStats
+	if es, ok := result["executionStats"].(bson.M); ok {
+		plan["executionTimeMs"] = es["executionTimeMillis"]
+		plan["totalDocsExamined"] = es["totalDocsExamined"]
+		plan["totalKeysExamined"] = es["totalKeysExamined"]
+		plan["nReturned"] = es["nReturned"]
+	}
+
+	// Try to extract winning plan
+	if qp, ok := result["queryPlanner"].(bson.M); ok {
+		if wp, ok := qp["winningPlan"].(bson.M); ok {
+			plan["winningPlan"] = flattenPlanStage(wp)
+		}
+	}
+
+	return plan, nil
+}
+
+// flattenPlanStage extracts a readable summary from the winning plan.
+func flattenPlanStage(stage bson.M) map[string]interface{} {
+	out := make(map[string]interface{})
+	if s, ok := stage["stage"].(string); ok {
+		out["stage"] = s
+	}
+	if idx, ok := stage["indexName"].(string); ok {
+		out["indexName"] = idx
+	}
+	if dir, ok := stage["direction"].(string); ok {
+		out["direction"] = dir
+	}
+	if kp, ok := stage["keyPattern"].(bson.M); ok {
+		out["keyPattern"] = kp
+	}
+	// Recurse into inputStage
+	if input, ok := stage["inputStage"].(bson.M); ok {
+		out["inputStage"] = flattenPlanStage(input)
+	}
+	return out
 }
 
 // CountDocuments returns the total number of documents in a collection.
