@@ -59,6 +59,7 @@ export default function StatusView() {
 
   const [showOps, setShowOps] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
+  const [showRs, setShowRs] = useState(false);
 
   const dbTypeLabel: Record<string, string> = {
     mysql: "MySQL",
@@ -78,6 +79,12 @@ export default function StatusView() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mongo-currentop"] });
     },
+  });
+
+  const { data: rsData } = useQuery({
+    queryKey: ["mongo-replset"],
+    queryFn: () => databaseRequest.mongoReplicaSetStatus(),
+    enabled: isMongo && showRs,
   });
 
   const { data: logData, isLoading: logLoading, refetch: refetchLog } = useQuery({
@@ -117,6 +124,16 @@ export default function StatusView() {
               onClick={() => setShowLogs(!showLogs)}
             >
               {showLogs ? "Hide Logs" : "Server Logs"}
+            </Button>
+          )}
+          {isMongo && (
+            <Button
+              size="sm"
+              variant={showRs ? "secondary" : "outline"}
+              className="h-6 text-[11px] px-2"
+              onClick={() => setShowRs(!showRs)}
+            >
+              {showRs ? "Hide RS" : "Replica Set"}
             </Button>
           )}
           <span className="text-[10px] text-muted-foreground">Auto-refresh 30s</span>
@@ -248,6 +265,62 @@ export default function StatusView() {
             <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">
               No log entries available
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Replica Set panel */}
+      {isMongo && showRs && (
+        <div className="border-b border-border bg-muted/30">
+          <div className="px-3 py-1.5 border-b border-border/50">
+            <span className="text-xs font-semibold">Replica Set</span>
+          </div>
+          {rsData && !rsData.replica_set ? (
+            <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">
+              Not running as a replica set (standalone)
+            </div>
+          ) : rsData ? (
+            <div className="p-3 space-y-2">
+              <div className="text-xs">
+                <span className="text-muted-foreground">Set:</span>{" "}
+                <span className="font-medium">{String(rsData.set)}</span>
+              </div>
+              {Array.isArray(rsData.members) && (
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="px-2 py-1 text-left font-semibold text-muted-foreground">Member</th>
+                      <th className="px-2 py-1 text-left font-semibold text-muted-foreground">State</th>
+                      <th className="px-2 py-1 text-left font-semibold text-muted-foreground">Health</th>
+                      <th className="px-2 py-1 text-left font-semibold text-muted-foreground">Uptime</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(rsData.members as Record<string, unknown>[]).map((m, i) => (
+                      <tr key={i} className="border-b border-border/50">
+                        <td className="px-2 py-1 font-mono">
+                          {String(m.name)}
+                          {m.self === true && <span className="ml-1 text-[9px] bg-primary/10 text-primary px-1 rounded">SELF</span>}
+                        </td>
+                        <td className="px-2 py-1">
+                          <span className={`px-1 py-0.5 rounded text-[10px] font-medium ${
+                            m.stateStr === "PRIMARY" ? "bg-green-500/10 text-green-600 dark:text-green-400" :
+                            m.stateStr === "SECONDARY" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" :
+                            "bg-muted text-muted-foreground"
+                          }`}>
+                            {String(m.stateStr)}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1">{Number(m.health) === 1 ? "✓" : "✗"}</td>
+                        <td className="px-2 py-1 text-muted-foreground">{String(m.uptime)}s</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ) : (
+            <div className="p-3"><Skeleton className="h-6 w-48" /></div>
           )}
         </div>
       )}

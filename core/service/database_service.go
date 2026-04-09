@@ -966,6 +966,45 @@ func (s *DatabaseService) MongoConvertToCapped(database, collection string, size
 	return mc.ConvertToCapped(database, collection, sizeBytes)
 }
 
+// ── Collection Metadata ──
+
+func (s *DatabaseService) MongoListCollectionsWithMeta(database string) ([]connector.CollectionMetadata, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.ListCollectionsWithMeta(database)
+}
+
+// ── Replica Set Info ──
+
+func (s *DatabaseService) MongoReplicaSetStatus() (map[string]interface{}, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.ReplicaSetStatus()
+}
+
+// ── Sample Documents ──
+
+func (s *DatabaseService) MongoSampleDocuments(database, collection string, n int) (*connector.QueryResult, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.SampleDocuments(database, collection, n)
+}
+
 func (s *DatabaseService) Disconnect() error {
 	if s.conn != nil {
 		err := s.conn.Close()

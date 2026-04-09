@@ -420,6 +420,23 @@ export default function DocumentView() {
     }
   };
 
+  // ── Sample ──
+  const [sampleLoading, setSampleLoading] = useState(false);
+  const handleSample = async () => {
+    if (!selectedDb || !selectedTable) return;
+    setSampleLoading(true);
+    try {
+      const result = await databaseRequest.mongoSampleDocuments(selectedDb, selectedTable, pageSize);
+      if (result) {
+        queryClient.setQueryData(
+          ["mongo-find", selectedDb, selectedTable],
+          { Columns: result.Columns, Rows: result.Rows, total: result.Rows?.length ?? 0 }
+        );
+      }
+    } catch { /* ignore */ }
+    finally { setSampleLoading(false); }
+  };
+
   // ── Insert ──
   const handleInsertOpen = () => {
     setJsonInput("{\n  \n}");
@@ -659,6 +676,15 @@ export default function DocumentView() {
             onClick={() => setShowFieldPicker(!showFieldPicker)}
           >
             Fields{hiddenFields.size > 0 && ` (${allColumns.length - hiddenFields.size}/${allColumns.length})`}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs px-2"
+            onClick={handleSample}
+            disabled={sampleLoading}
+          >
+            {sampleLoading ? "..." : "Sample"}
           </Button>
           <Button
             size="sm"

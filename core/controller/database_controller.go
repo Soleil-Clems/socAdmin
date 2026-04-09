@@ -1444,6 +1444,59 @@ func (c *DatabaseController) MongoConvertToCapped(w http.ResponseWriter, r *http
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "converted"})
 }
 
+// ── Collection Metadata ──
+
+func (c *DatabaseController) MongoListCollectionsWithMeta(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	metas, err := c.dbService.MongoListCollectionsWithMeta(db)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if metas == nil {
+		metas = []connector.CollectionMetadata{}
+	}
+	jsonResponse(w, http.StatusOK, metas)
+}
+
+// ── Replica Set Info ──
+
+func (c *DatabaseController) MongoReplicaSetStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := c.dbService.MongoReplicaSetStatus()
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if status == nil {
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"replica_set": false})
+		return
+	}
+	status["replica_set"] = true
+	jsonResponse(w, http.StatusOK, status)
+}
+
+// ── Sample Documents ──
+
+func (c *DatabaseController) MongoSampleDocuments(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	n := 10
+	if s := r.URL.Query().Get("n"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 && v <= 100 {
+			n = v
+		}
+	}
+
+	result, err := c.dbService.MongoSampleDocuments(db, table, n)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, result)
+}
+
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

@@ -81,6 +81,9 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("GET "+p+"/databases/{db}/dbstats", dbController.MongoDatabaseStats)
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/capped", dbController.MongoIsCollectionCapped)
 	protected.HandleFunc("GET "+p+"/mongo/log", dbController.MongoGetServerLog)
+	protected.HandleFunc("GET "+p+"/databases/{db}/collections/meta", dbController.MongoListCollectionsWithMeta)
+	protected.HandleFunc("GET "+p+"/mongo/replset", dbController.MongoReplicaSetStatus)
+	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/sample", dbController.MongoSampleDocuments)
 	protected.HandleFunc("GET "+p+"/security/whitelist", secController.GetWhitelist)
 
 	// Saved connections — tout le monde peut lister et utiliser

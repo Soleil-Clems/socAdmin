@@ -1416,6 +1416,144 @@ func (c *MongoConnector) ConvertToCapped(database, collection string, sizeBytes 
 	return nil
 }
 
+// ── Collection Metadata ──
+
+// CollectionMetadata holds basic info for each collection in a database.
+type CollectionMetadata struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`      // "collection" or "view"
+	Capped    bool   `json:"capped"`
+	Documents int64  `json:"documents"`
+	Size      int64  `json:"size"`
+}
+
+// ListCollectionsWithMeta returns collections with doc count, size, and type info.
+func (c *MongoConnector) ListCollectionsWithMeta(database string) ([]CollectionMetadata, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cursor, err := c.client.Database(database).ListCollections(ctx, bson.D{})
+	if err != nil {
+		return nil, fmt.Errorf("list collections failed: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var metas []CollectionMetadata
+	for cursor.Next(ctx) {
+		var doc bson.M
+		if err := cursor.Decode(&doc); err != nil {
+			continue
+		}
+		name := fmt.Sprintf("%v", doc["name"])
+		if name == "_socadmin_init" || name == "_init" {
+			continue
+		}
+
+		meta := CollectionMetadata{
+			Name: name,
+			Type: fmt.Sprintf("%v", doc["type"]),
+		}
+
+		if opts, ok := doc["options"].(bson.M); ok {
+			if capped, ok := opts["capped"].(bool); ok {
+				meta.Capped = capped
+			}
+		}
+
+		// Get doc count and size for regular collections (not views)
+		if meta.Type != "view" {
+			statsCtx, statsCancel := context.WithTimeout(context.Background(), 3*time.Second)
+			var statsResult bson.M
+			err := c.client.Database(database).RunCommand(statsCtx, bson.D{
+				{Key: "collStats", Value: name},
+			}).Decode(&statsResult)
+			statsCancel()
+			if err == nil {
+				if v, ok := statsResult["count"]; ok {
+					meta.Documents = toInt64(v)
+				}
+				if v, ok := statsResult["size"]; ok {
+					meta.Size = toInt64(v)
+				}
+			}
+		}
+
+		metas = append(metas, meta)
+	}
+	return metas, nil
+}
+
+// ── Replica Set Info ──
+
+// ReplicaSetStatus returns rs.status() data, or nil if not a replica set.
+func (c *MongoConnector) ReplicaSetStatus() (map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result bson.M
+	err := c.client.Database("admin").RunCommand(ctx, bson.D{
+		{Key: "replSetGetStatus", Value: 1},
+	}).Decode(&result)
+	if err != nil {
+		// Not a replica set — return nil instead of error
+		if strings.Contains(err.Error(), "not running with --replSet") ||
+			strings.Contains(err.Error(), "no replset config") ||
+			strings.Contains(err.Error(), "NotYetInitialized") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("replSetGetStatus failed: %w", err)
+	}
+
+	status := map[string]interface{}{
+		"set":    result["set"],
+		"myState": result["myState"],
+		"ok":     result["ok"],
+	}
+
+	if members, ok := result["members"].(bson.A); ok {
+		var memberList []map[string]interface{}
+		for _, m := range members {
+			if doc, ok := m.(bson.M); ok {
+				member := map[string]interface{}{
+					"name":       doc["name"],
+					"stateStr":   doc["stateStr"],
+					"health":     doc["health"],
+					"uptime":     doc["uptime"],
+					"optimeDate": fmt.Sprintf("%v", doc["optimeDate"]),
+				}
+				if doc["self"] == true {
+					member["self"] = true
+				}
+				memberList = append(memberList, member)
+			}
+		}
+		status["members"] = memberList
+	}
+
+	return status, nil
+}
+
+// ── Sample Documents ──
+
+// SampleDocuments returns N random documents using $sample aggregation.
+func (c *MongoConnector) SampleDocuments(database, collection string, n int) (*QueryResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pipeline := bson.A{
+		bson.D{{Key: "$sample", Value: bson.D{{Key: "size", Value: n}}}},
+	}
+
+	coll := c.client.Database(database).Collection(collection)
+	cursor, err := coll.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("sample failed: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	return cursorToQueryResult(ctx, cursor)
+}
+
 func (c *MongoConnector) Close() error {
 	if c.client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

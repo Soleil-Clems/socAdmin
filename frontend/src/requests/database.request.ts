@@ -259,6 +259,18 @@ export const databaseRequest = {
   mongoConvertToCapped: (db: string, collection: string, sizeBytes: number) =>
     customfetch.post(`/databases/${db}/tables/${collection}/convert-capped`, { size_bytes: sizeBytes }),
 
+  // Collection Metadata
+  mongoListCollectionsWithMeta: (db: string) =>
+    customfetch.get<{ name: string; type: string; capped: boolean; documents: number; size: number }[]>(`/databases/${db}/collections/meta`),
+
+  // Replica Set
+  mongoReplicaSetStatus: () =>
+    customfetch.get<Record<string, unknown>>("/mongo/replset"),
+
+  // Sample
+  mongoSampleDocuments: (db: string, collection: string, n = 10) =>
+    customfetch.get<{ Columns: string[]; Rows: Record<string, unknown>[] }>(`/databases/${db}/tables/${collection}/sample?n=${n}`),
+
   listUsers: () => customfetch.get<Record<string, unknown>[]>("/users"),
 
   serverStatus: () => customfetch.get<Record<string, unknown>>("/status"),

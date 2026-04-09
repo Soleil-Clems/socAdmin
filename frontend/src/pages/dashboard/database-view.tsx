@@ -65,6 +65,14 @@ export default function DatabaseView() {
     enabled: isMongo && !!selectedDb,
   });
 
+  type CollMeta = { name: string; type: string; capped: boolean; documents: number; size: number };
+  const { data: collMetas } = useQuery<CollMeta[]>({
+    queryKey: ["mongo-coll-meta", selectedDb],
+    queryFn: () => databaseRequest.mongoListCollectionsWithMeta(selectedDb),
+    enabled: isMongo && !!selectedDb,
+  });
+  const metaMap = new Map((collMetas ?? []).map((m) => [m.name, m]));
+
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showCreateTable, setShowCreateTable] = useState(false);
   const [tableName, setTableName] = useState("");
@@ -265,7 +273,9 @@ export default function DatabaseView() {
               </tr>
             </thead>
             <tbody>
-              {tables?.map((table: string) => (
+              {tables?.map((table: string) => {
+                const meta = metaMap.get(table);
+                return (
                 <tr key={table} className="border-b border-border/50 hover:bg-accent/40 transition-colors">
                   <td className="px-3 py-1.5">
                     <Checkbox
@@ -274,12 +284,25 @@ export default function DatabaseView() {
                     />
                   </td>
                   <td className="px-3 py-1.5">
-                    <button
-                      onClick={() => setSelectedTable(table)}
-                      className="text-[13px] font-medium text-foreground hover:text-primary transition-colors"
-                    >
-                      {table}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedTable(table)}
+                        className="text-[13px] font-medium text-foreground hover:text-primary transition-colors"
+                      >
+                        {table}
+                      </button>
+                      {meta?.type === "view" && (
+                        <span className="text-[9px] bg-violet-500/10 text-violet-600 dark:text-violet-400 px-1 py-0.5 rounded font-medium">VIEW</span>
+                      )}
+                      {meta?.capped && (
+                        <span className="text-[9px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1 py-0.5 rounded font-medium">CAPPED</span>
+                      )}
+                      {isMongo && meta && meta.type !== "view" && (
+                        <span className="text-[11px] text-muted-foreground">
+                          {meta.documents.toLocaleString()} docs · {formatSize(meta.size)}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-1.5 text-right">
                     <div className="flex justify-end gap-0.5">
@@ -310,7 +333,8 @@ export default function DatabaseView() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {tables?.length === 0 && (
                 <tr>
                   <td colSpan={3} className="text-center text-muted-foreground py-12 text-sm">
