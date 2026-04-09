@@ -15,6 +15,7 @@ import AccountsView from "@/pages/dashboard/accounts-view";
 import SearchView from "@/pages/dashboard/search-view";
 import SchemaView from "@/pages/dashboard/schema-view";
 import IndexesView from "@/pages/dashboard/indexes-view";
+import ViewsView from "@/pages/dashboard/views-view";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { useConnectionStore } from "@/stores/connection.store";
@@ -120,6 +121,9 @@ export default function DashboardPage() {
               {isMongo && selectedTable && (
                 <TabsTrigger value="indexes" className={tabClass}>Indexes</TabsTrigger>
               )}
+              {isMongo && (
+                <TabsTrigger value="views" className={tabClass}>Views</TabsTrigger>
+              )}
               <TabsTrigger value="search" className={tabClass}>Search</TabsTrigger>
               <TabsTrigger value="export" className={tabClass}>Export</TabsTrigger>
               <TabsTrigger value="users" className={tabClass}>Users</TabsTrigger>
@@ -158,6 +162,11 @@ export default function DashboardPage() {
           {isMongo && selectedTable && (
             <TabsContent value="indexes" className="flex-1 overflow-hidden m-0">
               <IndexesView />
+            </TabsContent>
+          )}
+          {isMongo && (
+            <TabsContent value="views" className="flex-1 overflow-hidden m-0">
+              <ViewsView />
             </TabsContent>
           )}
           <TabsContent value="search" className="flex-1 overflow-hidden m-0">

@@ -795,9 +795,13 @@ func (c *MongoConnector) ListIndexes(database, collection string) ([]IndexInfo, 
 	return indexes, nil
 }
 
-// CreateIndex creates a new index on a collection.
-// keysJSON is like `{"field": 1}` or `{"field": -1}` or `{"f1": 1, "f2": -1}`.
+// CreateIndexAdvanced creates a new index on a collection with advanced options.
 func (c *MongoConnector) CreateIndex(database, collection, keysJSON string, unique bool, name string) error {
+	return c.CreateIndexAdvanced(database, collection, keysJSON, unique, false, name, 0, "")
+}
+
+// CreateIndexAdvanced creates a new index with TTL, sparse, and partial filter support.
+func (c *MongoConnector) CreateIndexAdvanced(database, collection, keysJSON string, unique, sparse bool, name string, ttlSeconds int, partialFilterJSON string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -814,8 +818,21 @@ func (c *MongoConnector) CreateIndex(database, collection, keysJSON string, uniq
 	if unique {
 		opts.SetUnique(true)
 	}
+	if sparse {
+		opts.SetSparse(true)
+	}
 	if name != "" {
 		opts.SetName(name)
+	}
+	if ttlSeconds > 0 {
+		opts.SetExpireAfterSeconds(int32(ttlSeconds))
+	}
+	if partialFilterJSON != "" && partialFilterJSON != "{}" {
+		var pf bson.D
+		if err := bson.UnmarshalExtJSON([]byte(partialFilterJSON), false, &pf); err != nil {
+			return fmt.Errorf("invalid partial filter JSON: %w", err)
+		}
+		opts.SetPartialFilterExpression(pf)
 	}
 	model.Options = opts
 
@@ -927,6 +944,128 @@ func convertIDValue(val interface{}) interface{} {
 	default:
 		return val
 	}
+}
+
+// ── currentOp / killOp ──
+
+// CurrentOp returns the currently running operations.
+func (c *MongoConnector) CurrentOp() ([]map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result bson.M
+	err := c.client.Database("admin").RunCommand(ctx, bson.D{
+		{Key: "currentOp", Value: 1},
+		{Key: "active", Value: true},
+	}).Decode(&result)
+	if err != nil {
+		return nil, fmt.Errorf("currentOp failed: %w", err)
+	}
+
+	inprog, ok := result["inprog"].(bson.A)
+	if !ok {
+		return nil, nil
+	}
+
+	var ops []map[string]interface{}
+	for _, item := range inprog {
+		doc, ok := item.(bson.M)
+		if !ok {
+			continue
+		}
+		op := map[string]interface{}{
+			"opid":      doc["opid"],
+			"active":    doc["active"],
+			"op":        doc["op"],
+			"ns":        doc["ns"],
+			"secs_running": doc["secs_running"],
+			"desc":      doc["desc"],
+			"client":    doc["client"],
+		}
+		if cmd, ok := doc["command"].(bson.M); ok {
+			b, _ := json.Marshal(cmd)
+			if len(b) > 200 {
+				b = append(b[:197], '.', '.', '.')
+			}
+			op["command"] = string(b)
+		}
+		ops = append(ops, op)
+	}
+	return ops, nil
+}
+
+// KillOp kills a running operation by opid.
+func (c *MongoConnector) KillOp(opid interface{}) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result bson.M
+	err := c.client.Database("admin").RunCommand(ctx, bson.D{
+		{Key: "killOp", Value: 1},
+		{Key: "op", Value: opid},
+	}).Decode(&result)
+	if err != nil {
+		return fmt.Errorf("killOp failed: %w", err)
+	}
+	return nil
+}
+
+// ── MongoDB Views ──
+
+// CreateView creates a MongoDB view from an aggregation pipeline.
+func (c *MongoConnector) CreateView(database, viewName, source, pipelineJSON string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var pipeline bson.A
+	if err := bson.UnmarshalExtJSON([]byte(pipelineJSON), false, &pipeline); err != nil {
+		return fmt.Errorf("invalid pipeline JSON: %w", err)
+	}
+
+	cmd := bson.D{
+		{Key: "create", Value: viewName},
+		{Key: "viewOn", Value: source},
+		{Key: "pipeline", Value: pipeline},
+	}
+
+	var result bson.M
+	err := c.client.Database(database).RunCommand(ctx, cmd).Decode(&result)
+	if err != nil {
+		return fmt.Errorf("create view failed: %w", err)
+	}
+	return nil
+}
+
+// ListViews returns only views (not regular collections) in a database.
+func (c *MongoConnector) ListViews(database string) ([]map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := c.client.Database(database).ListCollections(ctx, bson.M{"type": "view"})
+	if err != nil {
+		return nil, fmt.Errorf("list views failed: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var views []map[string]interface{}
+	for cursor.Next(ctx) {
+		var doc bson.M
+		if err := cursor.Decode(&doc); err != nil {
+			continue
+		}
+		view := map[string]interface{}{
+			"name": doc["name"],
+		}
+		if opts, ok := doc["options"].(bson.M); ok {
+			view["viewOn"] = opts["viewOn"]
+			if p, ok := opts["pipeline"].(bson.A); ok {
+				b, _ := json.Marshal(p)
+				view["pipeline"] = string(b)
+			}
+		}
+		views = append(views, view)
+	}
+	return views, nil
 }
 
 func (c *MongoConnector) Close() error {

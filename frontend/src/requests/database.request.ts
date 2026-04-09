@@ -183,14 +183,33 @@ export const databaseRequest = {
   mongoListIndexes: (db: string, collection: string) =>
     customfetch.get<MongoIndex[]>(`/databases/${db}/tables/${collection}/indexes`),
 
-  mongoCreateIndex: (db: string, collection: string, keys: string, unique: boolean, name?: string) =>
-    customfetch.post(`/databases/${db}/tables/${collection}/indexes`, { keys, unique, name: name || "" }),
+  mongoCreateIndex: (db: string, collection: string, keys: string, unique: boolean, name?: string, sparse?: boolean, ttlSeconds?: number, partialFilter?: string) =>
+    customfetch.post(`/databases/${db}/tables/${collection}/indexes`, {
+      keys, unique, name: name || "",
+      sparse: sparse || false,
+      ttl_seconds: ttlSeconds || 0,
+      partial_filter: partialFilter || "",
+    }),
 
   mongoDropIndex: (db: string, collection: string, name: string) =>
     customfetch.delete(`/databases/${db}/tables/${collection}/indexes`, { name }),
 
   mongoCollectionStats: (db: string, collection: string) =>
     customfetch.get<MongoCollectionStats>(`/databases/${db}/tables/${collection}/stats`),
+
+  // currentOp / killOp
+  mongoCurrentOp: () =>
+    customfetch.get<{ opid: unknown; active: boolean; op: string; ns: string; secs_running: number; desc: string; client: string; command: string }[]>("/mongo/currentop"),
+
+  mongoKillOp: (opid: unknown) =>
+    customfetch.post("/mongo/killop", { opid } as Record<string, unknown>),
+
+  // MongoDB Views
+  mongoListViews: (db: string) =>
+    customfetch.get<{ name: string; viewOn: string; pipeline: string }[]>(`/databases/${db}/views`),
+
+  mongoCreateView: (db: string, name: string, source: string, pipeline: string) =>
+    customfetch.post(`/databases/${db}/views`, { name, source, pipeline }),
 
   listUsers: () => customfetch.get<Record<string, unknown>[]>("/users"),
 

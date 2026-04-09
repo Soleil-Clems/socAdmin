@@ -627,6 +627,18 @@ func (s *DatabaseService) MongoCreateIndex(database, collection, keysJSON string
 	return mc.CreateIndex(database, collection, keysJSON, unique, name)
 }
 
+// MongoCreateIndexAdvanced creates an index with advanced options.
+func (s *DatabaseService) MongoCreateIndexAdvanced(database, collection, keysJSON string, unique, sparse bool, name string, ttlSeconds int, partialFilterJSON string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.CreateIndexAdvanced(database, collection, keysJSON, unique, sparse, name, ttlSeconds, partialFilterJSON)
+}
+
 // MongoDropIndex drops an index by name.
 func (s *DatabaseService) MongoDropIndex(database, collection, indexName string) error {
 	if s.conn == nil {
@@ -743,6 +755,54 @@ func (s *DatabaseService) MongoListRoles(database string) ([]string, error) {
 		return nil, fmt.Errorf("not a MongoDB connection")
 	}
 	return mc.MongoListRoles(database)
+}
+
+// ── currentOp / killOp ──
+
+func (s *DatabaseService) MongoCurrentOp() ([]map[string]interface{}, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.CurrentOp()
+}
+
+func (s *DatabaseService) MongoKillOp(opid interface{}) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.KillOp(opid)
+}
+
+// ── MongoDB Views ──
+
+func (s *DatabaseService) MongoCreateView(database, viewName, source, pipelineJSON string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.CreateView(database, viewName, source, pipelineJSON)
+}
+
+func (s *DatabaseService) MongoListViews(database string) ([]map[string]interface{}, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.ListViews(database)
 }
 
 func (s *DatabaseService) Disconnect() error {

@@ -763,9 +763,12 @@ func (c *DatabaseController) MongoListIndexes(w http.ResponseWriter, r *http.Req
 }
 
 type MongoCreateIndexRequest struct {
-	Keys   string `json:"keys"`   // JSON string, e.g. {"field": 1}
-	Unique bool   `json:"unique"`
-	Name   string `json:"name"`
+	Keys          string `json:"keys"`           // JSON string, e.g. {"field": 1}
+	Unique        bool   `json:"unique"`
+	Sparse        bool   `json:"sparse"`
+	Name          string `json:"name"`
+	TTLSeconds    int    `json:"ttl_seconds"`
+	PartialFilter string `json:"partial_filter"` // JSON string for partial filter expression
 }
 
 func (c *DatabaseController) MongoCreateIndex(w http.ResponseWriter, r *http.Request) {
@@ -783,7 +786,7 @@ func (c *DatabaseController) MongoCreateIndex(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := c.dbService.MongoCreateIndex(db, table, req.Keys, req.Unique, req.Name); err != nil {
+	if err := c.dbService.MongoCreateIndexAdvanced(db, table, req.Keys, req.Unique, req.Sparse, req.Name, req.TTLSeconds, req.PartialFilter); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1075,6 +1078,86 @@ func (c *DatabaseController) MongoListRoles(w http.ResponseWriter, r *http.Reque
 	}
 
 	jsonResponse(w, http.StatusOK, roles)
+}
+
+// ── currentOp / killOp ──
+
+func (c *DatabaseController) MongoCurrentOp(w http.ResponseWriter, r *http.Request) {
+	ops, err := c.dbService.MongoCurrentOp()
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, ops)
+}
+
+type MongoKillOpRequest struct {
+	OpID interface{} `json:"opid"`
+}
+
+func (c *DatabaseController) MongoKillOp(w http.ResponseWriter, r *http.Request) {
+	var req MongoKillOpRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.OpID == nil {
+		jsonError(w, http.StatusBadRequest, "opid is required")
+		return
+	}
+
+	if err := c.dbService.MongoKillOp(req.OpID); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "kill_op", fmt.Sprintf("%v", req.OpID))
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "killed"})
+}
+
+// ── MongoDB Views ──
+
+type MongoCreateViewRequest struct {
+	Name     string `json:"name"`
+	Source   string `json:"source"`
+	Pipeline string `json:"pipeline"` // JSON array string
+}
+
+func (c *DatabaseController) MongoCreateView(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	var req MongoCreateViewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Name == "" || req.Source == "" || req.Pipeline == "" {
+		jsonError(w, http.StatusBadRequest, "name, source, and pipeline are required")
+		return
+	}
+
+	if err := c.dbService.MongoCreateView(db, req.Name, req.Source, req.Pipeline); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "create_view", fmt.Sprintf("%s.%s (on %s)", db, req.Name, req.Source))
+	jsonResponse(w, http.StatusCreated, map[string]string{"status": "created"})
+}
+
+func (c *DatabaseController) MongoListViews(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	views, err := c.dbService.MongoListViews(db)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if views == nil {
+		views = []map[string]interface{}{}
+	}
+
+	jsonResponse(w, http.StatusOK, views)
 }
 
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {

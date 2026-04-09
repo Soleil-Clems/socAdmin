@@ -39,8 +39,8 @@ export default function IndexesView() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { keys: string; unique: boolean; name: string }) =>
-      databaseRequest.mongoCreateIndex(selectedDb, selectedTable, data.keys, data.unique, data.name),
+    mutationFn: (data: { keys: string; unique: boolean; name: string; sparse: boolean; ttlSeconds: number; partialFilter: string }) =>
+      databaseRequest.mongoCreateIndex(selectedDb, selectedTable, data.keys, data.unique, data.name, data.sparse, data.ttlSeconds, data.partialFilter),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mongo-indexes", selectedDb, selectedTable] });
       setShowCreate(false);
@@ -59,12 +59,20 @@ export default function IndexesView() {
   const [showCreate, setShowCreate] = useState(false);
   const [keysInput, setKeysInput] = useState('{"field": 1}');
   const [uniqueInput, setUniqueInput] = useState(false);
+  const [sparseInput, setSparseInput] = useState(false);
   const [nameInput, setNameInput] = useState("");
+  const [ttlInput, setTtlInput] = useState("");
+  const [partialFilterInput, setPartialFilterInput] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const resetForm = () => {
     setKeysInput('{"field": 1}');
     setUniqueInput(false);
+    setSparseInput(false);
     setNameInput("");
+    setTtlInput("");
+    setPartialFilterInput("");
+    setShowAdvanced(false);
   };
 
   const handleCreate = () => {
@@ -73,7 +81,17 @@ export default function IndexesView() {
     } catch {
       return;
     }
-    createMutation.mutate({ keys: keysInput, unique: uniqueInput, name: nameInput });
+    if (partialFilterInput.trim()) {
+      try { JSON.parse(partialFilterInput); } catch { return; }
+    }
+    createMutation.mutate({
+      keys: keysInput,
+      unique: uniqueInput,
+      name: nameInput,
+      sparse: sparseInput,
+      ttlSeconds: ttlInput ? parseInt(ttlInput, 10) || 0 : 0,
+      partialFilter: partialFilterInput.trim() || "",
+    });
   };
 
   const handleDrop = (name: string) => {
@@ -217,13 +235,62 @@ export default function IndexesView() {
               />
             </div>
 
-            <div className="flex items-center gap-2">
-              <Checkbox
-                checked={uniqueInput}
-                onCheckedChange={(v) => setUniqueInput(!!v)}
-              />
-              <label className="text-xs font-medium">Unique</label>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={uniqueInput}
+                  onCheckedChange={(v) => setUniqueInput(!!v)}
+                />
+                <label className="text-xs font-medium">Unique</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={sparseInput}
+                  onCheckedChange={(v) => setSparseInput(!!v)}
+                />
+                <label className="text-xs font-medium">Sparse</label>
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-[11px] text-primary hover:underline text-left"
+            >
+              {showAdvanced ? "▾ Hide advanced" : "▸ Advanced options (TTL, partial filter)"}
+            </button>
+
+            {showAdvanced && (
+              <div className="space-y-3 border border-border rounded-lg p-3 bg-muted/30">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">TTL (seconds)</label>
+                  <Input
+                    type="number"
+                    value={ttlInput}
+                    onChange={(e) => setTtlInput(e.target.value)}
+                    placeholder="e.g. 3600 (1 hour)"
+                    className="h-8 text-xs"
+                    min={0}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Auto-delete documents after N seconds. Requires a Date field key.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Partial filter expression (JSON)</label>
+                  <Input
+                    value={partialFilterInput}
+                    onChange={(e) => setPartialFilterInput(e.target.value)}
+                    placeholder='e.g. {"status": "active"}'
+                    className="h-8 text-xs font-mono"
+                    spellCheck={false}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Only index documents matching this filter.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {createMutation.isError && (
               <p className="text-xs text-destructive">{createMutation.error.message}</p>
