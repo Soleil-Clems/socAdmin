@@ -20,6 +20,7 @@ import ProfilerView from "@/pages/dashboard/profiler-view";
 import AggregationView from "@/pages/dashboard/aggregation-view";
 import RolesView from "@/pages/dashboard/roles-view";
 import GridFSView from "@/pages/dashboard/gridfs-view";
+import ShardingView from "@/pages/dashboard/sharding-view";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { useConnectionStore } from "@/stores/connection.store";
@@ -60,6 +61,9 @@ export default function DashboardPage() {
                 <TabsTrigger value="databases" className={tabClass}>Databases</TabsTrigger>
                 <TabsTrigger value="users" className={tabClass}>Users</TabsTrigger>
                 <TabsTrigger value="status" className={tabClass}>Status</TabsTrigger>
+                {isMongo && (
+                  <TabsTrigger value="sharding" className={tabClass}>Sharding</TabsTrigger>
+                )}
                 {isAdmin && (
                   <TabsTrigger value="accounts" className={tabClass}>Accounts</TabsTrigger>
                 )}
@@ -77,6 +81,11 @@ export default function DashboardPage() {
             <TabsContent value="status" className="flex-1 overflow-hidden m-0 min-h-0">
               <StatusView />
             </TabsContent>
+            {isMongo && (
+              <TabsContent value="sharding" className="flex-1 overflow-hidden m-0 min-h-0">
+                <ShardingView />
+              </TabsContent>
+            )}
             {isAdmin && (
               <TabsContent value="accounts" className="flex-1 overflow-hidden m-0 min-h-0">
                 <AccountsView />

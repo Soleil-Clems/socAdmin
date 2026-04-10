@@ -91,6 +91,9 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("GET "+p+"/databases/{db}/gridfs", dbController.MongoListGridFSBuckets)
 	protected.HandleFunc("GET "+p+"/databases/{db}/gridfs/{bucket}/files", dbController.MongoListGridFSFiles)
 	protected.HandleFunc("GET "+p+"/databases/{db}/gridfs/{bucket}/files/{id}/download", dbController.MongoDownloadGridFSFile)
+	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/timeseries", dbController.MongoGetTimeSeriesInfo)
+	protected.HandleFunc("GET "+p+"/sharding/cluster", dbController.MongoGetClusterShardingInfo)
+	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/sharding", dbController.MongoGetCollectionShardingInfo)
 	protected.HandleFunc("GET "+p+"/security/whitelist", secController.GetWhitelist)
 
 	// Saved connections — tout le monde peut lister et utiliser
@@ -124,6 +127,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/rename", auth.RequireAdmin(dbController.MongoRenameCollection))
 	protected.HandleFunc("PUT "+p+"/databases/{db}/profiling", auth.RequireAdmin(dbController.MongoSetProfilingLevel))
 	protected.HandleFunc("POST "+p+"/databases/{db}/capped", auth.RequireAdmin(dbController.MongoCreateCappedCollection))
+	protected.HandleFunc("POST "+p+"/databases/{db}/timeseries", auth.RequireAdmin(dbController.MongoCreateTimeSeriesCollection))
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/compact", auth.RequireAdmin(dbController.MongoCompactCollection))
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/duplicate", auth.RequireAdmin(dbController.MongoDuplicateCollection))
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/convert-capped", auth.RequireAdmin(dbController.MongoConvertToCapped))

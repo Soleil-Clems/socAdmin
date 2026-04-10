@@ -2142,6 +2142,265 @@ func friendlyBsonType(val interface{}) string {
 	}
 }
 
+// ── Time Series Collections ──
+
+// TimeSeriesOptions describes the time-series configuration of a collection.
+type TimeSeriesOptions struct {
+	TimeField          string `json:"timeField"`
+	MetaField          string `json:"metaField,omitempty"`
+	Granularity        string `json:"granularity,omitempty"`
+	ExpireAfterSeconds int64  `json:"expireAfterSeconds,omitempty"`
+	BucketMaxSpanSec   int64  `json:"bucketMaxSpanSeconds,omitempty"`
+	BucketRoundingSec  int64  `json:"bucketRoundingSeconds,omitempty"`
+}
+
+// CreateTimeSeriesCollection creates a new time-series collection.
+// granularity is one of: "seconds", "minutes", "hours" (optional).
+// expireAfterSeconds enables automatic data expiration (0 = disabled).
+func (c *MongoConnector) CreateTimeSeriesCollection(database, collection, timeField, metaField, granularity string, expireAfterSeconds int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tsOpts := bson.D{{Key: "timeField", Value: timeField}}
+	if metaField != "" {
+		tsOpts = append(tsOpts, bson.E{Key: "metaField", Value: metaField})
+	}
+	if granularity != "" {
+		tsOpts = append(tsOpts, bson.E{Key: "granularity", Value: granularity})
+	}
+
+	cmd := bson.D{
+		{Key: "create", Value: collection},
+		{Key: "timeseries", Value: tsOpts},
+	}
+	if expireAfterSeconds > 0 {
+		cmd = append(cmd, bson.E{Key: "expireAfterSeconds", Value: expireAfterSeconds})
+	}
+
+	var result bson.M
+	return c.client.Database(database).RunCommand(ctx, cmd).Decode(&result)
+}
+
+// GetTimeSeriesInfo returns the time-series options of a collection,
+// or nil if the collection is not a time-series collection.
+func (c *MongoConnector) GetTimeSeriesInfo(database, collection string) (*TimeSeriesOptions, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := c.client.Database(database).ListCollections(ctx, bson.M{"name": collection})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	if !cursor.Next(ctx) {
+		return nil, nil
+	}
+
+	var doc bson.M
+	if err := cursor.Decode(&doc); err != nil {
+		return nil, err
+	}
+
+	opts, ok := doc["options"].(bson.M)
+	if !ok {
+		return nil, nil
+	}
+	ts, ok := opts["timeseries"].(bson.M)
+	if !ok {
+		return nil, nil
+	}
+
+	info := &TimeSeriesOptions{}
+	if v, ok := ts["timeField"].(string); ok {
+		info.TimeField = v
+	}
+	if v, ok := ts["metaField"].(string); ok {
+		info.MetaField = v
+	}
+	if v, ok := ts["granularity"].(string); ok {
+		info.Granularity = v
+	}
+	if v, ok := ts["bucketMaxSpanSeconds"].(int64); ok {
+		info.BucketMaxSpanSec = v
+	} else if v, ok := ts["bucketMaxSpanSeconds"].(int32); ok {
+		info.BucketMaxSpanSec = int64(v)
+	}
+	if v, ok := ts["bucketRoundingSeconds"].(int64); ok {
+		info.BucketRoundingSec = v
+	} else if v, ok := ts["bucketRoundingSeconds"].(int32); ok {
+		info.BucketRoundingSec = int64(v)
+	}
+	if v, ok := opts["expireAfterSeconds"].(int64); ok {
+		info.ExpireAfterSeconds = v
+	} else if v, ok := opts["expireAfterSeconds"].(int32); ok {
+		info.ExpireAfterSeconds = int64(v)
+	}
+	return info, nil
+}
+
+// ── Sharding ──
+
+// ShardInfo describes a single shard in a sharded cluster.
+type ShardInfo struct {
+	ID    string `json:"id"`
+	Host  string `json:"host"`
+	State int32  `json:"state"`
+	Tags  []string `json:"tags,omitempty"`
+}
+
+// ShardedClusterInfo describes the overall cluster sharding state.
+type ShardedClusterInfo struct {
+	IsSharded      bool        `json:"isSharded"`
+	Shards         []ShardInfo `json:"shards"`
+	BalancerRunning bool       `json:"balancerRunning"`
+	BalancerEnabled bool       `json:"balancerEnabled"`
+}
+
+// CollectionShardingInfo describes how a collection is sharded.
+type CollectionShardingInfo struct {
+	Sharded     bool                   `json:"sharded"`
+	ShardKey    map[string]interface{} `json:"shardKey,omitempty"`
+	Unique      bool                   `json:"unique,omitempty"`
+	ChunkCount  int64                  `json:"chunkCount"`
+	Distribution []ShardChunkCount     `json:"distribution,omitempty"`
+}
+
+// ShardChunkCount is a per-shard chunk count.
+type ShardChunkCount struct {
+	Shard  string `json:"shard"`
+	Chunks int64  `json:"chunks"`
+}
+
+// GetClusterShardingInfo returns sharding state of the cluster.
+// Returns IsSharded=false if not connected to a sharded cluster (mongos).
+func (c *MongoConnector) GetClusterShardingInfo() (*ShardedClusterInfo, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	info := &ShardedClusterInfo{Shards: []ShardInfo{}}
+
+	// Try listShards — only succeeds on mongos
+	var result bson.M
+	err := c.client.Database("admin").RunCommand(ctx, bson.D{{Key: "listShards", Value: 1}}).Decode(&result)
+	if err != nil {
+		// Not a sharded cluster
+		return info, nil
+	}
+
+	info.IsSharded = true
+
+	if shardsRaw, ok := result["shards"].(bson.A); ok {
+		for _, s := range shardsRaw {
+			shardDoc, ok := s.(bson.M)
+			if !ok {
+				continue
+			}
+			shard := ShardInfo{}
+			if v, ok := shardDoc["_id"].(string); ok {
+				shard.ID = v
+			}
+			if v, ok := shardDoc["host"].(string); ok {
+				shard.Host = v
+			}
+			if v, ok := shardDoc["state"].(int32); ok {
+				shard.State = v
+			}
+			if tagsArr, ok := shardDoc["tags"].(bson.A); ok {
+				for _, t := range tagsArr {
+					if ts, ok := t.(string); ok {
+						shard.Tags = append(shard.Tags, ts)
+					}
+				}
+			}
+			info.Shards = append(info.Shards, shard)
+		}
+	}
+
+	// Balancer status
+	var balRes bson.M
+	if err := c.client.Database("admin").RunCommand(ctx, bson.D{{Key: "balancerStatus", Value: 1}}).Decode(&balRes); err == nil {
+		if v, ok := balRes["inBalancerRound"].(bool); ok {
+			info.BalancerRunning = v
+		}
+		if v, ok := balRes["mode"].(string); ok {
+			info.BalancerEnabled = v == "full"
+		}
+	}
+
+	return info, nil
+}
+
+// GetCollectionShardingInfo returns how a collection is sharded.
+// Returns Sharded=false if the collection is not sharded.
+func (c *MongoConnector) GetCollectionShardingInfo(database, collection string) (*CollectionShardingInfo, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	info := &CollectionShardingInfo{}
+	ns := database + "." + collection
+
+	// Query config.collections for shard key
+	configDB := c.client.Database("config")
+	var collDoc bson.M
+	err := configDB.Collection("collections").FindOne(ctx, bson.M{"_id": ns}).Decode(&collDoc)
+	if err != nil {
+		// Not sharded or no config DB access
+		return info, nil
+	}
+	info.Sharded = true
+	if key, ok := collDoc["key"].(bson.M); ok {
+		info.ShardKey = map[string]interface{}(key)
+	}
+	if v, ok := collDoc["unique"].(bool); ok {
+		info.Unique = v
+	}
+
+	// Count chunks
+	total, err := configDB.Collection("chunks").CountDocuments(ctx, bson.M{"ns": ns})
+	if err == nil {
+		info.ChunkCount = total
+	} else {
+		// Newer MongoDB uses "uuid" instead of "ns"
+		if uuid, ok := collDoc["uuid"]; ok {
+			total, err = configDB.Collection("chunks").CountDocuments(ctx, bson.M{"uuid": uuid})
+			if err == nil {
+				info.ChunkCount = total
+			}
+		}
+	}
+
+	// Per-shard distribution via aggregation
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"ns": ns}}},
+		{{Key: "$group", Value: bson.M{"_id": "$shard", "count": bson.M{"$sum": 1}}}},
+	}
+	cursor, err := configDB.Collection("chunks").Aggregate(ctx, pipeline)
+	if err == nil {
+		defer cursor.Close(ctx)
+		for cursor.Next(ctx) {
+			var doc bson.M
+			if err := cursor.Decode(&doc); err != nil {
+				continue
+			}
+			shardName, _ := doc["_id"].(string)
+			var count int64
+			switch v := doc["count"].(type) {
+			case int64:
+				count = v
+			case int32:
+				count = int64(v)
+			}
+			info.Distribution = append(info.Distribution, ShardChunkCount{
+				Shard:  shardName,
+				Chunks: count,
+			})
+		}
+	}
+
+	return info, nil
+}
+
 // formatBsonValue converts a BSON value to a display-friendly string.
 func formatBsonValue(val interface{}) interface{} {
 	if val == nil {

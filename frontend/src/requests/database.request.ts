@@ -69,6 +69,37 @@ export type MongoRoleInfo = {
   inheritedRoles?: { role: string; db: string }[];
 };
 
+export type TimeSeriesOptions = {
+  timeField: string;
+  metaField?: string;
+  granularity?: string;
+  expireAfterSeconds?: number;
+  bucketMaxSpanSeconds?: number;
+  bucketRoundingSeconds?: number;
+};
+
+export type ShardInfo = {
+  id: string;
+  host: string;
+  state: number;
+  tags?: string[];
+};
+
+export type ShardedClusterInfo = {
+  isSharded: boolean;
+  shards: ShardInfo[];
+  balancerRunning: boolean;
+  balancerEnabled: boolean;
+};
+
+export type CollectionShardingInfo = {
+  sharded: boolean;
+  shardKey?: Record<string, unknown>;
+  unique?: boolean;
+  chunkCount: number;
+  distribution?: { shard: string; chunks: number }[];
+};
+
 export type GridFSFileInfo = {
   id: string;
   filename: string;
@@ -355,6 +386,32 @@ export const databaseRequest = {
 
   mongoDeleteGridFSFile: (db: string, bucket: string, id: string) =>
     customfetch.delete(`/databases/${db}/gridfs/${bucket}/files/${id}`),
+
+  // ── Time Series ──
+  mongoCreateTimeSeriesCollection: (
+    db: string,
+    data: {
+      name: string;
+      timeField: string;
+      metaField?: string;
+      granularity?: string;
+      expireAfterSeconds?: number;
+    },
+  ) => customfetch.post(`/databases/${db}/timeseries`, data),
+
+  mongoGetTimeSeriesInfo: (db: string, collection: string) =>
+    customfetch.get<TimeSeriesOptions | { timeseries: null }>(
+      `/databases/${db}/tables/${collection}/timeseries`,
+    ),
+
+  // ── Sharding ──
+  mongoGetClusterShardingInfo: () =>
+    customfetch.get<ShardedClusterInfo>("/sharding/cluster"),
+
+  mongoGetCollectionShardingInfo: (db: string, collection: string) =>
+    customfetch.get<CollectionShardingInfo>(
+      `/databases/${db}/tables/${collection}/sharding`,
+    ),
 
   listUsers: () => customfetch.get<Record<string, unknown>[]>("/users"),
 

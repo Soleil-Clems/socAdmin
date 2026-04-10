@@ -1738,6 +1738,85 @@ func (c *DatabaseController) MongoTopStats(w http.ResponseWriter, r *http.Reques
 	jsonResponse(w, http.StatusOK, stats)
 }
 
+// ── Time Series Collections ──
+
+type MongoCreateTimeSeriesRequest struct {
+	Name               string `json:"name"`
+	TimeField          string `json:"timeField"`
+	MetaField          string `json:"metaField,omitempty"`
+	Granularity        string `json:"granularity,omitempty"`
+	ExpireAfterSeconds int64  `json:"expireAfterSeconds,omitempty"`
+}
+
+func (c *DatabaseController) MongoCreateTimeSeriesCollection(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	var req MongoCreateTimeSeriesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Name == "" {
+		jsonError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if req.TimeField == "" {
+		jsonError(w, http.StatusBadRequest, "timeField is required")
+		return
+	}
+	if req.Granularity != "" && req.Granularity != "seconds" && req.Granularity != "minutes" && req.Granularity != "hours" {
+		jsonError(w, http.StatusBadRequest, "granularity must be seconds, minutes or hours")
+		return
+	}
+
+	if err := c.dbService.MongoCreateTimeSeriesCollection(db, req.Name, req.TimeField, req.MetaField, req.Granularity, req.ExpireAfterSeconds); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "create_timeseries_collection", fmt.Sprintf("%s.%s", db, req.Name))
+	jsonResponse(w, http.StatusCreated, map[string]string{"status": "created"})
+}
+
+func (c *DatabaseController) MongoGetTimeSeriesInfo(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	info, err := c.dbService.MongoGetTimeSeriesInfo(db, table)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if info == nil {
+		jsonResponse(w, http.StatusOK, map[string]interface{}{"timeseries": nil})
+		return
+	}
+	jsonResponse(w, http.StatusOK, info)
+}
+
+// ── Sharding ──
+
+func (c *DatabaseController) MongoGetClusterShardingInfo(w http.ResponseWriter, r *http.Request) {
+	info, err := c.dbService.MongoGetClusterShardingInfo()
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, info)
+}
+
+func (c *DatabaseController) MongoGetCollectionShardingInfo(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	info, err := c.dbService.MongoGetCollectionShardingInfo(db, table)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, info)
+}
+
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

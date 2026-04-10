@@ -25,6 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import JsonSchemaBuilder, {
+  fieldsToJsonSchema,
+  jsonSchemaToFields,
+  type SchemaField,
+} from "@/components/json-schema-builder";
 
 type Column = {
   Name: string;
@@ -118,13 +123,30 @@ export default function StructureView() {
     enabled: isMongo && !!selectedDb && !!selectedTable,
   });
 
+  // Time series + sharding info
+  const { data: tsInfo } = useQuery({
+    queryKey: ["mongo-timeseries-info", selectedDb, selectedTable],
+    queryFn: () => databaseRequest.mongoGetTimeSeriesInfo(selectedDb, selectedTable),
+    enabled: isMongo && !!selectedDb && !!selectedTable,
+  });
+
+  const { data: shardInfo } = useQuery({
+    queryKey: ["mongo-coll-sharding", selectedDb, selectedTable],
+    queryFn: () => databaseRequest.mongoGetCollectionShardingInfo(selectedDb, selectedTable),
+    enabled: isMongo && !!selectedDb && !!selectedTable,
+  });
+
   const [showValidation, setShowValidation] = useState(false);
   const [validatorInput, setValidatorInput] = useState("");
   const [validationLevel, setValidationLevel] = useState("strict");
   const [validationAction, setValidationAction] = useState("error");
+  const [validationMode, setValidationMode] = useState<"visual" | "json">("visual");
+  const [schemaFields, setSchemaFields] = useState<SchemaField[]>([]);
+  const [visualUnsupported, setVisualUnsupported] = useState(false);
 
   const validationMutation = useMutation({
-    mutationFn: () => databaseRequest.mongoSetValidation(selectedDb, selectedTable, validatorInput, validationLevel, validationAction),
+    mutationFn: (validator: string) =>
+      databaseRequest.mongoSetValidation(selectedDb, selectedTable, validator, validationLevel, validationAction),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mongo-validation", selectedDb, selectedTable] });
       setShowValidation(false);
@@ -273,9 +295,20 @@ export default function StructureView() {
                 variant="outline"
                 className="h-7 text-xs px-2.5"
                 onClick={() => {
-                  setValidatorInput(validation?.validator || "{}");
+                  const current = validation?.validator || "{}";
+                  setValidatorInput(current);
                   setValidationLevel(validation?.validationLevel || "strict");
                   setValidationAction(validation?.validationAction || "error");
+                  const parsed = jsonSchemaToFields(current);
+                  if (parsed === null) {
+                    setVisualUnsupported(true);
+                    setValidationMode("json");
+                    setSchemaFields([]);
+                  } else {
+                    setVisualUnsupported(false);
+                    setSchemaFields(parsed);
+                    setValidationMode("visual");
+                  }
                   setShowValidation(true);
                 }}
               >
@@ -298,6 +331,66 @@ export default function StructureView() {
           )}
         </div>
       </div>
+
+      {/* Collection metadata strip (MongoDB) */}
+      {isMongo && (tsInfo && "timeField" in tsInfo || (shardInfo && shardInfo.sharded)) && (
+        <div className="px-3 py-2 border-b border-border bg-muted/20 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">
+          {tsInfo && "timeField" in tsInfo && (
+            <>
+              <span className="text-[10px] bg-pink-500/10 text-pink-600 dark:text-pink-400 px-1.5 py-0.5 rounded font-semibold">
+                TIME SERIES
+              </span>
+              <span className="text-muted-foreground">
+                Time field: <span className="font-mono text-foreground">{tsInfo.timeField}</span>
+              </span>
+              {tsInfo.metaField && (
+                <span className="text-muted-foreground">
+                  Meta: <span className="font-mono text-foreground">{tsInfo.metaField}</span>
+                </span>
+              )}
+              {tsInfo.granularity && (
+                <span className="text-muted-foreground">
+                  Granularity: <span className="font-medium text-foreground">{tsInfo.granularity}</span>
+                </span>
+              )}
+              {tsInfo.expireAfterSeconds && tsInfo.expireAfterSeconds > 0 && (
+                <span className="text-muted-foreground">
+                  TTL: <span className="font-medium text-foreground">{tsInfo.expireAfterSeconds}s</span>
+                </span>
+              )}
+            </>
+          )}
+          {shardInfo && shardInfo.sharded && (
+            <>
+              <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded font-semibold">
+                SHARDED
+              </span>
+              {shardInfo.shardKey && (
+                <span className="text-muted-foreground">
+                  Key: <span className="font-mono text-foreground">{JSON.stringify(shardInfo.shardKey)}</span>
+                </span>
+              )}
+              <span className="text-muted-foreground">
+                Chunks: <span className="font-medium text-foreground">{shardInfo.chunkCount}</span>
+              </span>
+              {shardInfo.distribution && shardInfo.distribution.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">Distribution:</span>
+                  {shardInfo.distribution.map((d) => (
+                    <span
+                      key={d.shard}
+                      className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded font-mono"
+                      title={`${d.chunks} chunks on ${d.shard}`}
+                    >
+                      {d.shard}: {d.chunks}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="mx-3 mt-3 px-3 py-2 text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded">
@@ -674,25 +767,74 @@ export default function StructureView() {
 
       {/* Schema Validation dialog (MongoDB) */}
       <Dialog open={showValidation} onOpenChange={setShowValidation}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base">Schema Validation — {selectedTable}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium">Validator (JSON Schema)</label>
-              <textarea
-                value={validatorInput}
-                onChange={(e) => setValidatorInput(e.target.value)}
-                placeholder='{"$jsonSchema": {"bsonType": "object", "required": ["name"], "properties": {"name": {"bsonType": "string"}}}}'
-                className="w-full h-32 text-xs font-mono bg-background border border-border rounded p-2 resize-y"
-                spellCheck={false}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Use <code className="bg-muted px-1 rounded">$jsonSchema</code> for JSON Schema validation.
-                Leave empty <code className="bg-muted px-1 rounded">{"{}"}</code> to remove validation.
-              </p>
+            <div className="flex items-center gap-1 border border-border rounded p-0.5 bg-muted/30 w-fit">
+              <button
+                type="button"
+                onClick={() => setValidationMode("visual")}
+                disabled={visualUnsupported}
+                className={`text-[11px] px-3 py-1 rounded transition-colors ${
+                  validationMode === "visual"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                } ${visualUnsupported ? "opacity-40 cursor-not-allowed" : ""}`}
+                title={visualUnsupported ? "Existing validator uses features the visual builder doesn't support" : undefined}
+              >
+                Visual
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Serialize from visual when switching to JSON
+                  if (validationMode === "visual") {
+                    setValidatorInput(JSON.stringify(fieldsToJsonSchema(schemaFields), null, 2));
+                  }
+                  setValidationMode("json");
+                }}
+                className={`text-[11px] px-3 py-1 rounded transition-colors ${
+                  validationMode === "json"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                JSON
+              </button>
             </div>
+
+            {visualUnsupported && (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded">
+                Existing validator uses features (nested objects, $and/$or, etc.) that the visual builder doesn't support. Edit as JSON.
+              </p>
+            )}
+
+            {validationMode === "visual" ? (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Fields</label>
+                <JsonSchemaBuilder fields={schemaFields} onChange={setSchemaFields} />
+                <p className="text-[11px] text-muted-foreground">
+                  Define each field's BSON type, required flag, and constraints. Empty = no validation.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Validator (JSON Schema)</label>
+                <textarea
+                  value={validatorInput}
+                  onChange={(e) => setValidatorInput(e.target.value)}
+                  placeholder='{"$jsonSchema": {"bsonType": "object", "required": ["name"], "properties": {"name": {"bsonType": "string"}}}}'
+                  className="w-full h-40 text-xs font-mono bg-background border border-border rounded p-2 resize-y"
+                  spellCheck={false}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Use <code className="bg-muted px-1 rounded">$jsonSchema</code> for JSON Schema validation.
+                  Leave empty <code className="bg-muted px-1 rounded">{"{}"}</code> to remove validation.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium">Validation Level</label>
@@ -742,7 +884,15 @@ export default function StructureView() {
             )}
             <Button
               className="w-full h-9"
-              onClick={() => validationMutation.mutate()}
+              onClick={() => {
+                const validator =
+                  validationMode === "visual"
+                    ? schemaFields.length === 0
+                      ? "{}"
+                      : JSON.stringify(fieldsToJsonSchema(schemaFields))
+                    : validatorInput;
+                validationMutation.mutate(validator);
+              }}
               disabled={validationMutation.isPending}
             >
               {validationMutation.isPending ? "Saving..." : "Save Validation Rules"}

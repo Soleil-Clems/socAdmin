@@ -95,6 +95,33 @@ export default function DatabaseView() {
     },
   });
 
+  // Time Series collection
+  const [showTS, setShowTS] = useState(false);
+  const [tsName, setTsName] = useState("");
+  const [tsTimeField, setTsTimeField] = useState("timestamp");
+  const [tsMetaField, setTsMetaField] = useState("");
+  const [tsGranularity, setTsGranularity] = useState("seconds");
+  const [tsExpire, setTsExpire] = useState("");
+  const tsMutation = useMutation({
+    mutationFn: () =>
+      databaseRequest.mongoCreateTimeSeriesCollection(selectedDb, {
+        name: tsName,
+        timeField: tsTimeField,
+        metaField: tsMetaField || undefined,
+        granularity: tsGranularity || undefined,
+        expireAfterSeconds: tsExpire ? parseInt(tsExpire, 10) : undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tables", selectedDb] });
+      setShowTS(false);
+      setTsName("");
+      setTsTimeField("timestamp");
+      setTsMetaField("");
+      setTsGranularity("seconds");
+      setTsExpire("");
+    },
+  });
+
   const typeOptions = typeOptionsFor(dbType);
 
   const toggleSelect = (table: string) => {
@@ -217,14 +244,24 @@ export default function DatabaseView() {
         )}
         <div className="ml-auto flex items-center gap-1.5">
           {isAdmin && isMongo && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2.5"
-              onClick={() => setShowCapped(true)}
-            >
-              + Capped
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={() => setShowCapped(true)}
+              >
+                + Capped
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={() => setShowTS(true)}
+              >
+                + Time Series
+              </Button>
+            </>
           )}
           {isAdmin && (
             <Button size="sm" className="h-7 text-xs px-3" onClick={openCreateTable}>
@@ -502,6 +539,94 @@ export default function DatabaseView() {
               disabled={cappedMutation.isPending || !cappedName.trim() || !cappedSize}
             >
               {cappedMutation.isPending ? "Creating..." : "Create Capped Collection"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create time series collection dialog (MongoDB) */}
+      <Dialog open={showTS} onOpenChange={setShowTS}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">Create Time Series Collection</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Optimized storage for time-stamped data (metrics, IoT, logs). Documents are
+              automatically bucketed by time for fast range queries and compression.
+            </p>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Collection name</label>
+              <Input
+                value={tsName}
+                onChange={(e) => setTsName(e.target.value)}
+                placeholder="metrics"
+                className="h-9 text-sm"
+                autoFocus
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Time field *</label>
+                <Input
+                  value={tsTimeField}
+                  onChange={(e) => setTsTimeField(e.target.value)}
+                  placeholder="timestamp"
+                  className="h-9 text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">Must be a Date</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Meta field</label>
+                <Input
+                  value={tsMetaField}
+                  onChange={(e) => setTsMetaField(e.target.value)}
+                  placeholder="sensorId"
+                  className="h-9 text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">Optional grouping</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Granularity</label>
+                <select
+                  value={tsGranularity}
+                  onChange={(e) => setTsGranularity(e.target.value)}
+                  className="h-9 w-full text-sm bg-background border border-border rounded px-2"
+                >
+                  <option value="seconds">Seconds</option>
+                  <option value="minutes">Minutes</option>
+                  <option value="hours">Hours</option>
+                </select>
+                <p className="text-[10px] text-muted-foreground">Bucketing rate</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">TTL (seconds)</label>
+                <Input
+                  type="number"
+                  value={tsExpire}
+                  onChange={(e) => setTsExpire(e.target.value)}
+                  placeholder="0 = no expiry"
+                  className="h-9 text-sm"
+                  min={0}
+                />
+                <p className="text-[10px] text-muted-foreground">Auto delete old data</p>
+              </div>
+            </div>
+
+            {tsMutation.isError && (
+              <p className="text-xs text-destructive">{tsMutation.error.message}</p>
+            )}
+            <Button
+              className="w-full h-9"
+              onClick={() => tsMutation.mutate()}
+              disabled={tsMutation.isPending || !tsName.trim() || !tsTimeField.trim()}
+            >
+              {tsMutation.isPending ? "Creating..." : "Create Time Series Collection"}
             </Button>
           </div>
         </DialogContent>

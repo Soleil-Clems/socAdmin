@@ -1158,6 +1158,54 @@ func (s *DatabaseService) MongoDeleteGridFSFile(database, bucket, fileID string)
 	return mc.DeleteGridFSFile(database, bucket, fileID)
 }
 
+// ── Time Series ──
+
+func (s *DatabaseService) MongoCreateTimeSeriesCollection(database, collection, timeField, metaField, granularity string, expireAfterSeconds int64) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.CreateTimeSeriesCollection(database, collection, timeField, metaField, granularity, expireAfterSeconds)
+}
+
+func (s *DatabaseService) MongoGetTimeSeriesInfo(database, collection string) (*connector.TimeSeriesOptions, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.GetTimeSeriesInfo(database, collection)
+}
+
+// ── Sharding ──
+
+func (s *DatabaseService) MongoGetClusterShardingInfo() (*connector.ShardedClusterInfo, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.GetClusterShardingInfo()
+}
+
+func (s *DatabaseService) MongoGetCollectionShardingInfo(database, collection string) (*connector.CollectionShardingInfo, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.GetCollectionShardingInfo(database, collection)
+}
+
 func (s *DatabaseService) Disconnect() error {
 	if s.conn != nil {
 		err := s.conn.Close()
