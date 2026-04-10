@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import ExplainPlan from "@/components/explain-plan";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -897,55 +898,7 @@ export default function DocumentView() {
 
       {/* Explain panel */}
       {explainData && (
-        <div className="px-3 py-2 border-b border-border bg-muted/20">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-[11px] font-semibold text-foreground">Explain Plan</span>
-            <button
-              onClick={() => setExplainData(null)}
-              className="text-[11px] text-muted-foreground hover:text-foreground ml-auto"
-            >
-              Close
-            </button>
-          </div>
-          {"error" in explainData ? (
-            <p className="text-xs text-destructive">{String(explainData.error)}</p>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              {explainData.nReturned != null && (
-                <div>
-                  <span className="text-muted-foreground">Returned</span>
-                  <p className="font-semibold text-foreground">{String(explainData.nReturned)}</p>
-                </div>
-              )}
-              {explainData.totalDocsExamined != null && (
-                <div>
-                  <span className="text-muted-foreground">Docs examined</span>
-                  <p className="font-semibold text-foreground">{String(explainData.totalDocsExamined)}</p>
-                </div>
-              )}
-              {explainData.totalKeysExamined != null && (
-                <div>
-                  <span className="text-muted-foreground">Keys examined</span>
-                  <p className="font-semibold text-foreground">{String(explainData.totalKeysExamined)}</p>
-                </div>
-              )}
-              {explainData.executionTimeMs != null && (
-                <div>
-                  <span className="text-muted-foreground">Execution time</span>
-                  <p className="font-semibold text-foreground">{String(explainData.executionTimeMs)} ms</p>
-                </div>
-              )}
-              {explainData.winningPlan != null && (
-                <div className="col-span-full">
-                  <span className="text-muted-foreground">Winning plan</span>
-                  <pre className="text-[11px] font-mono bg-background rounded p-2 mt-1 overflow-x-auto">
-                    {JSON.stringify(explainData.winningPlan, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <ExplainPlan data={explainData} onClose={() => setExplainData(null)} />
       )}
 
       {/* Documents */}

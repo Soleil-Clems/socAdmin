@@ -18,6 +18,8 @@ import IndexesView from "@/pages/dashboard/indexes-view";
 import ViewsView from "@/pages/dashboard/views-view";
 import ProfilerView from "@/pages/dashboard/profiler-view";
 import AggregationView from "@/pages/dashboard/aggregation-view";
+import RolesView from "@/pages/dashboard/roles-view";
+import GridFSView from "@/pages/dashboard/gridfs-view";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { useConnectionStore } from "@/stores/connection.store";
@@ -132,6 +134,12 @@ export default function DashboardPage() {
               {isMongo && isAdmin && (
                 <TabsTrigger value="profiler" className={tabClass}>Profiler</TabsTrigger>
               )}
+              {isMongo && (
+                <TabsTrigger value="gridfs" className={tabClass}>GridFS</TabsTrigger>
+              )}
+              {isMongo && isAdmin && (
+                <TabsTrigger value="roles" className={tabClass}>Roles</TabsTrigger>
+              )}
               <TabsTrigger value="search" className={tabClass}>Search</TabsTrigger>
               <TabsTrigger value="export" className={tabClass}>Export</TabsTrigger>
               <TabsTrigger value="users" className={tabClass}>Users</TabsTrigger>
@@ -185,6 +193,16 @@ export default function DashboardPage() {
           {isMongo && isAdmin && (
             <TabsContent value="profiler" className="flex-1 overflow-hidden m-0 min-h-0">
               <ProfilerView />
+            </TabsContent>
+          )}
+          {isMongo && (
+            <TabsContent value="gridfs" className="flex-1 overflow-hidden m-0 min-h-0">
+              <GridFSView />
+            </TabsContent>
+          )}
+          {isMongo && isAdmin && (
+            <TabsContent value="roles" className="flex-1 overflow-hidden m-0 min-h-0">
+              <RolesView />
             </TabsContent>
           )}
           <TabsContent value="search" className="flex-1 overflow-hidden m-0 min-h-0">

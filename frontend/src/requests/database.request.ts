@@ -61,6 +61,23 @@ export type MongoIndex = {
   ttl?: number;
 };
 
+export type MongoRoleInfo = {
+  role: string;
+  db: string;
+  isBuiltin: boolean;
+  privileges?: { resource: Record<string, unknown>; actions: string[] }[];
+  inheritedRoles?: { role: string; db: string }[];
+};
+
+export type GridFSFileInfo = {
+  id: string;
+  filename: string;
+  length: number;
+  chunkSize: number;
+  uploadDate: string;
+  metadata?: string;
+};
+
 export type SearchResult = {
   table: string;
   matches: Record<string, unknown>[];
@@ -286,6 +303,58 @@ export const databaseRequest = {
   // Aggregation Pipeline
   mongoRunAggregation: (db: string, collection: string, pipeline: string) =>
     customfetch.post<QueryResult>(`/databases/${db}/tables/${collection}/aggregate`, { pipeline }),
+
+  // ── Custom Roles ──
+  mongoListRolesDetailed: (db: string, showBuiltin = false) =>
+    customfetch.get<MongoRoleInfo[]>(`/databases/${db}/roles/detailed?builtin=${showBuiltin ? "1" : "0"}`),
+
+  mongoCreateCustomRole: (db: string, name: string, privileges: string, inheritedRoles: string) =>
+    customfetch.post(`/databases/${db}/roles`, { name, privileges, inherited_roles: inheritedRoles }),
+
+  mongoUpdateCustomRole: (db: string, role: string, privileges: string, inheritedRoles: string) =>
+    customfetch.put(`/databases/${db}/roles/${role}`, { name: role, privileges, inherited_roles: inheritedRoles }),
+
+  mongoDropCustomRole: (db: string, role: string) =>
+    customfetch.delete(`/databases/${db}/roles/${role}`),
+
+  // ── GridFS ──
+  mongoListGridFSBuckets: (db: string) =>
+    customfetch.get<string[]>(`/databases/${db}/gridfs`),
+
+  mongoListGridFSFiles: (db: string, bucket: string, limit = 200) =>
+    customfetch.get<GridFSFileInfo[]>(`/databases/${db}/gridfs/${bucket}/files?limit=${limit}`),
+
+  mongoUploadGridFSFile: async (db: string, bucket: string, file: File) => {
+    const token = localStorage.getItem("access_token");
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${API_URL}/databases/${db}/gridfs/${bucket}/files`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Upload failed");
+    return data as { id: string; filename: string; size: number };
+  },
+
+  mongoDownloadGridFSFile: async (db: string, bucket: string, id: string, filename: string) => {
+    const token = localStorage.getItem("access_token");
+    const res = await fetch(`${API_URL}/databases/${db}/gridfs/${bucket}/files/${id}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  mongoDeleteGridFSFile: (db: string, bucket: string, id: string) =>
+    customfetch.delete(`/databases/${db}/gridfs/${bucket}/files/${id}`),
 
   listUsers: () => customfetch.get<Record<string, unknown>[]>("/users"),
 

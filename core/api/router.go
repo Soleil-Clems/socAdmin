@@ -87,6 +87,10 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/index-stats", dbController.MongoIndexUsageStats)
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/field-analysis", dbController.MongoFieldTypeAnalysis)
 	protected.HandleFunc("GET "+p+"/mongo/top", dbController.MongoTopStats)
+	protected.HandleFunc("GET "+p+"/databases/{db}/roles/detailed", dbController.MongoListRolesDetailed)
+	protected.HandleFunc("GET "+p+"/databases/{db}/gridfs", dbController.MongoListGridFSBuckets)
+	protected.HandleFunc("GET "+p+"/databases/{db}/gridfs/{bucket}/files", dbController.MongoListGridFSFiles)
+	protected.HandleFunc("GET "+p+"/databases/{db}/gridfs/{bucket}/files/{id}/download", dbController.MongoDownloadGridFSFile)
 	protected.HandleFunc("GET "+p+"/security/whitelist", secController.GetWhitelist)
 
 	// Saved connections — tout le monde peut lister et utiliser
@@ -124,6 +128,11 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/duplicate", auth.RequireAdmin(dbController.MongoDuplicateCollection))
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/convert-capped", auth.RequireAdmin(dbController.MongoConvertToCapped))
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/aggregate", auth.RequireAdmin(dbController.MongoRunAggregation))
+	protected.HandleFunc("POST "+p+"/databases/{db}/roles", auth.RequireAdmin(dbController.MongoCreateCustomRole))
+	protected.HandleFunc("PUT "+p+"/databases/{db}/roles/{role}", auth.RequireAdmin(dbController.MongoUpdateCustomRole))
+	protected.HandleFunc("DELETE "+p+"/databases/{db}/roles/{role}", auth.RequireAdmin(dbController.MongoDropCustomRole))
+	protected.HandleFunc("POST "+p+"/databases/{db}/gridfs/{bucket}/files", auth.RequireAdmin(dbController.MongoUploadGridFSFile))
+	protected.HandleFunc("DELETE "+p+"/databases/{db}/gridfs/{bucket}/files/{id}", auth.RequireAdmin(dbController.MongoDeleteGridFSFile))
 	protected.HandleFunc("POST "+p+"/mongo/users", auth.RequireAdmin(dbController.MongoCreateUser))
 	protected.HandleFunc("DELETE "+p+"/mongo/users", auth.RequireAdmin(dbController.MongoDropUser))
 	protected.HandleFunc("PUT "+p+"/mongo/users/roles", auth.RequireAdmin(dbController.MongoUpdateUserRoles))

@@ -1497,6 +1497,177 @@ func (c *DatabaseController) MongoSampleDocuments(w http.ResponseWriter, r *http
 	jsonResponse(w, http.StatusOK, result)
 }
 
+// ── Custom Roles ──
+
+func (c *DatabaseController) MongoListRolesDetailed(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	showBuiltin := r.URL.Query().Get("builtin") == "1"
+
+	roles, err := c.dbService.MongoListRolesDetailed(db, showBuiltin)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, roles)
+}
+
+type CreateRoleRequest struct {
+	Name           string `json:"name"`
+	Privileges     string `json:"privileges"`
+	InheritedRoles string `json:"inherited_roles"`
+}
+
+func (c *DatabaseController) MongoCreateCustomRole(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	var req CreateRoleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.Name == "" {
+		jsonError(w, http.StatusBadRequest, "role name is required")
+		return
+	}
+
+	if err := c.dbService.MongoCreateCustomRole(db, req.Name, req.Privileges, req.InheritedRoles); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "created"})
+}
+
+func (c *DatabaseController) MongoUpdateCustomRole(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	roleName := r.PathValue("role")
+
+	var req CreateRoleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := c.dbService.MongoUpdateCustomRole(db, roleName, req.Privileges, req.InheritedRoles); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (c *DatabaseController) MongoDropCustomRole(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	roleName := r.PathValue("role")
+
+	if err := c.dbService.MongoDropCustomRole(db, roleName); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "dropped"})
+}
+
+// ── GridFS ──
+
+func (c *DatabaseController) MongoListGridFSBuckets(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+
+	buckets, err := c.dbService.MongoListGridFSBuckets(db)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if buckets == nil {
+		buckets = []string{}
+	}
+	jsonResponse(w, http.StatusOK, buckets)
+}
+
+func (c *DatabaseController) MongoListGridFSFiles(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	bucket := r.PathValue("bucket")
+
+	limit := 200
+	if s := r.URL.Query().Get("limit"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			limit = v
+		}
+	}
+
+	files, err := c.dbService.MongoListGridFSFiles(db, bucket, limit)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if files == nil {
+		files = []connector.GridFSFileInfo{}
+	}
+	jsonResponse(w, http.StatusOK, files)
+}
+
+func (c *DatabaseController) MongoUploadGridFSFile(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	bucket := r.PathValue("bucket")
+
+	// Max 50MB upload
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
+	if err := r.ParseMultipartForm(50 << 20); err != nil {
+		jsonError(w, http.StatusBadRequest, "Failed to parse upload: "+err.Error())
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, "Missing file field")
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "Failed to read file")
+		return
+	}
+
+	id, err := c.dbService.MongoUploadGridFSFile(db, bucket, header.Filename, data)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"id":       id,
+		"filename": header.Filename,
+		"size":     len(data),
+	})
+}
+
+func (c *DatabaseController) MongoDownloadGridFSFile(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	bucket := r.PathValue("bucket")
+	fileID := r.PathValue("id")
+
+	data, filename, err := c.dbService.MongoDownloadGridFSFile(db, bucket, fileID)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.Write(data)
+}
+
+func (c *DatabaseController) MongoDeleteGridFSFile(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	bucket := r.PathValue("bucket")
+	fileID := r.PathValue("id")
+
+	if err := c.dbService.MongoDeleteGridFSFile(db, bucket, fileID); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
 // ── Run Aggregation Pipeline ──
 
 type AggregationRequest struct {

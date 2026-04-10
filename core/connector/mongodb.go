@@ -1760,6 +1760,289 @@ func toInt64Value(v interface{}) int64 {
 	}
 }
 
+// ── Custom Roles ──
+
+// RoleInfo describes a MongoDB role (built-in or custom).
+type RoleInfo struct {
+	Role           string                   `json:"role"`
+	DB             string                   `json:"db"`
+	IsBuiltin      bool                     `json:"isBuiltin"`
+	Privileges     []map[string]interface{} `json:"privileges,omitempty"`
+	InheritedRoles []map[string]interface{} `json:"inheritedRoles,omitempty"`
+}
+
+// ListRolesDetailed returns all roles (built-in + custom) with their privileges.
+func (c *MongoConnector) ListRolesDetailed(database string, showBuiltin bool) ([]RoleInfo, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := bson.D{
+		{Key: "rolesInfo", Value: 1},
+		{Key: "showBuiltinRoles", Value: showBuiltin},
+		{Key: "showPrivileges", Value: true},
+	}
+	var result bson.M
+	err := c.client.Database(database).RunCommand(ctx, cmd).Decode(&result)
+	if err != nil {
+		return nil, err
+	}
+
+	out := []RoleInfo{}
+	roles, ok := result["roles"].(bson.A)
+	if !ok {
+		return out, nil
+	}
+	for _, r := range roles {
+		doc, ok := r.(bson.M)
+		if !ok {
+			continue
+		}
+		info := RoleInfo{
+			Role:      fmt.Sprintf("%v", doc["role"]),
+			DB:        fmt.Sprintf("%v", doc["db"]),
+			IsBuiltin: doc["isBuiltin"] == true,
+		}
+		if privs, ok := doc["privileges"].(bson.A); ok {
+			for _, p := range privs {
+				if m, ok := p.(bson.M); ok {
+					info.Privileges = append(info.Privileges, map[string]interface{}(m))
+				}
+			}
+		}
+		if inh, ok := doc["inheritedRoles"].(bson.A); ok {
+			for _, ir := range inh {
+				if m, ok := ir.(bson.M); ok {
+					info.InheritedRoles = append(info.InheritedRoles, map[string]interface{}(m))
+				}
+			}
+		}
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+// CreateCustomRole creates a new custom role in a database.
+// privilegesJSON must be a JSON array of { resource, actions } objects.
+// inheritedRolesJSON must be a JSON array of { role, db } objects.
+func (c *MongoConnector) CreateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var privileges bson.A
+	if privilegesJSON == "" {
+		privileges = bson.A{}
+	} else if err := bson.UnmarshalExtJSON([]byte(privilegesJSON), true, &privileges); err != nil {
+		return fmt.Errorf("invalid privileges JSON: %w", err)
+	}
+
+	var inheritedRoles bson.A
+	if inheritedRolesJSON == "" {
+		inheritedRoles = bson.A{}
+	} else if err := bson.UnmarshalExtJSON([]byte(inheritedRolesJSON), true, &inheritedRoles); err != nil {
+		return fmt.Errorf("invalid inherited roles JSON: %w", err)
+	}
+
+	cmd := bson.D{
+		{Key: "createRole", Value: roleName},
+		{Key: "privileges", Value: privileges},
+		{Key: "roles", Value: inheritedRoles},
+	}
+	return c.client.Database(database).RunCommand(ctx, cmd).Err()
+}
+
+// UpdateCustomRole updates an existing custom role's privileges and/or inherited roles.
+func (c *MongoConnector) UpdateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := bson.D{{Key: "updateRole", Value: roleName}}
+
+	if privilegesJSON != "" {
+		var privileges bson.A
+		if err := bson.UnmarshalExtJSON([]byte(privilegesJSON), true, &privileges); err != nil {
+			return fmt.Errorf("invalid privileges JSON: %w", err)
+		}
+		cmd = append(cmd, bson.E{Key: "privileges", Value: privileges})
+	}
+
+	if inheritedRolesJSON != "" {
+		var inheritedRoles bson.A
+		if err := bson.UnmarshalExtJSON([]byte(inheritedRolesJSON), true, &inheritedRoles); err != nil {
+			return fmt.Errorf("invalid inherited roles JSON: %w", err)
+		}
+		cmd = append(cmd, bson.E{Key: "roles", Value: inheritedRoles})
+	}
+
+	return c.client.Database(database).RunCommand(ctx, cmd).Err()
+}
+
+// DropCustomRole removes a custom role from a database.
+func (c *MongoConnector) DropCustomRole(database, roleName string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := bson.D{{Key: "dropRole", Value: roleName}}
+	return c.client.Database(database).RunCommand(ctx, cmd).Err()
+}
+
+// ── GridFS ──
+
+// GridFSFileInfo describes a file stored in GridFS.
+type GridFSFileInfo struct {
+	ID         string `json:"id"`
+	Filename   string `json:"filename"`
+	Length     int64  `json:"length"`
+	ChunkSize  int32  `json:"chunkSize"`
+	UploadDate string `json:"uploadDate"`
+	Metadata   string `json:"metadata,omitempty"`
+}
+
+// ListGridFSBuckets returns the names of GridFS buckets in a database by scanning
+// for collections matching the pattern "<bucket>.files".
+func (c *MongoConnector) ListGridFSBuckets(database string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	collections, err := c.client.Database(database).ListCollectionNames(ctx, bson.M{})
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, name := range collections {
+		if strings.HasSuffix(name, ".files") {
+			out = append(out, strings.TrimSuffix(name, ".files"))
+		}
+	}
+	return out, nil
+}
+
+// ListGridFSFiles lists files in a GridFS bucket.
+func (c *MongoConnector) ListGridFSFiles(database, bucket string, limit int) ([]GridFSFileInfo, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	coll := c.client.Database(database).Collection(bucket + ".files")
+	opts := options.Find().SetLimit(int64(limit)).SetSort(bson.D{{Key: "uploadDate", Value: -1}})
+	cursor, err := coll.Find(ctx, bson.M{}, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	out := []GridFSFileInfo{}
+	for cursor.Next(ctx) {
+		var doc bson.M
+		if err := cursor.Decode(&doc); err != nil {
+			continue
+		}
+		info := GridFSFileInfo{
+			Length:    toInt64(doc["length"]),
+			ChunkSize: int32(toInt64(doc["chunkSize"])),
+		}
+		if oid, ok := doc["_id"].(bson.ObjectID); ok {
+			info.ID = oid.Hex()
+		} else {
+			info.ID = fmt.Sprintf("%v", doc["_id"])
+		}
+		info.Filename = fmt.Sprintf("%v", doc["filename"])
+		if d, ok := doc["uploadDate"].(bson.DateTime); ok {
+			info.UploadDate = d.Time().Format(time.RFC3339)
+		}
+		if meta, ok := doc["metadata"]; ok && meta != nil {
+			b, _ := json.Marshal(meta)
+			info.Metadata = string(b)
+		}
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+// UploadGridFSFile uploads raw bytes to a GridFS bucket and returns the new file ID.
+func (c *MongoConnector) UploadGridFSFile(database, bucket, filename string, data []byte) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	db := c.client.Database(database)
+	b := db.GridFSBucket(options.GridFSBucket().SetName(bucket))
+
+	stream, err := b.OpenUploadStream(ctx, filename)
+	if err != nil {
+		return "", err
+	}
+	defer stream.Close()
+
+	if _, err := stream.Write(data); err != nil {
+		return "", err
+	}
+	if err := stream.Close(); err != nil {
+		return "", err
+	}
+
+	if oid, ok := stream.FileID.(bson.ObjectID); ok {
+		return oid.Hex(), nil
+	}
+	return fmt.Sprintf("%v", stream.FileID), nil
+}
+
+// DownloadGridFSFile returns the raw bytes and filename for a GridFS file.
+func (c *MongoConnector) DownloadGridFSFile(database, bucket, fileID string) ([]byte, string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	db := c.client.Database(database)
+	b := db.GridFSBucket(options.GridFSBucket().SetName(bucket))
+
+	oid, err := bson.ObjectIDFromHex(fileID)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid file id: %w", err)
+	}
+
+	// Look up filename
+	var fileDoc bson.M
+	err = db.Collection(bucket+".files").FindOne(ctx, bson.M{"_id": oid}).Decode(&fileDoc)
+	if err != nil {
+		return nil, "", fmt.Errorf("file not found: %w", err)
+	}
+	filename := fmt.Sprintf("%v", fileDoc["filename"])
+
+	stream, err := b.OpenDownloadStream(ctx, oid)
+	if err != nil {
+		return nil, "", err
+	}
+	defer stream.Close()
+
+	buf := make([]byte, 0, toInt64(fileDoc["length"]))
+	chunk := make([]byte, 64*1024)
+	for {
+		n, rErr := stream.Read(chunk)
+		if n > 0 {
+			buf = append(buf, chunk[:n]...)
+		}
+		if rErr != nil {
+			break
+		}
+	}
+	return buf, filename, nil
+}
+
+// DeleteGridFSFile removes a file from a GridFS bucket.
+func (c *MongoConnector) DeleteGridFSFile(database, bucket, fileID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	db := c.client.Database(database)
+	b := db.GridFSBucket(options.GridFSBucket().SetName(bucket))
+
+	oid, err := bson.ObjectIDFromHex(fileID)
+	if err != nil {
+		return fmt.Errorf("invalid file id: %w", err)
+	}
+	return b.Delete(ctx, oid)
+}
+
 // RunAggregation executes an aggregation pipeline on a collection and returns results.
 func (c *MongoConnector) RunAggregation(database, collection, pipelineJSON string) (*QueryResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

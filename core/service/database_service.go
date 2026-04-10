@@ -1055,6 +1055,109 @@ func (s *DatabaseService) MongoRunAggregation(database, collection, pipelineJSON
 	return mc.RunAggregation(database, collection, pipelineJSON)
 }
 
+// ── Custom Roles ──
+
+func (s *DatabaseService) MongoListRolesDetailed(database string, showBuiltin bool) ([]connector.RoleInfo, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.ListRolesDetailed(database, showBuiltin)
+}
+
+func (s *DatabaseService) MongoCreateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.CreateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON)
+}
+
+func (s *DatabaseService) MongoUpdateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.UpdateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON)
+}
+
+func (s *DatabaseService) MongoDropCustomRole(database, roleName string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.DropCustomRole(database, roleName)
+}
+
+// ── GridFS ──
+
+func (s *DatabaseService) MongoListGridFSBuckets(database string) ([]string, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.ListGridFSBuckets(database)
+}
+
+func (s *DatabaseService) MongoListGridFSFiles(database, bucket string, limit int) ([]connector.GridFSFileInfo, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.ListGridFSFiles(database, bucket, limit)
+}
+
+func (s *DatabaseService) MongoUploadGridFSFile(database, bucket, filename string, data []byte) (string, error) {
+	if s.conn == nil {
+		return "", fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return "", fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.UploadGridFSFile(database, bucket, filename, data)
+}
+
+func (s *DatabaseService) MongoDownloadGridFSFile(database, bucket, fileID string) ([]byte, string, error) {
+	if s.conn == nil {
+		return nil, "", fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, "", fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.DownloadGridFSFile(database, bucket, fileID)
+}
+
+func (s *DatabaseService) MongoDeleteGridFSFile(database, bucket, fileID string) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.DeleteGridFSFile(database, bucket, fileID)
+}
+
 func (s *DatabaseService) Disconnect() error {
 	if s.conn != nil {
 		err := s.conn.Close()
