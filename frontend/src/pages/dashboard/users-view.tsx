@@ -41,6 +41,43 @@ export default function UsersView() {
   const [creating, setCreating] = useState(false);
   const [dropError, setDropError] = useState("");
 
+  // Edit Roles dialog
+  const [editingUser, setEditingUser] = useState<{ username: string; database: string } | null>(null);
+  const [editRoles, setEditRoles] = useState<{ role: string; db: string }[]>([]);
+  const [editError, setEditError] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
+  const openEditRoles = (username: string, database: string, rawRoles: unknown) => {
+    setEditError("");
+    let parsed: { role: string; db: string }[] = [];
+    if (typeof rawRoles === "string" && rawRoles.trim()) {
+      // "role@db, role@db" or "role,role"
+      parsed = rawRoles.split(",").map((s) => s.trim()).filter(Boolean).map((tok) => {
+        const [r, d] = tok.split("@");
+        return { role: r?.trim() || "read", db: d?.trim() || database };
+      });
+    }
+    if (parsed.length === 0) parsed = [{ role: "read", db: database }];
+    setEditingUser({ username, database });
+    setEditRoles(parsed);
+  };
+
+  const handleSaveRoles = async () => {
+    if (!editingUser) return;
+    setEditSaving(true);
+    setEditError("");
+    try {
+      const roles = editRoles.filter((r) => r.role).map((r) => ({ role: r.role, db: r.db || editingUser.database }));
+      await databaseRequest.mongoUpdateUserRoles(editingUser.username, editingUser.database, roles);
+      setEditingUser(null);
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    } catch (e) {
+      setEditError((e as Error).message);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const handleCreate = async () => {
     if (!newUser.username || !newUser.password) {
       setCreateError("Username and password are required");
@@ -123,7 +160,7 @@ export default function UsersView() {
                   </th>
                 ))}
                 {isMongo && isAdmin && (
-                  <th className="px-3 py-1.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-20">
+                  <th className="px-3 py-1.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-28">
                     Actions
                   </th>
                 )}
@@ -145,7 +182,13 @@ export default function UsersView() {
                     </td>
                   ))}
                   {isMongo && isAdmin && (
-                    <td className="px-3 py-1.5 text-right">
+                    <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => openEditRoles(String(row["User"]), String(row["Database"]), row["Roles"])}
+                        className="px-1.5 py-0.5 text-[11px] text-foreground hover:bg-accent rounded transition-colors mr-1"
+                      >
+                        Edit
+                      </button>
                       <button
                         onClick={() => handleDrop(String(row["User"]), String(row["Database"]))}
                         className="px-1.5 py-0.5 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors"
@@ -255,6 +298,75 @@ export default function UsersView() {
             <Button className="w-full h-8" onClick={handleCreate} disabled={creating}>
               {creating ? "Creating..." : "Create User"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit roles dialog */}
+      <Dialog open={!!editingUser} onOpenChange={(o) => !o && setEditingUser(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              Edit Roles · {editingUser?.username}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-[11px] text-muted-foreground">
+              Auth database: <span className="font-mono">{editingUser?.database}</span>
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Roles</label>
+              {editRoles.map((r, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <select
+                    value={r.role}
+                    onChange={(e) => {
+                      const next = [...editRoles];
+                      next[i] = { ...next[i], role: e.target.value };
+                      setEditRoles(next);
+                    }}
+                    className="h-8 flex-1 text-xs bg-background border border-border rounded px-2"
+                  >
+                    {MONGO_BUILTIN_ROLES.map((role) => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
+                  </select>
+                  <Input
+                    value={r.db}
+                    onChange={(e) => {
+                      const next = [...editRoles];
+                      next[i] = { ...next[i], db: e.target.value };
+                      setEditRoles(next);
+                    }}
+                    placeholder="db"
+                    className="h-8 w-32 text-xs"
+                  />
+                  <button
+                    onClick={() => setEditRoles(editRoles.filter((_, j) => j !== i))}
+                    className="text-muted-foreground hover:text-destructive text-sm w-6"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => setEditRoles([...editRoles, { role: "read", db: editingUser?.database || "" }])}
+                className="text-[11px] text-primary hover:underline"
+              >
+                + Add role
+              </button>
+            </div>
+
+            {editError && <p className="text-xs text-destructive">{editError}</p>}
+
+            <div className="flex items-center gap-2">
+              <Button variant="outline" className="flex-1 h-8" onClick={() => setEditingUser(null)}>
+                Cancel
+              </Button>
+              <Button className="flex-1 h-8" onClick={handleSaveRoles} disabled={editSaving}>
+                {editSaving ? "Saving..." : "Save Roles"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

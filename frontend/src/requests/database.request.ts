@@ -271,6 +271,22 @@ export const databaseRequest = {
   mongoSampleDocuments: (db: string, collection: string, n = 10) =>
     customfetch.get<{ Columns: string[]; Rows: Record<string, unknown>[] }>(`/databases/${db}/tables/${collection}/sample?n=${n}`),
 
+  // Index Usage Stats
+  mongoIndexUsageStats: (db: string, collection: string) =>
+    customfetch.get<{ name: string; ops: number; since: string }[]>(`/databases/${db}/tables/${collection}/index-stats`),
+
+  // Field Type Analysis
+  mongoFieldTypeAnalysis: (db: string, collection: string, sample = 100) =>
+    customfetch.get<Record<string, Record<string, number>>>(`/databases/${db}/tables/${collection}/field-analysis?sample=${sample}`),
+
+  // Top Stats
+  mongoTopStats: () =>
+    customfetch.get<{ namespace: string; total_time: number; total_count: number; read_time: number; read_count: number; write_time: number; write_count: number }[]>("/mongo/top"),
+
+  // Aggregation Pipeline
+  mongoRunAggregation: (db: string, collection: string, pipeline: string) =>
+    customfetch.post<QueryResult>(`/databases/${db}/tables/${collection}/aggregate`, { pipeline }),
+
   listUsers: () => customfetch.get<Record<string, unknown>[]>("/users"),
 
   serverStatus: () => customfetch.get<Record<string, unknown>>("/status"),

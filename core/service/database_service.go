@@ -1005,6 +1005,56 @@ func (s *DatabaseService) MongoSampleDocuments(database, collection string, n in
 	return mc.SampleDocuments(database, collection, n)
 }
 
+// ── Index Usage Stats ──
+
+func (s *DatabaseService) MongoIndexUsageStats(database, collection string) ([]map[string]interface{}, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.IndexUsageStats(database, collection)
+}
+
+// ── Field Type Analysis ──
+
+func (s *DatabaseService) MongoFieldTypeAnalysis(database, collection string, sampleSize int) ([]map[string]interface{}, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.FieldTypeAnalysis(database, collection, sampleSize)
+}
+
+// ── Top Commands ──
+
+func (s *DatabaseService) MongoTopStats() ([]map[string]interface{}, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.TopStats()
+}
+
+func (s *DatabaseService) MongoRunAggregation(database, collection, pipelineJSON string) (*connector.QueryResult, error) {
+	if s.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.RunAggregation(database, collection, pipelineJSON)
+}
+
 func (s *DatabaseService) Disconnect() error {
 	if s.conn != nil {
 		err := s.conn.Close()

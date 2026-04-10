@@ -27,16 +27,31 @@ function formatKeysShort(keys: Record<string, number>): string {
     .join(", ");
 }
 
+type IndexUsageStat = {
+  name: string;
+  ops: number;
+  since: string;
+};
+
 export default function IndexesView() {
   const { selectedDb, selectedTable } = useNavigationStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const queryClient = useQueryClient();
+  const [showUsage, setShowUsage] = useState(false);
 
   const { data: indexes, isLoading } = useQuery<MongoIndex[]>({
     queryKey: ["mongo-indexes", selectedDb, selectedTable],
     queryFn: () => databaseRequest.mongoListIndexes(selectedDb, selectedTable),
     enabled: !!selectedDb && !!selectedTable,
   });
+
+  const { data: usageStats } = useQuery<IndexUsageStat[]>({
+    queryKey: ["mongo-index-stats", selectedDb, selectedTable],
+    queryFn: () => databaseRequest.mongoIndexUsageStats(selectedDb, selectedTable),
+    enabled: !!selectedDb && !!selectedTable && showUsage,
+  });
+
+  const usageMap = new Map((usageStats ?? []).map((s) => [s.name, s]));
 
   const createMutation = useMutation({
     mutationFn: (data: { keys: string; unique: boolean; name: string; sparse: boolean; ttlSeconds: number; partialFilter: string }) =>
@@ -115,7 +130,15 @@ export default function IndexesView() {
         <span className="text-muted-foreground">
           {selectedTable} · {indexes?.length ?? 0} indexes
         </span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant={showUsage ? "secondary" : "outline"}
+            className="h-7 text-xs px-2.5"
+            onClick={() => setShowUsage(!showUsage)}
+          >
+            {showUsage ? "Hide Usage" : "Usage Stats"}
+          </Button>
           {isAdmin && (
             <Button
               size="sm"
@@ -174,6 +197,25 @@ export default function IndexesView() {
                   <div className="text-[11px] text-muted-foreground/60 mt-0.5">
                     {formatKeys(idx.keys)}
                   </div>
+                  {showUsage && usageMap.has(idx.name) && (
+                    <div className="mt-1.5 flex items-center gap-3 text-[11px]">
+                      <span className={`font-medium ${
+                        (usageMap.get(idx.name)!.ops === 0 && idx.name !== "_id_")
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-foreground"
+                      }`}>
+                        {usageMap.get(idx.name)!.ops.toLocaleString()} ops
+                      </span>
+                      <span className="text-muted-foreground/60">
+                        since {new Date(usageMap.get(idx.name)!.since).toLocaleDateString()}
+                      </span>
+                      {usageMap.get(idx.name)!.ops === 0 && idx.name !== "_id_" && (
+                        <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded">
+                          UNUSED
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}

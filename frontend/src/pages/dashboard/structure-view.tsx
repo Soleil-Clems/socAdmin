@@ -100,6 +100,14 @@ export default function StructureView() {
     },
   });
 
+  // Field type analysis
+  const [showFieldAnalysis, setShowFieldAnalysis] = useState(false);
+  const { data: fieldAnalysis, isLoading: fieldAnalysisLoading } = useQuery<Record<string, Record<string, number>>>({
+    queryKey: ["mongo-field-analysis", selectedDb, selectedTable],
+    queryFn: () => databaseRequest.mongoFieldTypeAnalysis(selectedDb, selectedTable),
+    enabled: dbType === "mongodb" && !!selectedDb && !!selectedTable && showFieldAnalysis,
+  });
+
   // Schema validation
   const typeOptions = typeOptionsFor(dbType);
   const isMongo = dbType === "mongodb";
@@ -273,6 +281,14 @@ export default function StructureView() {
               >
                 Validation
               </Button>
+              <Button
+                size="sm"
+                variant={showFieldAnalysis ? "secondary" : "outline"}
+                className="h-7 text-xs px-2.5"
+                onClick={() => setShowFieldAnalysis(!showFieldAnalysis)}
+              >
+                {showFieldAnalysis ? "Hide Types" : "Field Types"}
+              </Button>
             </>
           )}
           {isAdmin && !isMongo && (
@@ -296,6 +312,78 @@ export default function StructureView() {
       {compactMutation.isError && (
         <div className="mx-3 mt-2 px-3 py-2 text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded">
           {compactMutation.error.message}
+        </div>
+      )}
+
+      {/* Field Type Analysis panel */}
+      {isMongo && showFieldAnalysis && (
+        <div className="border-b border-border bg-muted/30">
+          <div className="px-3 py-1.5 border-b border-border/50">
+            <span className="text-xs font-semibold">Field Type Analysis</span>
+            <span className="text-[11px] text-muted-foreground ml-2">Sampled from 100 documents</span>
+          </div>
+          {fieldAnalysisLoading ? (
+            <div className="p-3 space-y-1">
+              <Skeleton className="h-5 w-full" />
+              <Skeleton className="h-5 w-3/4" />
+            </div>
+          ) : fieldAnalysis && Object.keys(fieldAnalysis).length > 0 ? (
+            <ScrollArea className="max-h-64">
+              <table className="w-full text-[12px]">
+                <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm z-10">
+                  <tr className="border-b border-border">
+                    <th className="px-3 py-1 text-left text-[10px] font-semibold text-muted-foreground uppercase">Field</th>
+                    <th className="px-3 py-1 text-left text-[10px] font-semibold text-muted-foreground uppercase">Types</th>
+                    <th className="px-3 py-1 text-left text-[10px] font-semibold text-muted-foreground uppercase">Consistency</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(fieldAnalysis).sort(([a], [b]) => a.localeCompare(b)).map(([field, types]) => {
+                    const total = Object.values(types).reduce((a, b) => a + b, 0);
+                    const entries = Object.entries(types).sort(([, a], [, b]) => b - a);
+                    const isMixed = entries.length > 1;
+                    return (
+                      <tr key={field} className="border-b border-border/50 hover:bg-accent/40">
+                        <td className="px-3 py-1.5 font-mono font-medium">{field}</td>
+                        <td className="px-3 py-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {entries.map(([type, count]) => (
+                              <span key={type} className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                type === "string" ? "bg-green-500/10 text-green-600 dark:text-green-400" :
+                                type === "int" || type === "double" || type === "long" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" :
+                                type === "bool" ? "bg-purple-500/10 text-purple-600 dark:text-purple-400" :
+                                type === "object" || type === "array" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" :
+                                type === "objectId" ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400" :
+                                type === "date" ? "bg-pink-500/10 text-pink-600 dark:text-pink-400" :
+                                "bg-muted text-muted-foreground"
+                              }`}>
+                                {type} ({count})
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-3 py-1.5">
+                          {isMixed ? (
+                            <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-medium">
+                              MIXED
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground">
+                              {total}/{total}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </ScrollArea>
+          ) : (
+            <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">
+              No field data available
+            </div>
+          )}
         </div>
       )}
 

@@ -17,6 +17,7 @@ import SchemaView from "@/pages/dashboard/schema-view";
 import IndexesView from "@/pages/dashboard/indexes-view";
 import ViewsView from "@/pages/dashboard/views-view";
 import ProfilerView from "@/pages/dashboard/profiler-view";
+import AggregationView from "@/pages/dashboard/aggregation-view";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { useConnectionStore } from "@/stores/connection.store";
@@ -122,6 +123,9 @@ export default function DashboardPage() {
               {isMongo && selectedTable && (
                 <TabsTrigger value="indexes" className={tabClass}>Indexes</TabsTrigger>
               )}
+              {isMongo && selectedTable && isAdmin && (
+                <TabsTrigger value="aggregate" className={tabClass}>Aggregate</TabsTrigger>
+              )}
               {isMongo && (
                 <TabsTrigger value="views" className={tabClass}>Views</TabsTrigger>
               )}
@@ -166,6 +170,11 @@ export default function DashboardPage() {
           {isMongo && selectedTable && (
             <TabsContent value="indexes" className="flex-1 overflow-hidden m-0">
               <IndexesView />
+            </TabsContent>
+          )}
+          {isMongo && selectedTable && isAdmin && (
+            <TabsContent value="aggregate" className="flex-1 overflow-hidden m-0">
+              <AggregationView />
             </TabsContent>
           )}
           {isMongo && (

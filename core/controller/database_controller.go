@@ -1497,6 +1497,76 @@ func (c *DatabaseController) MongoSampleDocuments(w http.ResponseWriter, r *http
 	jsonResponse(w, http.StatusOK, result)
 }
 
+// ── Run Aggregation Pipeline ──
+
+type AggregationRequest struct {
+	Pipeline string `json:"pipeline"`
+}
+
+func (c *DatabaseController) MongoRunAggregation(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req AggregationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	result, err := c.dbService.MongoRunAggregation(db, table, req.Pipeline)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, result)
+}
+
+// ── Index Usage Stats ──
+
+func (c *DatabaseController) MongoIndexUsageStats(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	stats, err := c.dbService.MongoIndexUsageStats(db, table)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, stats)
+}
+
+// ── Field Type Analysis ──
+
+func (c *DatabaseController) MongoFieldTypeAnalysis(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	sampleSize := 100
+	if s := r.URL.Query().Get("sample"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 && v <= 1000 {
+			sampleSize = v
+		}
+	}
+
+	analysis, err := c.dbService.MongoFieldTypeAnalysis(db, table, sampleSize)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, analysis)
+}
+
+// ── Top Stats ──
+
+func (c *DatabaseController) MongoTopStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := c.dbService.MongoTopStats()
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, stats)
+}
+
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

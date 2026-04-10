@@ -1554,6 +1554,249 @@ func (c *MongoConnector) SampleDocuments(database, collection string, n int) (*Q
 	return cursorToQueryResult(ctx, cursor)
 }
 
+// ── Index Usage Stats ──
+
+// IndexUsageStats returns usage statistics for each index on a collection.
+func (c *MongoConnector) IndexUsageStats(database, collection string) ([]map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pipeline := bson.A{
+		bson.D{{Key: "$indexStats", Value: bson.D{}}},
+	}
+
+	coll := c.client.Database(database).Collection(collection)
+	cursor, err := coll.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("indexStats failed: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var stats []map[string]interface{}
+	for cursor.Next(ctx) {
+		var doc bson.M
+		if err := cursor.Decode(&doc); err != nil {
+			continue
+		}
+		entry := map[string]interface{}{
+			"name": doc["name"],
+		}
+		if keyDoc, ok := doc["key"].(bson.M); ok {
+			b, _ := json.Marshal(keyDoc)
+			entry["key"] = string(b)
+		} else if keyDoc, ok := doc["key"].(bson.D); ok {
+			m := make(map[string]interface{})
+			for _, e := range keyDoc {
+				m[e.Key] = e.Value
+			}
+			b, _ := json.Marshal(m)
+			entry["key"] = string(b)
+		}
+		if accesses, ok := doc["accesses"].(bson.M); ok {
+			entry["ops"] = accesses["ops"]
+			entry["since"] = fmt.Sprintf("%v", accesses["since"])
+		}
+		if host, ok := doc["host"].(string); ok {
+			entry["host"] = host
+		}
+		stats = append(stats, entry)
+	}
+	return stats, nil
+}
+
+// ── Field Type Analysis ──
+
+// FieldTypeAnalysis samples documents and returns type distribution per field.
+func (c *MongoConnector) FieldTypeAnalysis(database, collection string, sampleSize int) ([]map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	coll := c.client.Database(database).Collection(collection)
+	opts := options.Find().SetLimit(int64(sampleSize))
+	cursor, err := coll.Find(ctx, bson.D{}, opts)
+	if err != nil {
+		return nil, fmt.Errorf("field analysis failed: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	// field -> type -> count
+	fieldTypes := make(map[string]map[string]int)
+	totalDocs := 0
+
+	for cursor.Next(ctx) {
+		var doc bson.M
+		if err := cursor.Decode(&doc); err != nil {
+			continue
+		}
+		totalDocs++
+		for key, val := range doc {
+			typeName := friendlyBsonType(val)
+			if fieldTypes[key] == nil {
+				fieldTypes[key] = make(map[string]int)
+			}
+			fieldTypes[key][typeName]++
+		}
+	}
+
+	var result []map[string]interface{}
+	// Sort field names, _id first
+	var fields []string
+	for f := range fieldTypes {
+		if f != "_id" {
+			fields = append(fields, f)
+		}
+	}
+	sort.Strings(fields)
+	if fieldTypes["_id"] != nil {
+		fields = append([]string{"_id"}, fields...)
+	}
+
+	for _, field := range fields {
+		types := fieldTypes[field]
+		// Find dominant type
+		var dominant string
+		maxCount := 0
+		var typeBreakdown []map[string]interface{}
+		for t, count := range types {
+			typeBreakdown = append(typeBreakdown, map[string]interface{}{
+				"type":    t,
+				"count":   count,
+				"percent": float64(count) / float64(totalDocs) * 100,
+			})
+			if count > maxCount {
+				maxCount = count
+				dominant = t
+			}
+		}
+		presence := float64(0)
+		totalForField := 0
+		for _, count := range types {
+			totalForField += count
+		}
+		presence = float64(totalForField) / float64(totalDocs) * 100
+
+		result = append(result, map[string]interface{}{
+			"field":     field,
+			"dominant":  dominant,
+			"presence":  presence,
+			"types":     typeBreakdown,
+			"total":     totalDocs,
+		})
+	}
+	return result, nil
+}
+
+// ── Top Commands ──
+
+// TopStats returns per-collection operation timing from the top command.
+func (c *MongoConnector) TopStats() ([]map[string]interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var result bson.M
+	err := c.client.Database("admin").RunCommand(ctx, bson.D{
+		{Key: "top", Value: 1},
+	}).Decode(&result)
+	if err != nil {
+		return nil, fmt.Errorf("top failed: %w", err)
+	}
+
+	totals, ok := result["totals"].(bson.M)
+	if !ok {
+		return nil, nil
+	}
+
+	var stats []map[string]interface{}
+	for ns, data := range totals {
+		if ns == "note" {
+			continue
+		}
+		doc, ok := data.(bson.M)
+		if !ok {
+			continue
+		}
+
+		entry := map[string]interface{}{
+			"ns": ns,
+		}
+
+		for _, op := range []string{"total", "readLock", "writeLock", "queries", "insert", "update", "remove", "commands"} {
+			if opData, ok := doc[op].(bson.M); ok {
+				entry[op+"_time"] = opData["time"]
+				entry[op+"_count"] = opData["count"]
+			}
+		}
+		stats = append(stats, entry)
+	}
+
+	// Sort by total time descending
+	sort.Slice(stats, func(i, j int) bool {
+		ti := toInt64Value(stats[i]["total_time"])
+		tj := toInt64Value(stats[j]["total_time"])
+		return ti > tj
+	})
+
+	// Limit to top 50
+	if len(stats) > 50 {
+		stats = stats[:50]
+	}
+
+	return stats, nil
+}
+
+func toInt64Value(v interface{}) int64 {
+	if v == nil {
+		return 0
+	}
+	switch val := v.(type) {
+	case int32:
+		return int64(val)
+	case int64:
+		return val
+	case float64:
+		return int64(val)
+	default:
+		return 0
+	}
+}
+
+// RunAggregation executes an aggregation pipeline on a collection and returns results.
+func (c *MongoConnector) RunAggregation(database, collection, pipelineJSON string) (*QueryResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var pipeline bson.A
+	if err := bson.UnmarshalExtJSON([]byte(pipelineJSON), true, &pipeline); err != nil {
+		return nil, fmt.Errorf("invalid pipeline JSON: %w", err)
+	}
+
+	// Convert to mongo.Pipeline ([]bson.D)
+	mongoPipeline := make(mongo.Pipeline, 0, len(pipeline))
+	for _, stage := range pipeline {
+		switch s := stage.(type) {
+		case bson.M:
+			d := bson.D{}
+			for k, v := range s {
+				d = append(d, bson.E{Key: k, Value: v})
+			}
+			mongoPipeline = append(mongoPipeline, d)
+		case bson.D:
+			mongoPipeline = append(mongoPipeline, s)
+		default:
+			return nil, fmt.Errorf("invalid pipeline stage type: %T", stage)
+		}
+	}
+
+	coll := c.client.Database(database).Collection(collection)
+	cursor, err := coll.Aggregate(ctx, mongoPipeline)
+	if err != nil {
+		return nil, fmt.Errorf("aggregation failed: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	return cursorToQueryResult(ctx, cursor)
+}
+
 func (c *MongoConnector) Close() error {
 	if c.client != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

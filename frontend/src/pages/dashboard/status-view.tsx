@@ -60,6 +60,7 @@ export default function StatusView() {
   const [showOps, setShowOps] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const [showRs, setShowRs] = useState(false);
+  const [showTop, setShowTop] = useState(false);
 
   const dbTypeLabel: Record<string, string> = {
     mysql: "MySQL",
@@ -85,6 +86,22 @@ export default function StatusView() {
     queryKey: ["mongo-replset"],
     queryFn: () => databaseRequest.mongoReplicaSetStatus(),
     enabled: isMongo && showRs,
+  });
+
+  type TopStat = {
+    namespace: string;
+    total_time: number;
+    total_count: number;
+    read_time: number;
+    read_count: number;
+    write_time: number;
+    write_count: number;
+  };
+
+  const { data: topData, isLoading: topLoading, refetch: refetchTop } = useQuery<TopStat[]>({
+    queryKey: ["mongo-top"],
+    queryFn: () => databaseRequest.mongoTopStats(),
+    enabled: isMongo && showTop,
   });
 
   const { data: logData, isLoading: logLoading, refetch: refetchLog } = useQuery({
@@ -134,6 +151,16 @@ export default function StatusView() {
               onClick={() => setShowRs(!showRs)}
             >
               {showRs ? "Hide RS" : "Replica Set"}
+            </Button>
+          )}
+          {isMongo && (
+            <Button
+              size="sm"
+              variant={showTop ? "secondary" : "outline"}
+              className="h-6 text-[11px] px-2"
+              onClick={() => setShowTop(!showTop)}
+            >
+              {showTop ? "Hide Top" : "Top Stats"}
             </Button>
           )}
           <span className="text-[10px] text-muted-foreground">Auto-refresh 30s</span>
@@ -321,6 +348,69 @@ export default function StatusView() {
             </div>
           ) : (
             <div className="p-3"><Skeleton className="h-6 w-48" /></div>
+          )}
+        </div>
+      )}
+
+      {/* Top Stats panel */}
+      {isMongo && showTop && (
+        <div className="border-b border-border bg-muted/30">
+          <div className="px-3 py-1.5 flex items-center gap-2 border-b border-border/50">
+            <span className="text-xs font-semibold">Collection Operation Stats (top)</span>
+            <span className="text-[11px] text-muted-foreground">{topData?.length ?? 0} namespaces</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-5 text-[10px] px-1.5 ml-auto"
+              onClick={() => refetchTop()}
+            >
+              Refresh
+            </Button>
+          </div>
+          {topLoading ? (
+            <div className="p-3 space-y-1">
+              <Skeleton className="h-6 w-full" />
+              <Skeleton className="h-6 w-full" />
+            </div>
+          ) : topData && topData.length > 0 ? (
+            <ScrollArea className="max-h-64">
+              <table className="w-full data-table text-[12px]">
+                <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm z-10">
+                  <tr className="border-b border-border">
+                    <th className="px-2 py-1 text-left text-[10px] font-semibold text-muted-foreground uppercase">Namespace</th>
+                    <th className="px-2 py-1 text-right text-[10px] font-semibold text-muted-foreground uppercase">Total Time</th>
+                    <th className="px-2 py-1 text-right text-[10px] font-semibold text-muted-foreground uppercase">Total Ops</th>
+                    <th className="px-2 py-1 text-right text-[10px] font-semibold text-muted-foreground uppercase">Read Time</th>
+                    <th className="px-2 py-1 text-right text-[10px] font-semibold text-muted-foreground uppercase">Read Ops</th>
+                    <th className="px-2 py-1 text-right text-[10px] font-semibold text-muted-foreground uppercase">Write Time</th>
+                    <th className="px-2 py-1 text-right text-[10px] font-semibold text-muted-foreground uppercase">Write Ops</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topData.map((t, i) => (
+                    <tr key={i} className="border-b border-border/50 hover:bg-accent/40">
+                      <td className="px-2 py-1 font-mono text-[11px]">{t.namespace}</td>
+                      <td className="px-2 py-1 text-right font-mono">
+                        {t.total_time > 1000000 ? `${(t.total_time / 1000000).toFixed(1)}s` : `${(t.total_time / 1000).toFixed(0)}ms`}
+                      </td>
+                      <td className="px-2 py-1 text-right font-mono">{t.total_count.toLocaleString()}</td>
+                      <td className="px-2 py-1 text-right font-mono text-blue-600 dark:text-blue-400">
+                        {t.read_time > 1000000 ? `${(t.read_time / 1000000).toFixed(1)}s` : `${(t.read_time / 1000).toFixed(0)}ms`}
+                      </td>
+                      <td className="px-2 py-1 text-right font-mono text-blue-600 dark:text-blue-400">{t.read_count.toLocaleString()}</td>
+                      <td className="px-2 py-1 text-right font-mono text-amber-600 dark:text-amber-400">
+                        {t.write_time > 1000000 ? `${(t.write_time / 1000000).toFixed(1)}s` : `${(t.write_time / 1000).toFixed(0)}ms`}
+                      </td>
+                      <td className="px-2 py-1 text-right font-mono text-amber-600 dark:text-amber-400">{t.write_count.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ScrollArea>
+          ) : (
+            <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">
+              No top stats available
+            </div>
           )}
         </div>
       )}
