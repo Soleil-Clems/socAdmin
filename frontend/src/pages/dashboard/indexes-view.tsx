@@ -123,7 +123,7 @@ export default function IndexesView() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Toolbar */}
       <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">Indexes</span>
@@ -159,7 +159,7 @@ export default function IndexesView() {
           ))}
         </div>
       ) : (
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           <div className="p-3 space-y-2">
             {indexes?.map((idx) => (
               <div

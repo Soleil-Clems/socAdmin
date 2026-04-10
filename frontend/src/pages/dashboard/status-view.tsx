@@ -116,7 +116,7 @@ export default function StatusView() {
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">Server Status</span>
         <span className="text-muted-foreground">
@@ -426,7 +426,7 @@ export default function StatusView() {
           <p className="text-sm text-destructive">{(error as Error).message}</p>
         </div>
       ) : (
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           <table className="w-full data-table">
             <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
               <tr className="border-b border-border">

@@ -71,7 +71,7 @@ export default function AllDatabasesView() {
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Toolbar */}
       <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">Databases</span>
@@ -105,7 +105,7 @@ export default function AllDatabasesView() {
           ))}
         </div>
       ) : (
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           <table className="w-full data-table">
             <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
               <tr className="border-b border-border">

@@ -40,9 +40,9 @@ export default function Sidebar() {
   const { data: tables, isLoading: tablesLoading } = useTables(selectedDb);
 
   return (
-    <aside className="w-56 bg-sidebar text-sidebar-foreground flex flex-col h-screen border-r border-sidebar-border">
+    <aside className="w-56 bg-sidebar text-sidebar-foreground flex flex-col h-screen min-h-0 border-r border-sidebar-border overflow-hidden">
       {/* Header */}
-      <div className="px-3 py-2.5 border-b border-sidebar-border">
+      <div className="px-3 py-2.5 border-b border-sidebar-border shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground text-[10px] font-bold shrink-0">
             sA
@@ -57,7 +57,7 @@ export default function Sidebar() {
       </div>
 
       {/* Databases link */}
-      <div className="px-2 pt-2">
+      <div className="px-2 pt-2 shrink-0">
         <button
           onClick={() => setShowAllDatabases(true)}
           className={`w-full text-left px-2 py-1.5 rounded text-[13px] font-medium transition-colors ${
@@ -71,7 +71,7 @@ export default function Sidebar() {
       </div>
 
       {/* DB selector dropdown */}
-      <div className="px-2 pt-2 pb-1">
+      <div className="px-2 pt-2 pb-1 shrink-0">
         <Select
           value={selectedDb || undefined}
           onValueChange={(db) => db && setSelectedDb(db)}
@@ -95,7 +95,7 @@ export default function Sidebar() {
       </div>
 
       {/* Table list */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="px-2 py-1">
           {selectedDb && (
             <>
@@ -142,7 +142,7 @@ export default function Sidebar() {
       </ScrollArea>
 
       {/* Footer */}
-      <div className="p-2 border-t border-sidebar-border space-y-0.5">
+      <div className="p-2 border-t border-sidebar-border space-y-0.5 shrink-0">
         {role && (
           <div className="px-2 py-1 flex items-center gap-1.5">
             <span

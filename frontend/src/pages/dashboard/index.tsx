@@ -45,8 +45,8 @@ export default function DashboardPage() {
     return (
       <div className="flex h-screen bg-background">
         {sidebarOpen && <Sidebar />}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <Tabs key="global" defaultValue="databases" className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
+          <Tabs key="global" defaultValue="databases" className="flex-1 flex flex-col overflow-hidden min-h-0">
             <div className="border-b border-border bg-card px-1 flex items-center">
               <button
                 className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 rounded"
@@ -66,22 +66,22 @@ export default function DashboardPage() {
                 )}
               </TabsList>
             </div>
-            <TabsContent value="databases" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="databases" className="flex-1 overflow-hidden m-0 min-h-0">
               <AllDatabasesView />
             </TabsContent>
-            <TabsContent value="users" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="users" className="flex-1 overflow-hidden m-0 min-h-0">
               <UsersView />
             </TabsContent>
-            <TabsContent value="status" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="status" className="flex-1 overflow-hidden m-0 min-h-0">
               <StatusView />
             </TabsContent>
             {isAdmin && (
-              <TabsContent value="accounts" className="flex-1 overflow-hidden m-0">
+              <TabsContent value="accounts" className="flex-1 overflow-hidden m-0 min-h-0">
                 <AccountsView />
               </TabsContent>
             )}
             {isAdmin && (
-              <TabsContent value="security" className="flex-1 overflow-hidden m-0">
+              <TabsContent value="security" className="flex-1 overflow-hidden m-0 min-h-0">
                 <SecurityView />
               </TabsContent>
             )}
@@ -95,8 +95,8 @@ export default function DashboardPage() {
   return (
     <div className="flex h-screen bg-background">
       {sidebarOpen && <Sidebar />}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Tabs key="db" value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
+        <Tabs key="db" value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden min-h-0">
           <div className="border-b border-border bg-card px-1 flex items-center">
             <button
               className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 rounded"
@@ -144,68 +144,68 @@ export default function DashboardPage() {
               )}
             </TabsList>
           </div>
-          <TabsContent value="data" className="flex-1 overflow-hidden m-0">
+          <TabsContent value="data" className="flex-1 overflow-hidden m-0 min-h-0">
             {selectedTable ? (isMongo ? <DocumentView /> : <TableView />) : <DatabaseView />}
           </TabsContent>
           {selectedTable && (
-            <TabsContent value="structure" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="structure" className="flex-1 overflow-hidden m-0 min-h-0">
               <StructureView />
             </TabsContent>
           )}
           {isAdmin && (
-            <TabsContent value="query" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="query" className="flex-1 overflow-hidden m-0 min-h-0">
               <QueryEditor />
             </TabsContent>
           )}
           {isAdmin && (
-            <TabsContent value="import" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="import" className="flex-1 overflow-hidden m-0 min-h-0">
               <ImportView />
             </TabsContent>
           )}
           {!isMongo && (
-            <TabsContent value="schema" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="schema" className="flex-1 overflow-hidden m-0 min-h-0">
               <SchemaView />
             </TabsContent>
           )}
           {isMongo && selectedTable && (
-            <TabsContent value="indexes" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="indexes" className="flex-1 overflow-hidden m-0 min-h-0">
               <IndexesView />
             </TabsContent>
           )}
           {isMongo && selectedTable && isAdmin && (
-            <TabsContent value="aggregate" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="aggregate" className="flex-1 overflow-hidden m-0 min-h-0">
               <AggregationView />
             </TabsContent>
           )}
           {isMongo && (
-            <TabsContent value="views" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="views" className="flex-1 overflow-hidden m-0 min-h-0">
               <ViewsView />
             </TabsContent>
           )}
           {isMongo && isAdmin && (
-            <TabsContent value="profiler" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="profiler" className="flex-1 overflow-hidden m-0 min-h-0">
               <ProfilerView />
             </TabsContent>
           )}
-          <TabsContent value="search" className="flex-1 overflow-hidden m-0">
+          <TabsContent value="search" className="flex-1 overflow-hidden m-0 min-h-0">
             <SearchView />
           </TabsContent>
-          <TabsContent value="export" className="flex-1 overflow-hidden m-0">
+          <TabsContent value="export" className="flex-1 overflow-hidden m-0 min-h-0">
             <ExportView />
           </TabsContent>
-          <TabsContent value="users" className="flex-1 overflow-hidden m-0">
+          <TabsContent value="users" className="flex-1 overflow-hidden m-0 min-h-0">
             <UsersView />
           </TabsContent>
-          <TabsContent value="status" className="flex-1 overflow-hidden m-0">
+          <TabsContent value="status" className="flex-1 overflow-hidden m-0 min-h-0">
             <StatusView />
           </TabsContent>
           {isAdmin && (
-            <TabsContent value="accounts" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="accounts" className="flex-1 overflow-hidden m-0 min-h-0">
               <AccountsView />
             </TabsContent>
           )}
           {isAdmin && (
-            <TabsContent value="security" className="flex-1 overflow-hidden m-0">
+            <TabsContent value="security" className="flex-1 overflow-hidden m-0 min-h-0">
               <SecurityView />
             </TabsContent>
           )}
