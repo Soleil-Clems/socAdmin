@@ -94,6 +94,8 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/timeseries", dbController.MongoGetTimeSeriesInfo)
 	protected.HandleFunc("GET "+p+"/sharding/cluster", dbController.MongoGetClusterShardingInfo)
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/sharding", dbController.MongoGetCollectionShardingInfo)
+	protected.HandleFunc("GET "+p+"/backup/binaries", dbController.BackupBinariesStatus)
+	protected.HandleFunc("GET "+p+"/databases/{db}/backup", dbController.BackupDatabase)
 	protected.HandleFunc("GET "+p+"/security/whitelist", secController.GetWhitelist)
 
 	// Saved connections — tout le monde peut lister et utiliser
@@ -110,6 +112,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("DELETE "+p+"/databases/{db}/tables/{table}/rows", auth.RequireAdmin(dbController.DeleteRow))
 	protected.HandleFunc("DELETE "+p+"/databases/{db}/tables/{table}", auth.RequireAdmin(dbController.DropTable))
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/truncate", auth.RequireAdmin(dbController.TruncateTable))
+	protected.HandleFunc("POST "+p+"/databases/{db}/restore", auth.RequireAdmin(dbController.RestoreDatabase))
 	protected.HandleFunc("POST "+p+"/databases/{db}/import/sql", auth.RequireAdmin(dbController.ImportSQL))
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/import/csv", auth.RequireAdmin(dbController.ImportCSV))
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/import/json", auth.RequireAdmin(dbController.ImportJSON))

@@ -122,20 +122,24 @@ function App() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Title bar */}
+      {/* Title bar — drag region. On macOS, traffic lights occupy the top-left
+          (the OS overlays them on top of our drag region and stays interactive).
+          We center the title absolutely on the window so it stays visually
+          centered regardless of OS-specific safe areas on the left. */}
       <header
-        className="drag-region relative flex shrink-0 items-center justify-center border-b border-border-subtle/50"
+        className="drag-region relative flex shrink-0 items-center border-b border-border-subtle/50"
         style={{ height: "var(--titlebar-h)" }}
       >
-        {/* Centered title */}
-        <div className="flex items-center gap-2">
+        {/* Centered title — absolute so it ignores left/right cluster widths */}
+        <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
           <div className="h-3.5 w-3.5 rounded-sm bg-brand" />
           <span className="text-[13px] font-semibold text-text-secondary tracking-[-0.01em]">
             socAdmin
           </span>
         </div>
-        {/* Right side — theme toggle + status */}
-        <div className="absolute right-4 flex items-center gap-3">
+
+        {/* Right cluster — theme toggle + status */}
+        <div className="ml-auto flex items-center gap-3 pr-4">
           <button
             onClick={toggleTheme}
             className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
@@ -157,9 +161,9 @@ function App() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        {/* Sidebar */}
-        <nav className="flex w-50 shrink-0  flex-col border-r border-border-subtle/50 bg-surface/20 ">
-          <div className="flex flex-col gap-1 h-[90%]">
+        {/* Sidebar — flex column with proper internal padding rhythm */}
+        <nav className="flex w-56 shrink-0 flex-col border-r border-border-subtle/50 bg-surface/20">
+          <div className="flex flex-1 flex-col gap-0.5 min-h-0 overflow-y-auto px-3 py-4">
             <SidebarItem
               icon={<IconServer />}
               label="Server"
@@ -181,7 +185,7 @@ function App() {
             />
           </div>
 
-          <div className="mt-auto px-5 pb-4 pt-3 border-t border-border-subtle/30">
+          <div className="shrink-0 border-t border-border-subtle/30 px-5 py-3">
             {sysInfo.os && (
               <p className="text-[10px] text-text-muted/50 capitalize leading-relaxed">
                 {sysInfo.os} · {sysInfo.arch}
@@ -190,25 +194,37 @@ function App() {
           </div>
         </nav>
 
-        {/* Content */}
-        <main className="flex-1 overflow-y-auto p-6">
-          {error && <ErrorBanner message={error} onDismiss={() => setError("")} />}
+        {/* Content — generous desktop padding, max-width container so wide
+            windows don't stretch the layout into a thin spread of cards */}
+        <main
+          className="flex-1 overflow-y-auto"
+          style={{
+            paddingInline: "var(--content-px)",
+            paddingBlock: "var(--content-py)",
+          }}
+        >
+          <div
+            className="mx-auto w-full"
+            style={{ maxWidth: "var(--content-max)" }}
+          >
+            {error && <ErrorBanner message={error} onDismiss={() => setError("")} />}
 
-          {tab === "server" && (
-            <ServerTab
-              status={status}
-              loading={loading}
-              onStart={handleStart}
-              onStop={handleStop}
-              onOpenBrowser={OpenBrowser}
-            />
-          )}
-          {tab === "databases" && (
-            <DatabasesTab services={services} onRefresh={refresh} />
-          )}
-          {tab === "settings" && (
-            <SettingsTab config={config} onRefresh={refresh} running={running} />
-          )}
+            {tab === "server" && (
+              <ServerTab
+                status={status}
+                loading={loading}
+                onStart={handleStart}
+                onStop={handleStop}
+                onOpenBrowser={OpenBrowser}
+              />
+            )}
+            {tab === "databases" && (
+              <DatabasesTab services={services} onRefresh={refresh} />
+            )}
+            {tab === "settings" && (
+              <SettingsTab config={config} onRefresh={refresh} running={running} />
+            )}
+          </div>
         </main>
       </div>
     </div>
@@ -342,7 +358,7 @@ function SidebarItem({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-lg p-3 text-left text-[13px] transition-colors ${
+      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] transition-colors ${
         active
           ? "bg-surface-active text-text font-medium"
           : "text-text-secondary hover:bg-surface-hover hover:text-text"
@@ -383,7 +399,7 @@ function ServerTab({
   const running = status?.running ?? false;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       <div>
         <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Server</h2>
         <p className="mt-1 text-[13px] text-text-muted">
@@ -636,7 +652,7 @@ function DatabasesTab({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       <div>
         <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Databases</h2>
         <p className="mt-1 text-[13px] text-text-muted">
@@ -928,7 +944,7 @@ function SettingsTab({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       <div>
         <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Settings</h2>
         <p className="mt-1 text-[13px] text-text-muted">

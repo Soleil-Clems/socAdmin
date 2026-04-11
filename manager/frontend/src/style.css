@@ -29,6 +29,11 @@
   --titlebar-h: 32px;
   --traffic-light-w: 0px;
   --window-radius: 0px;
+
+  /* Content rhythm — used by tab panes for consistent breathing room */
+  --content-px: 2rem;        /* 32px horizontal */
+  --content-py: 1.75rem;     /* 28px vertical */
+  --content-max: 56rem;      /* 896px — comfortable reading width on wide windows */
 }
 
 /* Light theme override */
@@ -149,5 +154,6 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 input[type="number"] {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 

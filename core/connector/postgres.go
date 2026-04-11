@@ -384,6 +384,16 @@ func (c *PostgresConnector) Close() error {
 	return nil
 }
 
+// GetConfig returns the raw connection info. Used by external tools (pg_dump).
+func (c *PostgresConnector) GetConfig() ConnectionConfig {
+	return ConnectionConfig{
+		Host:     c.config.Host,
+		Port:     c.config.Port,
+		User:     c.config.User,
+		Password: c.config.Password,
+	}
+}
+
 func (c *PostgresConnector) connectToDb(database string) (*sql.DB, error) {
 	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=disable connect_timeout=5",
 		c.config.Host, c.config.Port, c.config.User, database)

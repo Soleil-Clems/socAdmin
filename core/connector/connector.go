@@ -19,7 +19,18 @@ type Connector interface {
 	DropTable(database, table string) error
 	TruncateTable(database, table string) error
 	AlterColumn(database, table string, op AlterColumnOp) error
+	GetConfig() ConnectionConfig
 	Close() error
+}
+
+// ConnectionConfig is the raw connection info needed by external tools
+// (mysqldump, pg_dump, mongodump, etc). Returned by Connector.GetConfig().
+// Should never be serialized to JSON or logged — contains the password.
+type ConnectionConfig struct {
+	Host     string
+	Port     int
+	User     string
+	Password string
 }
 
 // AlterColumnOp describes a single column-level ALTER TABLE operation.

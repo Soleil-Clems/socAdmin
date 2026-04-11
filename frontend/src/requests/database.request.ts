@@ -496,4 +496,51 @@ export const databaseRequest = {
       return data;
     });
   },
+
+  // ── Backup / Restore ────────────────────────────────────────────
+  // Returns which native dump tools are installed on the host so the
+  // UI can disable the backup button when missing.
+  backupBinariesStatus: () =>
+    customfetch.get<Record<string, boolean>>("/backup/binaries"),
+
+  // Streams a database dump to a file download.
+  backupDatabase: async (db: string, dbType: string) => {
+    const token = localStorage.getItem("access_token");
+    const res = await fetch(`${API_URL}/databases/${db}/backup`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Backup failed: ${res.statusText}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const ts = new Date()
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace("T", "-")
+      .slice(0, 15);
+    const ext = dbType === "mongodb" ? "archive" : "sql";
+    a.href = url;
+    a.download = `${db}-${ts}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  // Uploads a dump file and replays it into db.
+  restoreDatabase: (db: string, file: File) => {
+    const token = localStorage.getItem("access_token");
+    const form = new FormData();
+    form.append("file", file);
+    return fetch(`${API_URL}/databases/${db}/restore`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Restore failed");
+      return data;
+    });
+  },
 };

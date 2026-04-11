@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDatabases } from "@/hooks/queries/use-databases";
 import { useCreateDatabase } from "@/hooks/mutations/use-create-database";
@@ -30,6 +30,11 @@ export default function AllDatabasesView() {
     queryKey: ["databases", "stats"],
     queryFn: databaseRequest.listWithStats,
   });
+  const { data: backupBinaries } = useQuery<Record<string, boolean>>({
+    queryKey: ["backup", "binaries"],
+    queryFn: databaseRequest.backupBinariesStatus,
+    staleTime: 5 * 60 * 1000,
+  });
   const createDb = useCreateDatabase();
   const dropDb = useDropDatabase();
   const { setSelectedDb } = useNavigationStore();
@@ -39,6 +44,13 @@ export default function AllDatabasesView() {
   const [showCreate, setShowCreate] = useState(false);
   const [newDbName, setNewDbName] = useState("");
   const [search, setSearch] = useState("");
+  const [backupingDb, setBackupingDb] = useState<string | null>(null);
+  const [restoringDb, setRestoringDb] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const restoreInputRef = useRef<HTMLInputElement | null>(null);
+  const restoreTargetRef = useRef<string | null>(null);
+
+  const backupAvailable = dbType ? backupBinaries?.[dbType] !== false : true;
 
   // Build a lookup map for stats by DB name
   const statsMap = useMemo(() => {
@@ -68,6 +80,42 @@ export default function AllDatabasesView() {
 
   const handleExportDb = (db: string) => {
     databaseRequest.exportDatabase(db);
+  };
+
+  const handleBackupDb = async (db: string) => {
+    if (!dbType) return;
+    setBackupingDb(db);
+    try {
+      await databaseRequest.backupDatabase(db, dbType);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Backup failed");
+    } finally {
+      setBackupingDb(null);
+    }
+  };
+
+  const handleRestoreClick = (db: string) => {
+    restoreTargetRef.current = db;
+    setRestoreError(null);
+    restoreInputRef.current?.click();
+  };
+
+  const handleRestoreFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const db = restoreTargetRef.current;
+    e.target.value = "";
+    if (!file || !db) return;
+    if (!confirm(`Restore "${file.name}" into "${db}"? Existing data may be overwritten.`)) return;
+    setRestoringDb(db);
+    setRestoreError(null);
+    try {
+      await databaseRequest.restoreDatabase(db, file);
+    } catch (err) {
+      setRestoreError(err instanceof Error ? err.message : "Restore failed");
+    } finally {
+      setRestoringDb(null);
+      restoreTargetRef.current = null;
+    }
   };
 
   return (
@@ -159,6 +207,24 @@ export default function AllDatabasesView() {
                       >
                         Export
                       </button>
+                      <button
+                        className="px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        onClick={() => handleBackupDb(db)}
+                        disabled={!backupAvailable || backupingDb === db}
+                        title={backupAvailable ? "Native dump (mysqldump / pg_dump / mongodump)" : "Native dump tool not installed on host"}
+                      >
+                        {backupingDb === db ? "Dumping…" : "Backup"}
+                      </button>
+                      {isAdmin && (
+                        <button
+                          className="px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          onClick={() => handleRestoreClick(db)}
+                          disabled={!backupAvailable || restoringDb === db}
+                          title={backupAvailable ? "Restore a dump file" : "Native restore tool not installed on host"}
+                        >
+                          {restoringDb === db ? "Restoring…" : "Restore"}
+                        </button>
+                      )}
                       {isAdmin && (
                         <button
                           className="px-2 py-0.5 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors"
@@ -183,6 +249,29 @@ export default function AllDatabasesView() {
             </tbody>
           </table>
         </ScrollArea>
+      )}
+
+      {/* Hidden file input for restore */}
+      <input
+        ref={restoreInputRef}
+        type="file"
+        accept={dbType === "mongodb" ? ".archive,.gz,.bson" : ".sql,.dump,.gz"}
+        className="hidden"
+        onChange={handleRestoreFile}
+      />
+
+      {restoreError && (
+        <div className="fixed bottom-4 right-4 max-w-sm bg-destructive text-destructive-foreground text-xs px-3 py-2 rounded shadow-lg z-50">
+          <div className="flex items-start gap-2">
+            <span className="flex-1">{restoreError}</span>
+            <button
+              onClick={() => setRestoreError(null)}
+              className="text-destructive-foreground/80 hover:text-destructive-foreground"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Create DB dialog */}

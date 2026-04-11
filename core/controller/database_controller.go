@@ -1817,6 +1817,77 @@ func (c *DatabaseController) MongoGetCollectionShardingInfo(w http.ResponseWrite
 	jsonResponse(w, http.StatusOK, info)
 }
 
+// ── Backup / Restore ──────────────────────────────────────────────────
+
+// BackupBinariesStatus reports which native dump tools are installed.
+// Used by the frontend to disable the backup button when the binary is
+// missing on the host.
+func (c *DatabaseController) BackupBinariesStatus(w http.ResponseWriter, r *http.Request) {
+	jsonResponse(w, http.StatusOK, c.dbService.BackupBinariesAvailable())
+}
+
+// BackupDatabase streams a full database dump as a file download.
+func (c *DatabaseController) BackupDatabase(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	if db == "" {
+		jsonError(w, http.StatusBadRequest, "missing db path param")
+		return
+	}
+
+	format := c.dbService.BackupFormat()
+	filename := fmt.Sprintf("%s-%s%s", db, time.Now().Format("20060102-150405"), format.Extension)
+
+	logger.Admin(requestUserID(r), requestIP(r), "backup", db)
+
+	w.Header().Set("Content-Type", format.ContentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	// Disable any reverse-proxy buffering so the user sees progress as
+	// the dump streams in.
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	if err := c.dbService.BackupDatabase(db, w); err != nil {
+		// At this point we've likely already written the response headers,
+		// so we can't switch to JSON. Surface the error in the body — the
+		// frontend will detect a corrupt download via the trailing error
+		// marker. We also log it for the operator.
+		fmt.Fprintf(w, "\n-- BACKUP FAILED: %s\n", err.Error())
+		return
+	}
+}
+
+// RestoreDatabase reads an uploaded dump file and replays it.
+// Expects multipart/form-data with field "file".
+func (c *DatabaseController) RestoreDatabase(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	if db == "" {
+		jsonError(w, http.StatusBadRequest, "missing db path param")
+		return
+	}
+
+	// 0 = unlimited memory limit; multipart will spool large files to /tmp.
+	// We cap the request body via the standard 32MB in-memory threshold and
+	// rely on the OS for the rest.
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid multipart payload: "+err.Error())
+		return
+	}
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, "missing file field")
+		return
+	}
+	defer file.Close()
+
+	logger.Admin(requestUserID(r), requestIP(r), "restore", db)
+
+	if err := c.dbService.RestoreDatabase(db, file); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

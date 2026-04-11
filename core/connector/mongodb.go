@@ -802,7 +802,33 @@ func (c *MongoConnector) CreateIndex(database, collection, keysJSON string, uniq
 
 // CreateIndexAdvanced creates a new index with TTL, sparse, and partial filter support.
 func (c *MongoConnector) CreateIndexAdvanced(database, collection, keysJSON string, unique, sparse bool, name string, ttlSeconds int, partialFilterJSON string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	return c.CreateIndexFull(database, collection, keysJSON, IndexCreateOptions{
+		Unique:        unique,
+		Sparse:        sparse,
+		Name:          name,
+		TTLSeconds:    ttlSeconds,
+		PartialFilter: partialFilterJSON,
+	})
+}
+
+// IndexCreateOptions covers the full set of index creation options.
+type IndexCreateOptions struct {
+	Unique          bool
+	Sparse          bool
+	Hidden          bool
+	Name            string
+	TTLSeconds      int
+	PartialFilter   string // JSON
+	Collation       string // JSON, e.g. {"locale": "en", "strength": 2}
+	WildcardProj    string // JSON, used with wildcard "$**" indexes
+	DefaultLanguage string // text indexes
+	TextWeights     string // JSON, text indexes — {"field": weight}
+}
+
+// CreateIndexFull creates an index with the full option set, supporting
+// regular, compound, text, 2dsphere, hashed, wildcard, and hidden indexes.
+func (c *MongoConnector) CreateIndexFull(database, collection, keysJSON string, opts IndexCreateOptions) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	var keys bson.D
@@ -814,31 +840,91 @@ func (c *MongoConnector) CreateIndexAdvanced(database, collection, keysJSON stri
 	}
 
 	model := mongo.IndexModel{Keys: keys}
-	opts := options.Index()
-	if unique {
-		opts.SetUnique(true)
+	o := options.Index()
+	if opts.Unique {
+		o.SetUnique(true)
 	}
-	if sparse {
-		opts.SetSparse(true)
+	if opts.Sparse {
+		o.SetSparse(true)
 	}
-	if name != "" {
-		opts.SetName(name)
+	if opts.Hidden {
+		o.SetHidden(true)
 	}
-	if ttlSeconds > 0 {
-		opts.SetExpireAfterSeconds(int32(ttlSeconds))
+	if opts.Name != "" {
+		o.SetName(opts.Name)
 	}
-	if partialFilterJSON != "" && partialFilterJSON != "{}" {
+	if opts.TTLSeconds > 0 {
+		o.SetExpireAfterSeconds(int32(opts.TTLSeconds))
+	}
+	if opts.PartialFilter != "" && opts.PartialFilter != "{}" {
 		var pf bson.D
-		if err := bson.UnmarshalExtJSON([]byte(partialFilterJSON), false, &pf); err != nil {
+		if err := bson.UnmarshalExtJSON([]byte(opts.PartialFilter), false, &pf); err != nil {
 			return fmt.Errorf("invalid partial filter JSON: %w", err)
 		}
-		opts.SetPartialFilterExpression(pf)
+		o.SetPartialFilterExpression(pf)
 	}
-	model.Options = opts
+	if opts.Collation != "" && opts.Collation != "{}" {
+		var c bson.M
+		if err := bson.UnmarshalExtJSON([]byte(opts.Collation), false, &c); err != nil {
+			return fmt.Errorf("invalid collation JSON: %w", err)
+		}
+		coll := &options.Collation{}
+		if v, ok := c["locale"].(string); ok {
+			coll.Locale = v
+		}
+		if v, ok := c["strength"]; ok {
+			switch n := v.(type) {
+			case int32:
+				coll.Strength = int(n)
+			case int64:
+				coll.Strength = int(n)
+			case float64:
+				coll.Strength = int(n)
+			}
+		}
+		if v, ok := c["caseLevel"].(bool); ok {
+			coll.CaseLevel = v
+		}
+		o.SetCollation(coll)
+	}
+	if opts.WildcardProj != "" && opts.WildcardProj != "{}" {
+		var wp bson.D
+		if err := bson.UnmarshalExtJSON([]byte(opts.WildcardProj), false, &wp); err != nil {
+			return fmt.Errorf("invalid wildcard projection JSON: %w", err)
+		}
+		o.SetWildcardProjection(wp)
+	}
+	if opts.DefaultLanguage != "" {
+		o.SetDefaultLanguage(opts.DefaultLanguage)
+	}
+	if opts.TextWeights != "" && opts.TextWeights != "{}" {
+		var w bson.D
+		if err := bson.UnmarshalExtJSON([]byte(opts.TextWeights), false, &w); err != nil {
+			return fmt.Errorf("invalid weights JSON: %w", err)
+		}
+		o.SetWeights(w)
+	}
+	model.Options = o
 
 	coll := c.client.Database(database).Collection(collection)
 	_, err := coll.Indexes().CreateOne(ctx, model)
 	return err
+}
+
+// SetIndexHidden hides or unhides an existing index using collMod.
+func (c *MongoConnector) SetIndexHidden(database, collection, indexName string, hidden bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := bson.D{
+		{Key: "collMod", Value: collection},
+		{Key: "index", Value: bson.D{
+			{Key: "name", Value: indexName},
+			{Key: "hidden", Value: hidden},
+		}},
+	}
+	var result bson.M
+	return c.client.Database(database).RunCommand(ctx, cmd).Decode(&result)
 }
 
 // DropIndex removes an index by name.
@@ -2087,6 +2173,16 @@ func (c *MongoConnector) Close() error {
 		return c.client.Disconnect(ctx)
 	}
 	return nil
+}
+
+// GetConfig returns the raw connection info. Used by external tools (mongodump).
+func (c *MongoConnector) GetConfig() ConnectionConfig {
+	return ConnectionConfig{
+		Host:     c.config.Host,
+		Port:     c.config.Port,
+		User:     c.config.User,
+		Password: c.config.Password,
+	}
 }
 
 // buildMongoFilter converts a primary key map to a bson.M filter,

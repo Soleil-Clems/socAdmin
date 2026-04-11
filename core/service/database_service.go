@@ -2,8 +2,10 @@ package service
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
+	"github.com/soleilouisol/socAdmin/core/backup"
 	"github.com/soleilouisol/socAdmin/core/connector"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -89,6 +91,40 @@ func (s *DatabaseService) GetConnectionInfo() *ConnectionInfo {
 		User:   s.user,
 		DbType: s.dbType,
 	}
+}
+
+// BackupDatabase streams a full dump of dbName to w using the appropriate
+// native binary (mysqldump/pg_dump/mongodump). The caller is responsible
+// for setting HTTP headers before calling.
+func (s *DatabaseService) BackupDatabase(dbName string, w io.Writer) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	cfg := s.conn.GetConfig()
+	return backup.Backup(s.dbType, cfg, dbName, w)
+}
+
+// RestoreDatabase replays a dump from r into dbName. For SQL dumps the
+// target database must already exist; for MongoDB the archive contains
+// the database name and is restored under dbName via --nsInclude.
+func (s *DatabaseService) RestoreDatabase(dbName string, r io.Reader) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	cfg := s.conn.GetConfig()
+	return backup.Restore(s.dbType, cfg, dbName, r)
+}
+
+// BackupBinariesAvailable returns a map[dbType]bool indicating whether
+// the dump binary for each SGBD is installed on this machine.
+func (s *DatabaseService) BackupBinariesAvailable() map[string]bool {
+	return backup.CheckBinaries()
+}
+
+// BackupFormat returns the canonical extension and content-type for the
+// current connection's backup format.
+func (s *DatabaseService) BackupFormat() backup.Format {
+	return backup.FormatFor(s.dbType)
 }
 
 func (s *DatabaseService) ListDatabases() ([]string, error) {

@@ -295,6 +295,16 @@ func (c *MySQLConnector) Close() error {
 	return nil
 }
 
+// GetConfig returns the raw connection info. Used by external tools (mysqldump).
+func (c *MySQLConnector) GetConfig() ConnectionConfig {
+	return ConnectionConfig{
+		Host:     c.config.Host,
+		Port:     c.config.Port,
+		User:     c.config.User,
+		Password: c.config.Password,
+	}
+}
+
 func quoteIdentifier(name string) string {
 	escaped := strings.ReplaceAll(name, "`", "``")
 	return "`" + escaped + "`"
