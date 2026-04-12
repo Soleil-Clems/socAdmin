@@ -31,6 +31,7 @@ type Column = {
   Type: string;
   Null: string;
   Key: string;
+  Default?: string | null;
   Extra?: string;
 };
 
@@ -65,7 +66,9 @@ function isAutoIncrement(col: Column) {
   return (
     col.Extra?.toLowerCase().includes("auto_increment") ||
     col.Type.toUpperCase() === "SERIAL" ||
-    col.Type.toUpperCase() === "BIGSERIAL"
+    col.Type.toUpperCase() === "BIGSERIAL" ||
+    col.Type.toUpperCase() === "SMALLSERIAL" ||
+    (col.Default ?? "").toLowerCase().includes("nextval(")
   );
 }
 
