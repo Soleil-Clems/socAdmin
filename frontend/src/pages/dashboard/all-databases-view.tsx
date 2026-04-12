@@ -79,7 +79,10 @@ export default function AllDatabasesView() {
   };
 
   const handleExportDb = (db: string) => {
-    databaseRequest.exportDatabase(db);
+    // SQL is meaningless for MongoDB — default to JSON there so the user
+    // gets a usable file. For MySQL/PG, .sql stays the sensible default.
+    const format = dbType === "mongodb" ? "json" : "sql";
+    databaseRequest.exportDatabase(db, format);
   };
 
   const handleBackupDb = async (db: string) => {

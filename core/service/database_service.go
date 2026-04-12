@@ -339,6 +339,13 @@ func (s *DatabaseService) ExecuteQuery(database, query string) (*connector.Query
 	return s.conn.ExecuteQuery(database, query)
 }
 
+func (s *DatabaseService) ExecuteScript(database, script string) (int, error) {
+	if s.conn == nil {
+		return 0, fmt.Errorf("not connected")
+	}
+	return s.conn.ExecuteScript(database, script)
+}
+
 func (s *DatabaseService) DropTable(database, table string) error {
 	if s.conn == nil {
 		return fmt.Errorf("not connected")

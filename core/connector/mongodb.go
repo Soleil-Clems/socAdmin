@@ -198,6 +198,12 @@ func (c *MongoConnector) GetRows(database, collection string, limit, offset int)
 	return cursorToQueryResult(ctx, cursor)
 }
 
+// ExecuteScript is not supported for MongoDB — use mongorestore via the
+// Restore endpoint or send commands one at a time via ExecuteQuery.
+func (c *MongoConnector) ExecuteScript(database, script string) (int, error) {
+	return 0, fmt.Errorf("multi-statement scripts are not supported for MongoDB; use Restore for backup files or run commands one at a time")
+}
+
 // ExecuteQuery exécute une commande JSON MongoDB (ex: {"find": "users", "filter": {"age": {"$gt": 25}}})
 func (c *MongoConnector) ExecuteQuery(database, query string) (*QueryResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -2164,6 +2170,12 @@ func (c *MongoConnector) RunAggregation(database, collection, pipelineJSON strin
 	defer cursor.Close(ctx)
 
 	return cursorToQueryResult(ctx, cursor)
+}
+
+// QuoteIdentifier is a no-op for MongoDB — collection/field names are
+// passed as-is in BSON documents, not inlined in a query string.
+func (c *MongoConnector) QuoteIdentifier(name string) string {
+	return name
 }
 
 func (c *MongoConnector) Close() error {

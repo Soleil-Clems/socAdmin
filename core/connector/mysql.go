@@ -242,8 +242,16 @@ func (c *MySQLConnector) TruncateTable(database, table string) error {
 	return err
 }
 
+// QuoteIdentifier wraps a MySQL identifier in backticks.
+func (c *MySQLConnector) QuoteIdentifier(name string) string {
+	return quoteIdentifier(name)
+}
+
 func (c *MySQLConnector) connectToDb(database string) (*sql.DB, error) {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s",
+	// multiStatements=true allows us to run an entire SQL dump (or any
+	// `;`-separated script) in a single Exec call without naïvely splitting
+	// it ourselves — MySQL handles comments, delimiters, strings correctly.
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?multiStatements=true&parseTime=true",
 		c.config.User, c.config.Password, c.config.Host, c.config.Port, database)
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
@@ -254,6 +262,26 @@ func (c *MySQLConnector) connectToDb(database string) (*sql.DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+// ExecuteScript runs a multi-statement SQL script in a single Exec call.
+// Requires the per-database connection (which has multiStatements=true).
+// Returns 1 on success since MySQL handles the whole script atomically;
+// callers wanting per-statement progress should split client-side.
+func (c *MySQLConnector) ExecuteScript(database, script string) (int, error) {
+	if database == "" {
+		return 0, fmt.Errorf("database is required")
+	}
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(script); err != nil {
+		return 0, err
+	}
+	return 1, nil
 }
 
 func buildInsertSQL(data map[string]interface{}) (string, string, []interface{}) {

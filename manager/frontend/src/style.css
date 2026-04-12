@@ -26,14 +26,26 @@
   --color-blue-subtle: oklch(0.19 0.055 245);
 
   /* Default safe areas (Windows / Linux — no traffic lights, no rounded corners) */
-  --titlebar-h: 32px;
+  --titlebar-h: 36px;
   --traffic-light-w: 0px;
   --window-radius: 0px;
 
-  /* Content rhythm — used by tab panes for consistent breathing room */
-  --content-px: 2rem;        /* 32px horizontal */
-  --content-py: 1.75rem;     /* 28px vertical */
-  --content-max: 56rem;      /* 896px — comfortable reading width on wide windows */
+  /* Content rhythm — fluid so small windows stay compact and large windows
+     actually breathe. clamp(min, preferred, max) scales with viewport width.
+     Values picked to match a desktop app (not a web page): generous bottom
+     padding so content never kisses the window edge, extra horizontal room
+     on wide monitors so cards don't feel adrift in a sea of whitespace. */
+  --content-px: clamp(1.75rem, 3.5vw, 3rem);       /* 28 → 48px */
+  --content-py: clamp(1.75rem, 3vw, 2.5rem);       /* 28 → 40px */
+  --content-pb: clamp(2.25rem, 4vw, 3.25rem);      /* bottom breathing room */
+  --content-max: 62rem;                             /* 992px — roomier on wide windows */
+
+  /* Section rhythm inside tab panes */
+  --section-gap: clamp(1.5rem, 2.25vw, 2rem);       /* 24 → 32px */
+  --card-p: clamp(1.125rem, 1.75vw, 1.5rem);        /* 18 → 24px */
+
+  /* Sidebar */
+  --sidebar-w: 14.5rem;                             /* 232px */
 }
 
 /* Light theme override */
@@ -63,7 +75,10 @@
   --color-blue-subtle: oklch(0.93 0.035 245);
 }
 
-/* macOS safe areas — taller titlebar, traffic light offset, rounded window */
+/* macOS safe areas — taller titlebar, traffic light offset, rounded window.
+   Traffic lights live in the top-left at ~78px wide; the title row respects
+   this via the --traffic-light-w token so interactive elements never end up
+   hidden under the OS chrome. */
 [data-os="darwin"] {
   --titlebar-h: 52px;
   --traffic-light-w: 78px;

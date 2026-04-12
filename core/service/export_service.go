@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/soleilouisol/socAdmin/core/connector"
 	"gopkg.in/yaml.v3"
 )
 
@@ -151,7 +152,86 @@ func (s *DatabaseService) ExportYAML(w io.Writer, database, table string) error 
 	return yaml.NewEncoder(w).Encode(result.Rows)
 }
 
-// ExportSQL writes table data as CREATE TABLE + INSERT statements
+// sanitizeColumnExtra strips MySQL information_schema noise from the EXTRA
+// column so what remains is valid CREATE TABLE syntax. EXTRA can contain:
+//
+//	auto_increment                          → keep
+//	on update CURRENT_TIMESTAMP             → keep
+//	DEFAULT_GENERATED                       → drop (it's a flag meaning "has a DEFAULT")
+//	DEFAULT_GENERATED on update CURRENT_TIMESTAMP → keep just the "on update ..." part
+//	VIRTUAL GENERATED / STORED GENERATED    → drop (we don't replay generated exprs)
+//	INVISIBLE                               → drop (MySQL 8 only, non-standard)
+func sanitizeColumnExtra(extra string) string {
+	if extra == "" {
+		return ""
+	}
+	// Strip the pure-metadata DEFAULT_GENERATED prefix so "DEFAULT_GENERATED
+	// on update CURRENT_TIMESTAMP" becomes "on update CURRENT_TIMESTAMP".
+	cleaned := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(extra), "DEFAULT_GENERATED"))
+	lower := strings.ToLower(cleaned)
+	switch {
+	case lower == "" || lower == "default_generated":
+		return ""
+	case strings.Contains(lower, "generated"):
+		// Computed columns — too complex to replay reliably, skip.
+		return ""
+	case strings.Contains(lower, "invisible"):
+		return ""
+	}
+	return cleaned
+}
+
+// formatSQLDefault quotes a default value coming from DescribeTable so it
+// is valid inside a CREATE TABLE DEFAULT clause. MySQL returns function
+// defaults like CURRENT_TIMESTAMP or NOW() unquoted; literal defaults
+// ('foo', 0, '2024-01-01') should be quoted. We detect functions by
+// checking for trailing parens or a known keyword list.
+func formatSQLDefault(def, colType string) string {
+	if def == "" {
+		return "''"
+	}
+	upper := strings.ToUpper(strings.TrimSpace(def))
+	// NULL and numeric-looking defaults need no quoting
+	if upper == "NULL" {
+		return "NULL"
+	}
+	// Known MySQL default-function names
+	functions := []string{
+		"CURRENT_TIMESTAMP", "CURRENT_DATE", "CURRENT_TIME",
+		"NOW", "UTC_TIMESTAMP", "UTC_DATE", "UTC_TIME", "UUID",
+	}
+	for _, fn := range functions {
+		if upper == fn || strings.HasPrefix(upper, fn+"(") {
+			return def
+		}
+	}
+	// If the column type is numeric and the default parses as a number,
+	// leave it unquoted.
+	if isNumericType(colType) {
+		if _, err := fmt.Sscanf(def, "%f", new(float64)); err == nil {
+			return def
+		}
+	}
+	// Fall through: treat as a string literal, escape single quotes.
+	escaped := strings.ReplaceAll(def, "'", "''")
+	return "'" + escaped + "'"
+}
+
+// isNumericType returns true for MySQL numeric column types.
+func isNumericType(t string) bool {
+	lower := strings.ToLower(t)
+	prefixes := []string{"int", "tinyint", "smallint", "mediumint", "bigint", "decimal", "numeric", "float", "double", "bit"}
+	for _, p := range prefixes {
+		if strings.HasPrefix(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// ExportSQL writes table data as CREATE TABLE + INSERT statements, using
+// the SGBD-specific identifier quoting (backticks for MySQL, double
+// quotes for Postgres). MongoDB doesn't go through here — use JSON.
 func (s *DatabaseService) ExportSQL(w io.Writer, database, table string) error {
 	columns, err := s.conn.DescribeTable(database, table)
 	if err != nil {
@@ -163,30 +243,65 @@ func (s *DatabaseService) ExportSQL(w io.Writer, database, table string) error {
 		return err
 	}
 
+	q := s.conn.QuoteIdentifier
+	// Sniff the connector type once so we can emit SGBD-specific syntax
+	// (SERIAL vs auto_increment, skip nextval defaults, etc).
+	_, isPostgres := s.conn.(*connector.PostgresConnector)
+
 	fmt.Fprintf(w, "-- Export of %s.%s\n\n", database, table)
 
 	var colDefs []string
 	var pks []string
 	for _, col := range columns {
-		def := fmt.Sprintf("  `%s` %s", col.Name, col.Type)
+		colType := col.Type
+		skipDefault := false
+
+		// Postgres identity columns come back as `integer NOT NULL
+		// DEFAULT nextval(...)` + extra="auto_increment". None of that
+		// is valid in a literal CREATE TABLE — collapse it all to the
+		// SERIAL shorthand Postgres already understands.
+		if isPostgres && strings.EqualFold(col.Extra, "auto_increment") {
+			switch strings.ToLower(colType) {
+			case "smallint":
+				colType = "SMALLSERIAL"
+			case "bigint":
+				colType = "BIGSERIAL"
+			default:
+				colType = "SERIAL"
+			}
+			skipDefault = true
+		}
+		// Even for non-identity Postgres columns, a nextval default is
+		// always tied to a sequence that doesn't exist in the target DB.
+		if isPostgres && col.Default != nil && strings.Contains(strings.ToLower(*col.Default), "nextval(") {
+			skipDefault = true
+		}
+
+		def := fmt.Sprintf("  %s %s", q(col.Name), colType)
 		if col.Null == "NO" {
 			def += " NOT NULL"
 		}
-		if col.Extra != "" {
-			def += " " + col.Extra
+		// DEFAULT must come before AUTO_INCREMENT / ON UPDATE in MySQL's
+		// CREATE TABLE grammar.
+		if !skipDefault && col.Default != nil {
+			def += " DEFAULT " + formatSQLDefault(*col.Default, colType)
 		}
-		if col.Default != nil {
-			def += " DEFAULT " + *col.Default
+		// Extra is MySQL-specific. For Postgres we already handled the
+		// auto_increment case above (→ SERIAL) so skip it entirely.
+		if !isPostgres {
+			if extra := sanitizeColumnExtra(col.Extra); extra != "" {
+				def += " " + extra
+			}
 		}
 		colDefs = append(colDefs, def)
 		if col.Key == "PRI" {
-			pks = append(pks, fmt.Sprintf("`%s`", col.Name))
+			pks = append(pks, q(col.Name))
 		}
 	}
 	if len(pks) > 0 {
 		colDefs = append(colDefs, "  PRIMARY KEY ("+strings.Join(pks, ", ")+")")
 	}
-	fmt.Fprintf(w, "CREATE TABLE IF NOT EXISTS `%s` (\n%s\n);\n\n", table, strings.Join(colDefs, ",\n"))
+	fmt.Fprintf(w, "CREATE TABLE IF NOT EXISTS %s (\n%s\n);\n\n", q(table), strings.Join(colDefs, ",\n"))
 
 	if len(result.Rows) == 0 {
 		return nil
@@ -194,7 +309,7 @@ func (s *DatabaseService) ExportSQL(w io.Writer, database, table string) error {
 
 	quotedCols := make([]string, len(result.Columns))
 	for i, col := range result.Columns {
-		quotedCols[i] = "`" + col + "`"
+		quotedCols[i] = q(col)
 	}
 	colList := strings.Join(quotedCols, ", ")
 
@@ -210,7 +325,7 @@ func (s *DatabaseService) ExportSQL(w io.Writer, database, table string) error {
 				vals[i] = "'" + s + "'"
 			}
 		}
-		fmt.Fprintf(w, "INSERT INTO `%s` (%s) VALUES (%s);\n", table, colList, strings.Join(vals, ", "))
+		fmt.Fprintf(w, "INSERT INTO %s (%s) VALUES (%s);\n", q(table), colList, strings.Join(vals, ", "))
 	}
 
 	return nil

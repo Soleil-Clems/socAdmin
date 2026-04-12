@@ -211,6 +211,12 @@ func buildRestoreCommand(dbType string, cfg connector.ConnectionConfig, dbName s
 		if bin == "" {
 			return "", nil, nil, fmt.Errorf("%w: mysql", ErrBinaryMissing)
 		}
+		// NOTE: we'd like to pass --abort-source-on-error so partial
+		// restores can't leave a half-populated DB, but that flag only
+		// exists in MySQL 8.0+ and MAMP ships 5.7 — adding it breaks
+		// restore entirely. mysql(1) reading from stdin aborts on fatal
+		// errors by default anyway; the cases where it continues are
+		// benign (warnings, duplicate-ignored, etc).
 		args = []string{
 			fmt.Sprintf("--host=%s", cfg.Host),
 			fmt.Sprintf("--port=%d", cfg.Port),
@@ -231,6 +237,9 @@ func buildRestoreCommand(dbType string, cfg connector.ConnectionConfig, dbName s
 			fmt.Sprintf("--port=%d", cfg.Port),
 			"--username=" + cfg.User,
 			"--no-password",
+			// Equivalent of --abort-source-on-error for psql: stop on the
+			// first error instead of limping along.
+			"-v", "ON_ERROR_STOP=1",
 			"--dbname=" + dbName,
 		}
 		if cfg.Password != "" {

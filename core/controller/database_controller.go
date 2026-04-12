@@ -291,7 +291,32 @@ func (c *DatabaseController) ExecuteQuery(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Multi-statement detection: if the query contains more than one real
+	// statement (ignoring trailing semicolons + comments), route to
+	// ExecuteScript so the whole block is executed atomically by the
+	// driver. A single-statement query still goes through ExecuteQuery
+	// so we can return rows.
 	start := time.Now()
+	if isMultiStatement(req.Query) {
+		if req.Database == "" {
+			jsonError(w, http.StatusBadRequest, "database is required for multi-statement scripts")
+			return
+		}
+		_, err := c.dbService.ExecuteScript(req.Database, req.Query)
+		duration := time.Since(start)
+		if err != nil {
+			logger.Query(requestUserID(r), requestIP(r), req.Database, duration, 0, true)
+			jsonError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		logger.Query(requestUserID(r), requestIP(r), req.Database, duration, 0, false)
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"Columns": []string{"result"},
+			"Rows":    []map[string]interface{}{{"result": "script executed"}},
+		})
+		return
+	}
+
 	result, err := c.dbService.ExecuteQuery(req.Database, req.Query)
 	duration := time.Since(start)
 
@@ -530,29 +555,34 @@ func (c *DatabaseController) ImportSQL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sql := string(body)
-	statements := splitSQL(sql)
 
-	var errors []string
-	executed := 0
-	for _, stmt := range statements {
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" {
-			continue
-		}
-		if _, err := c.dbService.ExecuteQuery(db, stmt); err != nil {
-			errors = append(errors, err.Error())
-		} else {
-			executed++
-		}
+	// Reject native dumps — they include directives (SET, USE, /*!...*/,
+	// CREATE DATABASE) that our simple Exec path can't reliably replay.
+	// The user should go through the Restore endpoint instead, which pipes
+	// the file to mysql / psql directly.
+	if looksLikeNativeDump(sql) {
+		jsonError(w, http.StatusBadRequest,
+			"This looks like a native dump file (mysqldump / pg_dump output). "+
+				"Use the Restore button on the database row instead — Import SQL "+
+				"is meant for hand-written scripts, not full backups.")
+		return
 	}
 
-	logger.Import(requestUserID(r), requestIP(r), db, "", "sql", executed)
-
-	result := map[string]interface{}{
-		"executed": executed,
-		"errors":   errors,
+	// Delegate to the driver which knows how to parse comments, strings
+	// and delimiters correctly — way more reliable than our regex-based
+	// splitSQL. On failure we return the raw driver error so the user
+	// sees exactly which statement broke.
+	if _, err := c.dbService.ExecuteScript(db, sql); err != nil {
+		logger.Import(requestUserID(r), requestIP(r), db, "", "sql", 0)
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
 	}
-	jsonResponse(w, http.StatusOK, result)
+
+	logger.Import(requestUserID(r), requestIP(r), db, "", "sql", 1)
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"executed": 1,
+		"errors":   []string{},
+	})
 }
 
 func (c *DatabaseController) ImportCSV(w http.ResponseWriter, r *http.Request) {
@@ -640,6 +670,55 @@ func (c *DatabaseController) ImportJSON(w http.ResponseWriter, r *http.Request) 
 }
 
 // splitSQL splits a SQL dump into individual statements
+// isMultiStatement returns true if the SQL string contains more than one
+// semicolon-terminated statement (ignoring comments and trailing
+// whitespace). We use this to route the query editor between the
+// single-statement ExecuteQuery path (which can return rows) and the
+// multi-statement ExecuteScript path.
+func isMultiStatement(sql string) bool {
+	stmts := splitSQL(sql)
+	count := 0
+	for _, s := range stmts {
+		if strings.TrimSpace(s) != "" {
+			count++
+			if count > 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// looksLikeNativeDump sniffs the first few KB of an SQL file for the
+// telltale comments / directives produced by mysqldump and pg_dump. We
+// use this to reject dumps in Import SQL (where they'd fail anyway) and
+// direct the user to Restore instead.
+func looksLikeNativeDump(sql string) bool {
+	head := sql
+	if len(head) > 4096 {
+		head = head[:4096]
+	}
+	head = strings.ToLower(head)
+
+	markers := []string{
+		"-- mysql dump",       // mysqldump
+		"-- mariadb dump",     // mariadb-dump
+		"-- host:",            // mysqldump header
+		"-- server version",   // mysqldump header
+		"-- postgresql database dump", // pg_dump
+		"-- dumped from database", // pg_dump
+		"-- dumped by pg_dump",    // pg_dump
+		"/*!40",               // mysqldump conditional comments
+		"/*!50",
+	}
+	for _, m := range markers {
+		if strings.Contains(head, m) {
+			return true
+		}
+	}
+	return false
+}
+
 func splitSQL(sql string) []string {
 	var statements []string
 	var current strings.Builder

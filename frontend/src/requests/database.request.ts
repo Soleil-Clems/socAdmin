@@ -1,4 +1,4 @@
-import customfetch, { API_URL } from "@/lib/custom-fetch";
+import customfetch from "@/lib/custom-fetch";
 
 export type TableColumnDef = {
   name: string;
@@ -188,20 +188,8 @@ export const databaseRequest = {
   mongoExplain: (db: string, collection: string, filter: string, sort: string) =>
     customfetch.post<Record<string, unknown>>(`/databases/${db}/tables/${collection}/explain`, { filter, sort }),
 
-  mongoInsertMany: async (db: string, collection: string, docs: Record<string, unknown>[]) => {
-    const token = localStorage.getItem("access_token");
-    const res = await fetch(`${API_URL}/databases/${db}/tables/${collection}/insertMany`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(docs),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Insert failed");
-    return data as { inserted: number };
-  },
+  mongoInsertMany: (db: string, collection: string, docs: Record<string, unknown>[]) =>
+    customfetch.post<{ inserted: number }>(`/databases/${db}/tables/${collection}/insertMany`, docs),
 
   mongoUpdateMany: (db: string, collection: string, filter: string, update: string) =>
     customfetch.post<{ matched: number; modified: number }>(`/databases/${db}/tables/${collection}/updateMany`, { filter, update }),
@@ -355,34 +343,17 @@ export const databaseRequest = {
   mongoListGridFSFiles: (db: string, bucket: string, limit = 200) =>
     customfetch.get<GridFSFileInfo[]>(`/databases/${db}/gridfs/${bucket}/files?limit=${limit}`),
 
-  mongoUploadGridFSFile: async (db: string, bucket: string, file: File) => {
-    const token = localStorage.getItem("access_token");
+  mongoUploadGridFSFile: (db: string, bucket: string, file: File) => {
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(`${API_URL}/databases/${db}/gridfs/${bucket}/files`, {
-      method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: form,
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Upload failed");
-    return data as { id: string; filename: string; size: number };
+    return customfetch.upload<{ id: string; filename: string; size: number }>(
+      `/databases/${db}/gridfs/${bucket}/files`,
+      form,
+    );
   },
 
-  mongoDownloadGridFSFile: async (db: string, bucket: string, id: string, filename: string) => {
-    const token = localStorage.getItem("access_token");
-    const res = await fetch(`${API_URL}/databases/${db}/gridfs/${bucket}/files/${id}/download`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) throw new Error(`Download failed: ${res.statusText}`);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  },
+  mongoDownloadGridFSFile: (db: string, bucket: string, id: string, filename: string) =>
+    customfetch.download(`/databases/${db}/gridfs/${bucket}/files/${id}/download`, filename),
 
   mongoDeleteGridFSFile: (db: string, bucket: string, id: string) =>
     customfetch.delete(`/databases/${db}/gridfs/${bucket}/files/${id}`),
@@ -417,85 +388,22 @@ export const databaseRequest = {
 
   serverStatus: () => customfetch.get<Record<string, unknown>>("/status"),
 
-  // Export — returns raw file content (not JSON)
-  exportDatabase: async (db: string, format: "csv" | "json" | "sql" | "yaml" = "sql") => {
-    const token = localStorage.getItem("access_token");
-    const res = await fetch(`${API_URL}/databases/${db}/export?format=${format}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${db}.${format}`;
-    a.click();
-    URL.revokeObjectURL(url);
-  },
+  // Export — triggers a file download with the SGBD-native dump format
+  exportDatabase: (db: string, format: "csv" | "json" | "sql" | "yaml" = "sql") =>
+    customfetch.download(`/databases/${db}/export?format=${format}`, `${db}.${format}`),
 
-  exportTable: async (db: string, table: string, format: "csv" | "json" | "sql" | "yaml") => {
-    const token = localStorage.getItem("access_token");
-    const res = await fetch(`${API_URL}/databases/${db}/tables/${table}/export?format=${format}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${table}.${format}`;
-    a.click();
-    URL.revokeObjectURL(url);
-  },
+  exportTable: (db: string, table: string, format: "csv" | "json" | "sql" | "yaml") =>
+    customfetch.download(`/databases/${db}/tables/${table}/export?format=${format}`, `${table}.${format}`),
 
-  // Import
-  importSQL: (db: string, sql: string) => {
-    const token = localStorage.getItem("access_token");
-    return fetch(`${API_URL}/databases/${db}/import/sql`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: sql,
-    }).then(async (res) => {
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Import failed");
-      return data;
-    });
-  },
+  // Import — raw text body, custom Content-Type per format
+  importSQL: (db: string, sql: string) =>
+    customfetch.postText(`/databases/${db}/import/sql`, sql, "text/plain"),
 
-  importCSV: (db: string, table: string, csv: string) => {
-    const token = localStorage.getItem("access_token");
-    return fetch(`${API_URL}/databases/${db}/tables/${table}/import/csv`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/csv",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: csv,
-    }).then(async (res) => {
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Import failed");
-      return data;
-    });
-  },
+  importCSV: (db: string, table: string, csv: string) =>
+    customfetch.postText(`/databases/${db}/tables/${table}/import/csv`, csv, "text/csv"),
 
-  importJSON: (db: string, table: string, jsonData: string) => {
-    const token = localStorage.getItem("access_token");
-    return fetch(`${API_URL}/databases/${db}/tables/${table}/import/json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: jsonData,
-    }).then(async (res) => {
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Import failed");
-      return data;
-    });
-  },
+  importJSON: (db: string, table: string, jsonData: string) =>
+    customfetch.postText(`/databases/${db}/tables/${table}/import/json`, jsonData, "application/json"),
 
   // ── Backup / Restore ────────────────────────────────────────────
   // Returns which native dump tools are installed on the host so the
@@ -504,43 +412,20 @@ export const databaseRequest = {
     customfetch.get<Record<string, boolean>>("/backup/binaries"),
 
   // Streams a database dump to a file download.
-  backupDatabase: async (db: string, dbType: string) => {
-    const token = localStorage.getItem("access_token");
-    const res = await fetch(`${API_URL}/databases/${db}/backup`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || `Backup failed: ${res.statusText}`);
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+  backupDatabase: (db: string, dbType: string) => {
     const ts = new Date()
       .toISOString()
       .replace(/[-:]/g, "")
       .replace("T", "-")
       .slice(0, 15);
     const ext = dbType === "mongodb" ? "archive" : "sql";
-    a.href = url;
-    a.download = `${db}-${ts}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(url);
+    return customfetch.download(`/databases/${db}/backup`, `${db}-${ts}.${ext}`);
   },
 
   // Uploads a dump file and replays it into db.
   restoreDatabase: (db: string, file: File) => {
-    const token = localStorage.getItem("access_token");
     const form = new FormData();
     form.append("file", file);
-    return fetch(`${API_URL}/databases/${db}/restore`, {
-      method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: form,
-    }).then(async (res) => {
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Restore failed");
-      return data;
-    });
+    return customfetch.upload(`/databases/${db}/restore`, form);
   },
 };

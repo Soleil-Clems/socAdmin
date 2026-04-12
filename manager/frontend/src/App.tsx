@@ -125,11 +125,20 @@ function App() {
       {/* Title bar — drag region. On macOS, traffic lights occupy the top-left
           (the OS overlays them on top of our drag region and stays interactive).
           We center the title absolutely on the window so it stays visually
-          centered regardless of OS-specific safe areas on the left. */}
+          centered regardless of OS-specific safe areas on the left. The left
+          spacer reserves the traffic-light area so right-cluster actions never
+          get pushed under the OS chrome on narrow windows. */}
       <header
         className="drag-region relative flex shrink-0 items-center border-b border-border-subtle/50"
         style={{ height: "var(--titlebar-h)" }}
       >
+        {/* Left safe-area spacer — width = traffic-light cluster on macOS, 0 elsewhere */}
+        <div
+          className="shrink-0"
+          style={{ width: "var(--traffic-light-w)" }}
+          aria-hidden
+        />
+
         {/* Centered title — absolute so it ignores left/right cluster widths */}
         <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
           <div className="h-3.5 w-3.5 rounded-sm bg-brand" />
@@ -139,7 +148,7 @@ function App() {
         </div>
 
         {/* Right cluster — theme toggle + status */}
-        <div className="ml-auto flex items-center gap-3 pr-4">
+        <div className="ml-auto flex items-center gap-3 pr-5">
           <button
             onClick={toggleTheme}
             className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
@@ -162,8 +171,11 @@ function App() {
 
       <div className="flex min-h-0 flex-1">
         {/* Sidebar — flex column with proper internal padding rhythm */}
-        <nav className="flex w-56 shrink-0 flex-col border-r border-border-subtle/50 bg-surface/20">
-          <div className="flex flex-1 flex-col gap-0.5 min-h-0 overflow-y-auto px-3 py-4">
+        <nav
+          className="flex shrink-0 flex-col border-r border-border-subtle/50 bg-surface/20"
+          style={{ width: "var(--sidebar-w)" }}
+        >
+          <div className="flex flex-1 flex-col gap-1 min-h-0 overflow-y-auto px-4 py-5">
             <SidebarItem
               icon={<IconServer />}
               label="Server"
@@ -185,22 +197,25 @@ function App() {
             />
           </div>
 
-          <div className="shrink-0 border-t border-border-subtle/30 px-5 py-3">
+          <div className="shrink-0 border-t border-border-subtle/30 px-5 py-4">
             {sysInfo.os && (
-              <p className="text-[10px] text-text-muted/50 capitalize leading-relaxed">
+              <p className="text-[10px] text-text-muted/50 capitalize leading-relaxed tracking-wide">
                 {sysInfo.os} · {sysInfo.arch}
               </p>
             )}
           </div>
         </nav>
 
-        {/* Content — generous desktop padding, max-width container so wide
-            windows don't stretch the layout into a thin spread of cards */}
+        {/* Content — fluid desktop padding, max-width container so wide
+            windows don't stretch the layout into a thin spread of cards.
+            Bottom padding is larger than top so content doesn't kiss the
+            window edge when scrolled to the end. */}
         <main
           className="flex-1 overflow-y-auto"
           style={{
             paddingInline: "var(--content-px)",
-            paddingBlock: "var(--content-py)",
+            paddingTop: "var(--content-py)",
+            paddingBottom: "var(--content-pb)",
           }}
         >
           <div
@@ -241,7 +256,7 @@ function ErrorBanner({
   onDismiss: () => void;
 }) {
   return (
-    <div className="mb-6 flex items-start gap-3 rounded-lg bg-red-subtle/70 px-4 py-3 text-[13px] text-red leading-snug">
+    <div className="mb-7 flex items-start gap-3 rounded-lg bg-red-subtle/70 px-4 py-3 text-[13px] text-red leading-snug">
       <svg
         width="14"
         height="14"
@@ -358,7 +373,7 @@ function SidebarItem({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] transition-colors ${
+      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] transition-colors ${
         active
           ? "bg-surface-active text-text font-medium"
           : "text-text-secondary hover:bg-surface-hover hover:text-text"
@@ -399,7 +414,7 @@ function ServerTab({
   const running = status?.running ?? false;
 
   return (
-    <div className="space-y-7">
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--section-gap)" }}>
       <div>
         <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Server</h2>
         <p className="mt-1 text-[13px] text-text-muted">
@@ -408,7 +423,10 @@ function ServerTab({
       </div>
 
       {/* Status + actions */}
-      <div className="rounded-xl border border-border bg-surface/60 p-5">
+      <div
+        className="rounded-xl border border-border bg-surface/60"
+        style={{ padding: "var(--card-p)" }}
+      >
         <div className="flex items-center justify-between gap-5">
           <div className="flex items-center gap-4 min-w-0">
             <div
@@ -477,7 +495,7 @@ function ServerTab({
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-3.5">
         <StatCard label="Port" value={String(status?.port ?? "—")} />
         <StatCard
           label="Status"
@@ -500,7 +518,7 @@ function StatCard({
   accent?: "green";
 }) {
   return (
-    <div className="rounded-lg border border-border-subtle/70 bg-surface/40 px-4 py-3">
+    <div className="rounded-lg border border-border-subtle/70 bg-surface/40 px-4 py-3.5">
       <p className="text-[10px] font-medium uppercase tracking-wider text-text-muted/70">
         {label}
       </p>
@@ -652,7 +670,7 @@ function DatabasesTab({
   };
 
   return (
-    <div className="space-y-7">
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--section-gap)" }}>
       <div>
         <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Databases</h2>
         <p className="mt-1 text-[13px] text-text-muted">
@@ -682,7 +700,7 @@ function DatabasesTab({
             return (
               <div
                 key={svc.name}
-                className="rounded-xl border border-border bg-surface/60 px-5 py-4"
+                className="rounded-xl border border-border bg-surface/60 px-5 py-[18px]"
               >
                 <div className="flex items-center gap-4">
                   <div
@@ -816,7 +834,7 @@ function DatabasesTab({
               return (
                 <div
                   key={svc.name}
-                  className="rounded-xl border border-dashed border-border-subtle bg-surface/20 px-5 py-4"
+                  className="rounded-xl border border-dashed border-border-subtle bg-surface/20 px-5 py-[18px]"
                 >
                   <div className="flex items-center gap-4">
                     <div
@@ -858,11 +876,11 @@ function DatabasesTab({
 
       {/* Nothing at all */}
       {installed.length === 0 && (!canInstall || notInstalled.length === 0) && (
-        <div className="rounded-xl border border-dashed border-border-subtle bg-surface/20 px-6 py-12 text-center">
+        <div className="rounded-xl border border-dashed border-border-subtle bg-surface/20 px-6 py-14 text-center">
           <p className="text-[13px] text-text-secondary">
             No database engines detected
           </p>
-          <p className="mt-1.5 text-[12px] text-text-muted">
+          <p className="mt-2 text-[12px] text-text-muted">
             Install MySQL, PostgreSQL, or MongoDB to get started
           </p>
         </div>
@@ -870,9 +888,12 @@ function DatabasesTab({
 
       {/* Uninstall confirmation dialog */}
       {confirmUninstall && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80">
-          <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 space-y-4">
-            <div className="flex items-start gap-3">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-[2px]"
+          style={{ padding: "var(--content-px)" }}
+        >
+          <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 space-y-5 shadow-2xl shadow-black/40">
+            <div className="flex items-start gap-3.5">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-subtle text-red">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10" />
@@ -890,7 +911,7 @@ function DatabasesTab({
                 </p>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 pt-1">
+            <div className="flex items-center justify-end gap-2">
               <button
                 onClick={() => setConfirmUninstall(null)}
                 className="rounded-lg px-4 py-2 text-[12px] font-medium text-text-secondary hover:bg-surface-hover transition-colors"
@@ -944,7 +965,7 @@ function SettingsTab({
   };
 
   return (
-    <div className="space-y-7">
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--section-gap)" }}>
       <div>
         <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Settings</h2>
         <p className="mt-1 text-[13px] text-text-muted">
@@ -953,12 +974,15 @@ function SettingsTab({
       </div>
 
       {/* Port */}
-      <section className="rounded-xl border border-border bg-surface/60 p-5">
+      <section
+        className="rounded-xl border border-border bg-surface/60"
+        style={{ padding: "var(--card-p)" }}
+      >
         <h3 className="text-[13px] font-semibold">Server Port</h3>
         <p className="mt-1 text-[12px] text-text-muted">
           Port for the socAdmin web interface
         </p>
-        <div className="mt-4 flex items-center gap-2.5">
+        <div className="mt-5 flex items-center gap-2.5">
           <input
             type="number"
             min={1024}
@@ -986,7 +1010,10 @@ function SettingsTab({
       </section>
 
       {/* Startup toggles */}
-      <section className="rounded-xl border border-border bg-surface/60 p-5 space-y-4">
+      <section
+        className="rounded-xl border border-border bg-surface/60 space-y-5"
+        style={{ padding: "var(--card-p)" }}
+      >
         <h3 className="text-[13px] font-semibold">Startup</h3>
 
         <ToggleRow
@@ -1011,12 +1038,15 @@ function SettingsTab({
       </section>
 
       {/* DB Ports overview */}
-      <section className="rounded-xl border border-border bg-surface/60 p-5">
+      <section
+        className="rounded-xl border border-border bg-surface/60"
+        style={{ padding: "var(--card-p)" }}
+      >
         <h3 className="text-[13px] font-semibold">Database Ports</h3>
         <p className="mt-1 text-[12px] text-text-muted">
           Change these in the Databases tab
         </p>
-        <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="mt-5 grid grid-cols-3 gap-3">
           <PortCard label="MySQL" port={config.mysqlPort} />
           <PortCard label="PostgreSQL" port={config.pgPort} />
           <PortCard label="MongoDB" port={config.mongoPort} />
@@ -1028,11 +1058,11 @@ function SettingsTab({
 
 function PortCard({ label, port }: { label: string; port: number }) {
   return (
-    <div className="rounded-lg bg-bg px-3.5 py-3 border border-border-subtle/50">
+    <div className="rounded-lg bg-bg px-4 py-3.5 border border-border-subtle/50">
       <p className="text-[10px] font-medium uppercase tracking-wider text-text-muted/70">
         {label}
       </p>
-      <p className="mt-1 font-mono text-[13px] text-text">{port}</p>
+      <p className="mt-1.5 font-mono text-[13px] text-text">{port}</p>
     </div>
   );
 }

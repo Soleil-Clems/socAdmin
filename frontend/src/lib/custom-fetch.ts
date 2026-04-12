@@ -6,7 +6,7 @@ type RequestOptions = {
   headers?: Record<string, string>;
 };
 
-type BodyData = Record<string, unknown>;
+type BodyData = Record<string, unknown> | unknown[];
 
 let refreshPromise: Promise<boolean> | null = null;
 
@@ -45,7 +45,7 @@ function refreshOnce(): Promise<boolean> {
   return refreshPromise;
 }
 
-function getCSRFToken(): string {
+export function getCSRFToken(): string {
   const match = document.cookie
     .split("; ")
     .find((c) => c.startsWith("socadmin_csrf="));
@@ -75,30 +75,40 @@ class CustomFetch {
   ): RequestInit {
     const { headers, ...rest } = options;
     const method = (rest.method || "GET").toUpperCase();
+    // Don't set Content-Type for FormData — the browser will set it
+    // automatically with the correct multipart boundary.
+    const isFormData =
+      typeof FormData !== "undefined" && rest.body instanceof FormData;
+    const baseHeaders: Record<string, string> = {
+      ...this.getAuthHeader(),
+      ...this.getCSRFHeader(method),
+    };
+    if (!isFormData) {
+      baseHeaders["Content-Type"] = "application/json";
+    }
     return {
+      credentials: "include",
       headers: {
-        "Content-Type": "application/json",
-        ...this.getAuthHeader(),
-        ...this.getCSRFHeader(method),
+        ...baseHeaders,
         ...(headers || {}),
       },
       ...rest,
     };
   }
 
-  private async request<T = Record<string, unknown>>(
+  // rawFetch wraps the underlying fetch with auth header injection,
+  // 401-refresh-and-retry logic, and connection-loss detection. It does
+  // NOT parse the body — callers decide how to read the response (json,
+  // blob, text, etc.).
+  private async rawFetch(
     endpoint: string,
-    options: RequestOptions & RequestInit = {}
-  ): Promise<T> {
+    options: RequestOptions & RequestInit
+  ): Promise<Response> {
+    const url = `${this.baseURL}${endpoint}`;
     let res: Response;
     try {
-      res = await fetch(
-        `${this.baseURL}${endpoint}`,
-        this.buildFetchOptions(options)
-      );
+      res = await fetch(url, this.buildFetchOptions(options));
     } catch {
-      // Network error (connection refused, DB stopped, server down)
-      // Only auto-disconnect if user has an active DB session
       if (!endpoint.startsWith("/auth/") && sessionStorage.getItem("socadmin_conn")) {
         this.handleConnectionLost();
       }
@@ -109,12 +119,8 @@ class CustomFetch {
     if (res.status === 401 && !endpoint.startsWith("/auth/")) {
       const refreshed = await refreshOnce();
       if (refreshed) {
-        res = await fetch(
-          `${this.baseURL}${endpoint}`,
-          this.buildFetchOptions(options)
-        );
+        res = await fetch(url, this.buildFetchOptions(options));
       }
-
       if (res.status === 401) {
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
@@ -122,6 +128,15 @@ class CustomFetch {
         throw new Error("Session expired");
       }
     }
+
+    return res;
+  }
+
+  private async request<T = Record<string, unknown>>(
+    endpoint: string,
+    options: RequestOptions & RequestInit = {}
+  ): Promise<T> {
+    const res = await this.rawFetch(endpoint, options);
 
     const text = await res.text();
     let data: Record<string, unknown>;
@@ -179,6 +194,78 @@ class CustomFetch {
       body: body ? JSON.stringify(body) : undefined,
       ...options,
     });
+  }
+
+  // postText sends a POST with a raw string body and a custom Content-Type.
+  // Use this for text/csv, text/plain (SQL imports), application/json bulks
+  // sent as raw strings, etc.
+  postText<T = Record<string, unknown>>(
+    endpoint: string,
+    body: string,
+    contentType: string,
+    options: RequestOptions = {}
+  ) {
+    return this.request<T>(endpoint, {
+      method: "POST",
+      body,
+      headers: { "Content-Type": contentType, ...(options.headers || {}) },
+    });
+  }
+
+  // upload sends a multipart/form-data POST. Use this for file uploads
+  // (imports, restores, GridFS). The browser sets the Content-Type and
+  // boundary automatically because we pass FormData as the body.
+  upload<T = Record<string, unknown>>(
+    endpoint: string,
+    form: FormData,
+    options: RequestOptions = {}
+  ) {
+    return this.request<T>(endpoint, {
+      method: "POST",
+      body: form,
+      ...options,
+    });
+  }
+
+  // download fetches a binary payload as a Blob and triggers a browser
+  // file download. Use this for exports, backups, GridFS downloads. The
+  // filename can be overridden — if omitted we try the Content-Disposition
+  // header, then fall back to the last URL segment.
+  async download(
+    endpoint: string,
+    filename?: string,
+    options: RequestOptions & RequestInit = {}
+  ): Promise<void> {
+    const res = await this.rawFetch(endpoint, { method: "GET", ...options });
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = text;
+      try {
+        const data = JSON.parse(text) as { error?: string };
+        if (data.error) msg = data.error;
+      } catch {
+        // body wasn't JSON, keep raw text
+      }
+      throw new Error(msg || `HTTP ${res.status}`);
+    }
+
+    let name = filename;
+    if (!name) {
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+      if (match) name = decodeURIComponent(match[1]);
+    }
+    if (!name) {
+      name = endpoint.split("/").pop() || "download";
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 }
 

@@ -16,10 +16,19 @@ type Connector interface {
 	UpdateRow(database, table string, primaryKey map[string]interface{}, data map[string]interface{}) error
 	DeleteRow(database, table string, primaryKey map[string]interface{}) error
 	ExecuteQuery(database, query string) (*QueryResult, error)
+	// ExecuteScript runs a multi-statement script (e.g. an SQL dump) in a
+	// single round-trip. Returns the number of statements that completed
+	// successfully and any fatal error. Implementations are free to abort
+	// on the first error or run best-effort.
+	ExecuteScript(database, script string) (int, error)
 	DropTable(database, table string) error
 	TruncateTable(database, table string) error
 	AlterColumn(database, table string, op AlterColumnOp) error
 	GetConfig() ConnectionConfig
+	// QuoteIdentifier wraps an identifier (table, column, database name)
+	// in the SGBD-specific quoting syntax. MySQL uses backticks, Postgres
+	// uses double quotes, MongoDB has no concept of identifiers.
+	QuoteIdentifier(name string) string
 	Close() error
 }
 

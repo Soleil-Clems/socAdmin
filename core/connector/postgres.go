@@ -257,6 +257,25 @@ func (c *PostgresConnector) ExecuteQuery(database, query string) (*QueryResult, 
 	return scanQuery(c.db, query)
 }
 
+// ExecuteScript runs a multi-statement script (typically a pg_dump output)
+// in a single Exec call. lib/pq's simple-query protocol supports
+// `;`-separated statements out of the box.
+func (c *PostgresConnector) ExecuteScript(database, script string) (int, error) {
+	if database == "" {
+		return 0, fmt.Errorf("database is required")
+	}
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(script); err != nil {
+		return 0, err
+	}
+	return 1, nil
+}
+
 func (c *PostgresConnector) DropTable(database, table string) error {
 	db, err := c.connectToDb(database)
 	if err != nil {
@@ -392,6 +411,11 @@ func (c *PostgresConnector) GetConfig() ConnectionConfig {
 		User:     c.config.User,
 		Password: c.config.Password,
 	}
+}
+
+// QuoteIdentifier wraps a Postgres identifier in double quotes.
+func (c *PostgresConnector) QuoteIdentifier(name string) string {
+	return pgQuoteIdent(name)
 }
 
 func (c *PostgresConnector) connectToDb(database string) (*sql.DB, error) {
