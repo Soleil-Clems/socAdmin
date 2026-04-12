@@ -7,6 +7,7 @@ import { databaseRequest } from "@/requests/database.request";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 type QueryResult = {
   Columns: string[];
@@ -53,6 +54,7 @@ export default function StatusView() {
   const { data, isLoading, isError, error } = useServerStatus();
   const { host, port, dbType } = useConnectionStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
+  const confirm = useConfirm();
   const isMongo = dbType === "mongodb";
   const queryClient = useQueryClient();
   const result = data as QueryResult | undefined;
@@ -110,8 +112,8 @@ export default function StatusView() {
     enabled: isMongo && showLogs,
   });
 
-  const handleKill = (opid: unknown) => {
-    if (!confirm(`Kill operation ${opid}?`)) return;
+  const handleKill = async (opid: unknown) => {
+    if (!await confirm({ title: "Kill operation", message: `Kill operation ${opid}?`, confirmLabel: "Kill", variant: "destructive" })) return;
     killMutation.mutate(opid);
   };
 

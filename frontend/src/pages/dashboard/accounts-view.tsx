@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 function formatDate(iso: string): string {
   try {
@@ -23,6 +24,7 @@ export default function AccountsView() {
   const { data: users, isLoading, error } = useAppUsers();
   const updateRole = useUpdateUserRole();
   const deleteUser = useDeleteUser();
+  const confirm = useConfirm();
 
   const adminCount = users?.filter((u) => u.role === "admin").length ?? 0;
 
@@ -30,8 +32,8 @@ export default function AccountsView() {
     updateRole.mutate({ id, role });
   };
 
-  const handleDelete = (id: number, email: string) => {
-    if (!confirm(`Delete user "${email}"? This cannot be undone.`)) return;
+  const handleDelete = async (id: number, email: string) => {
+    if (!await confirm({ title: "Delete user", message: `Delete user "${email}"? This cannot be undone.`, confirmLabel: "Delete", variant: "destructive" })) return;
     deleteUser.mutate(id);
   };
 

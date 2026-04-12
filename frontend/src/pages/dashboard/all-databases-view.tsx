@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const dbTypeLabels: Record<string, string> = {
   mysql: "MySQL",
@@ -39,6 +40,7 @@ export default function AllDatabasesView() {
   const createDb = useCreateDatabase();
   const dropDb = useDropDatabase();
   const { toast } = useToast();
+  const confirm = useConfirm();
   const { setSelectedDb } = useNavigationStore();
   const dbType = useConnectionStore((s) => s.dbType);
   const isAdmin = useAuthStore((s) => s.isAdmin);
@@ -75,8 +77,8 @@ export default function AllDatabasesView() {
     setNewDbName("");
   };
 
-  const handleDrop = (db: string) => {
-    if (!confirm(`Drop database "${db}"? This cannot be undone.`)) return;
+  const handleDrop = async (db: string) => {
+    if (!await confirm({ title: "Drop database", message: `Drop database "${db}"? This cannot be undone.`, confirmLabel: "Drop", variant: "destructive" })) return;
     dropDb.mutate(db);
   };
 
@@ -110,7 +112,7 @@ export default function AllDatabasesView() {
     const db = restoreTargetRef.current;
     e.target.value = "";
     if (!file || !db) return;
-    if (!confirm(`Restore "${file.name}" into "${db}"? Existing data may be overwritten.`)) return;
+    if (!await confirm({ title: "Restore database", message: `Restore "${file.name}" into "${db}"? Existing data may be overwritten.`, confirmLabel: "Restore", variant: "destructive" })) return;
     setRestoringDb(db);
     setRestoreError(null);
     try {

@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 type Column = {
   Name: string;
@@ -95,6 +96,7 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 export default function TableView() {
   const { selectedDb, selectedTable } = useNavigationStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
+  const confirm = useConfirm();
 
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
@@ -270,8 +272,8 @@ export default function TableView() {
     );
   };
 
-  const handleDelete = (row: Record<string, unknown>) => {
-    if (!confirm("Delete this row?")) return;
+  const handleDelete = async (row: Record<string, unknown>) => {
+    if (!await confirm({ title: "Delete row", message: "Delete this row?", confirmLabel: "Delete", variant: "destructive" })) return;
     deleteRow.mutate({
       db: selectedDb,
       table: selectedTable,

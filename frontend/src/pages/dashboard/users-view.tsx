@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 type QueryResult = {
   Columns: string[];
@@ -32,6 +33,7 @@ export default function UsersView() {
   const result = data as QueryResult | undefined;
   const isMongo = useConnectionStore((s) => s.dbType) === "mongodb";
   const isAdmin = useAuthStore((s) => s.isAdmin);
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
 
   const [showCreate, setShowCreate] = useState(false);
@@ -102,7 +104,7 @@ export default function UsersView() {
   };
 
   const handleDrop = async (username: string, database: string) => {
-    if (!confirm(`Drop user "${username}" from ${database}?`)) return;
+    if (!await confirm({ title: "Drop user", message: `Drop user "${username}" from ${database}?`, confirmLabel: "Drop", variant: "destructive" })) return;
     setDropError("");
     try {
       await databaseRequest.mongoDropUser(username, database);

@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 function formatKeys(keys: Record<string, number>): string {
   return Object.entries(keys)
@@ -37,6 +38,7 @@ export default function IndexesView() {
   const { selectedDb, selectedTable } = useNavigationStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [showUsage, setShowUsage] = useState(false);
 
   const { data: indexes, isLoading } = useQuery<MongoIndex[]>({
@@ -109,8 +111,8 @@ export default function IndexesView() {
     });
   };
 
-  const handleDrop = (name: string) => {
-    if (!confirm(`Drop index "${name}"? This cannot be undone.`)) return;
+  const handleDrop = async (name: string) => {
+    if (!await confirm({ title: "Drop index", message: `Drop index "${name}"? This cannot be undone.`, confirmLabel: "Drop", variant: "destructive" })) return;
     dropMutation.mutate(name);
   };
 

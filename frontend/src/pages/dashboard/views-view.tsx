@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 type MongoView = {
   name: string;
@@ -32,6 +33,7 @@ export default function ViewsView() {
   const { selectedDb } = useNavigationStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const { data: views, isLoading } = useQuery<MongoView[]>({
     queryKey: ["mongo-views", selectedDb],
@@ -86,8 +88,8 @@ export default function ViewsView() {
     createMutation.mutate({ name: nameInput, source: sourceInput, pipeline: pipelineInput });
   };
 
-  const handleDrop = (name: string) => {
-    if (!confirm(`Drop view "${name}"? This cannot be undone.`)) return;
+  const handleDrop = async (name: string) => {
+    if (!await confirm({ title: "Drop view", message: `Drop view "${name}"? This cannot be undone.`, confirmLabel: "Drop", variant: "destructive" })) return;
     dropMutation.mutate(name);
   };
 

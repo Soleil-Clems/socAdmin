@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 
 import { typeOptionsFor } from "@/lib/column-types";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 function formatSize(bytes: unknown): string {
   const n = Number(bytes);
@@ -55,6 +56,7 @@ export default function DatabaseView() {
   const dropTable = useDropTable();
   const truncateTable = useTruncateTable();
   const createTable = useCreateTable();
+  const confirm = useConfirm();
 
   const isMongo = dbType === "mongodb";
   const queryClient = useQueryClient();
@@ -142,8 +144,8 @@ export default function DatabaseView() {
     }
   };
 
-  const handleDrop = (table: string) => {
-    if (!confirm(`Drop table "${table}"? This cannot be undone.`)) return;
+  const handleDrop = async (table: string) => {
+    if (!await confirm({ title: "Drop table", message: `Drop table "${table}"? This cannot be undone.`, confirmLabel: "Drop", variant: "destructive" })) return;
     dropTable.mutate({ db: selectedDb, table });
     setSelected((prev) => {
       const next = new Set(prev);
@@ -152,23 +154,23 @@ export default function DatabaseView() {
     });
   };
 
-  const handleTruncate = (table: string) => {
-    if (!confirm(`Truncate table "${table}"? All data will be deleted.`)) return;
+  const handleTruncate = async (table: string) => {
+    if (!await confirm({ title: "Truncate table", message: `Truncate table "${table}"? All data will be deleted.`, confirmLabel: "Truncate", variant: "destructive" })) return;
     truncateTable.mutate({ db: selectedDb, table });
   };
 
-  const handleBulkDrop = () => {
+  const handleBulkDrop = async () => {
     if (selected.size === 0) return;
-    if (!confirm(`Drop ${selected.size} table(s)? This cannot be undone.`)) return;
+    if (!await confirm({ title: "Drop tables", message: `Drop ${selected.size} table(s)? This cannot be undone.`, confirmLabel: "Drop all", variant: "destructive" })) return;
     for (const table of selected) {
       dropTable.mutate({ db: selectedDb, table });
     }
     setSelected(new Set());
   };
 
-  const handleBulkTruncate = () => {
+  const handleBulkTruncate = async () => {
     if (selected.size === 0) return;
-    if (!confirm(`Truncate ${selected.size} table(s)?`)) return;
+    if (!await confirm({ title: "Truncate tables", message: `Truncate ${selected.size} table(s)?`, confirmLabel: "Truncate all", variant: "destructive" })) return;
     for (const table of selected) {
       truncateTable.mutate({ db: selectedDb, table });
     }
@@ -186,9 +188,10 @@ export default function DatabaseView() {
   };
 
   const handleCreateTable = () => {
-    if (!tableName.trim() || columns.some((c) => !c.name || !c.type)) return;
+    if (!tableName.trim()) return;
+    if (!isMongo && columns.some((c) => !c.name || !c.type)) return;
     createTable.mutate(
-      { db: selectedDb, name: tableName.trim(), columns },
+      { db: selectedDb, name: tableName.trim(), columns: isMongo ? [] : columns },
       {
         onSuccess: () => {
           setShowCreateTable(false);
@@ -384,38 +387,37 @@ export default function DatabaseView() {
         </ScrollArea>
       )}
 
-      {/* Create table dialog */}
+      {/* Create table / collection dialog */}
       <Dialog open={showCreateTable} onOpenChange={setShowCreateTable}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className={isMongo ? "max-w-sm" : "max-w-2xl max-h-[85vh] overflow-y-auto"}>
           <DialogHeader>
-            <DialogTitle className="text-base">Create table in {selectedDb}</DialogTitle>
+            <DialogTitle className="text-base">
+              {isMongo ? `Create collection in ${selectedDb}` : `Create table in ${selectedDb}`}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <Input
               value={tableName}
               onChange={(e) => setTableName(e.target.value)}
-              placeholder="Table name"
+              placeholder={isMongo ? "Collection name" : "Table name"}
               className="h-9"
             />
 
-            <div className="space-y-2">
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Columns</p>
-              {columns.map((col, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Input
-                    value={col.name}
-                    onChange={(e) => updateColumn(i, "name", e.target.value)}
-                    placeholder="Column name"
-                    className="flex-1 h-8 text-sm"
-                  />
-                  {dbType === "mongodb" ? (
+            {isMongo ? (
+              <p className="text-[11px] text-muted-foreground">
+                MongoDB collections are schema-less. Documents can have any structure — just start inserting.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Columns</p>
+                {columns.map((col, i) => (
+                  <div key={i} className="flex items-center gap-2">
                     <Input
-                      value={col.type}
-                      onChange={(e) => updateColumn(i, "type", e.target.value)}
-                      placeholder="Type"
+                      value={col.name}
+                      onChange={(e) => updateColumn(i, "name", e.target.value)}
+                      placeholder="Column name"
                       className="flex-1 h-8 text-sm"
                     />
-                  ) : (
                     <Select
                       value={col.type}
                       onValueChange={(v) => v && updateColumn(i, "type", v)}
@@ -431,15 +433,13 @@ export default function DatabaseView() {
                         ))}
                       </SelectContent>
                     </Select>
-                  )}
-                  <label className="flex items-center gap-1 text-[11px] whitespace-nowrap">
-                    <Checkbox
-                      checked={col.primary_key}
-                      onCheckedChange={(v) => updateColumn(i, "primary_key", !!v)}
-                    />
-                    PK
-                  </label>
-                  {!isMongo && (
+                    <label className="flex items-center gap-1 text-[11px] whitespace-nowrap">
+                      <Checkbox
+                        checked={col.primary_key}
+                        onCheckedChange={(v) => updateColumn(i, "primary_key", !!v)}
+                      />
+                      PK
+                    </label>
                     <label className="flex items-center gap-1 text-[11px] whitespace-nowrap" title={dbType === "postgresql" ? "SERIAL (auto-generated ID)" : "AUTO_INCREMENT"}>
                       <Checkbox
                         checked={col.auto_increment}
@@ -447,42 +447,42 @@ export default function DatabaseView() {
                       />
                       {dbType === "postgresql" ? "Serial" : "AI"}
                     </label>
-                  )}
-                  <label className="flex items-center gap-1 text-[11px] whitespace-nowrap">
-                    <Checkbox
-                      checked={col.nullable}
-                      onCheckedChange={(v) => updateColumn(i, "nullable", !!v)}
-                    />
-                    Null
-                  </label>
-                  {columns.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-destructive text-xs"
-                      onClick={() => removeColumn(i)}
-                    >
-                      ×
-                    </Button>
-                  )}
-                </div>
-              ))}
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => setColumns([...columns, emptyColumn()])}
-              >
-                + Add column
-              </Button>
-            </div>
+                    <label className="flex items-center gap-1 text-[11px] whitespace-nowrap">
+                      <Checkbox
+                        checked={col.nullable}
+                        onCheckedChange={(v) => updateColumn(i, "nullable", !!v)}
+                      />
+                      Null
+                    </label>
+                    {columns.length > 1 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-destructive text-xs"
+                        onClick={() => removeColumn(i)}
+                      >
+                        ×
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setColumns([...columns, emptyColumn()])}
+                >
+                  + Add column
+                </Button>
+              </div>
+            )}
 
             <Button
               className="w-full h-9"
               onClick={handleCreateTable}
-              disabled={createTable.isPending || !tableName.trim() || columns.some((c) => !c.name || !c.type)}
+              disabled={createTable.isPending || !tableName.trim() || (!isMongo && columns.some((c) => !c.name || !c.type))}
             >
-              {createTable.isPending ? "Creating..." : "Create table"}
+              {createTable.isPending ? "Creating..." : isMongo ? "Create collection" : "Create table"}
             </Button>
             {createTable.isError && (
               <p className="text-xs text-destructive">{createTable.error.message}</p>

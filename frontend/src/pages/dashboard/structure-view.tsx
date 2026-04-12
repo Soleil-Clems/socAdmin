@@ -30,6 +30,7 @@ import JsonSchemaBuilder, {
   jsonSchemaToFields,
   type SchemaField,
 } from "@/components/json-schema-builder";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 type Column = {
   Name: string;
@@ -64,6 +65,7 @@ export default function StructureView() {
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const { data: columns, isLoading } = useColumns(selectedDb, selectedTable);
   const alter = useAlterColumn();
+  const confirm = useConfirm();
 
   const queryClient = useQueryClient();
 
@@ -170,9 +172,9 @@ export default function StructureView() {
     });
   };
 
-  const handleDrop = (name: string) => {
+  const handleDrop = async (name: string) => {
     if (!selectedDb || !selectedTable) return;
-    if (!confirm(`Drop column "${name}"? This cannot be undone.`)) return;
+    if (!await confirm({ title: "Drop column", message: `Drop column "${name}"? This cannot be undone.`, confirmLabel: "Drop", variant: "destructive" })) return;
     setError("");
     alter.mutate(
       { db: selectedDb, table: selectedTable, op: { op: "drop", name } },
@@ -263,8 +265,8 @@ export default function StructureView() {
                 size="sm"
                 variant="outline"
                 className="h-7 text-xs px-2.5"
-                onClick={() => {
-                  if (!confirm(`Compact "${selectedTable}"? This reclaims disk space but may take a moment.`)) return;
+                onClick={async () => {
+                  if (!await confirm({ title: "Compact collection", message: `Compact "${selectedTable}"? This reclaims disk space but may take a moment.`, confirmLabel: "Compact" })) return;
                   compactMutation.mutate();
                 }}
                 disabled={compactMutation.isPending}
@@ -753,8 +755,8 @@ export default function StructureView() {
             <Button
               className="w-full h-9"
               variant="destructive"
-              onClick={() => {
-                if (!confirm("This will permanently convert the collection to capped. Continue?")) return;
+              onClick={async () => {
+                if (!await confirm({ title: "Convert to capped", message: "This will permanently convert the collection to capped. Continue?", confirmLabel: "Convert", variant: "destructive" })) return;
                 convertCappedMutation.mutate();
               }}
               disabled={convertCappedMutation.isPending || !convertSize}

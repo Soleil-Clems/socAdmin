@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import ExplainPlan from "@/components/explain-plan";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -284,6 +285,7 @@ export default function DocumentView() {
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
@@ -539,8 +541,8 @@ export default function DocumentView() {
     );
   };
 
-  const handleDelete = (doc: Record<string, unknown>) => {
-    if (!confirm("Delete this document?")) return;
+  const handleDelete = async (doc: Record<string, unknown>) => {
+    if (!await confirm({ title: "Delete document", message: "Delete this document?", confirmLabel: "Delete", variant: "destructive" })) return;
     deleteRow.mutate(
       { db: selectedDb, table: selectedTable, primaryKey: { _id: doc._id } },
       { onSuccess: invalidateFind }
@@ -630,7 +632,7 @@ export default function DocumentView() {
 
   const handleBulkDelete = async () => {
     if (!selectedDb || !selectedTable || !bulkDeleteFilter) return;
-    if (!confirm("Delete all documents matching this filter?")) return;
+    if (!await confirm({ title: "Bulk delete", message: "Delete all documents matching this filter?", confirmLabel: "Delete", variant: "destructive" })) return;
     try {
       setBulkError("");
       setBulkLoading(true);

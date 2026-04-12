@@ -215,10 +215,6 @@ func (c *DatabaseController) CreateTable(w http.ResponseWriter, r *http.Request)
 		jsonError(w, http.StatusBadRequest, "table name is required")
 		return
 	}
-	if len(req.Columns) == 0 {
-		jsonError(w, http.StatusBadRequest, "at least one column is required")
-		return
-	}
 
 	if err := c.dbService.CreateTable(db, req.Name, req.Columns); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())

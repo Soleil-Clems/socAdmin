@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 // Categories of MongoDB actions for the UI builder
 const ACTION_CATEGORIES: { label: string; actions: string[] }[] = [
@@ -53,6 +54,7 @@ type Privilege = {
 
 export default function RolesView() {
   const { selectedDb } = useNavigationStore();
+  const confirm = useConfirm();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const queryClient = useQueryClient();
   const [showBuiltin, setShowBuiltin] = useState(false);
@@ -152,8 +154,8 @@ export default function RolesView() {
     else updateMutation.mutate();
   };
 
-  const handleDrop = (name: string) => {
-    if (!confirm(`Drop role "${name}"? This cannot be undone.`)) return;
+  const handleDrop = async (name: string) => {
+    if (!await confirm({ title: "Drop role", message: `Drop role "${name}"? This cannot be undone.`, confirmLabel: "Drop", variant: "destructive" })) return;
     dropMutation.mutate(name);
   };
 

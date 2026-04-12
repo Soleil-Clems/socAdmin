@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/auth.store";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -28,6 +29,7 @@ export default function GridFSView() {
   const { selectedDb } = useNavigationStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
@@ -87,8 +89,8 @@ export default function GridFSView() {
     }
   };
 
-  const handleDelete = (file: GridFSFileInfo) => {
-    if (!confirm(`Delete "${file.filename}"? This cannot be undone.`)) return;
+  const handleDelete = async (file: GridFSFileInfo) => {
+    if (!await confirm({ title: "Delete file", message: `Delete "${file.filename}"? This cannot be undone.`, confirmLabel: "Delete", variant: "destructive" })) return;
     deleteMutation.mutate(file.id);
   };
 
