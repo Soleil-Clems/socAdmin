@@ -439,13 +439,15 @@ export default function DatabaseView() {
                     />
                     PK
                   </label>
-                  <label className="flex items-center gap-1 text-[11px] whitespace-nowrap">
-                    <Checkbox
-                      checked={col.auto_increment}
-                      onCheckedChange={(v) => updateColumn(i, "auto_increment", !!v)}
-                    />
-                    AI
-                  </label>
+                  {!isMongo && (
+                    <label className="flex items-center gap-1 text-[11px] whitespace-nowrap" title={dbType === "postgresql" ? "SERIAL (auto-generated ID)" : "AUTO_INCREMENT"}>
+                      <Checkbox
+                        checked={col.auto_increment}
+                        onCheckedChange={(v) => updateColumn(i, "auto_increment", !!v)}
+                      />
+                      {dbType === "postgresql" ? "Serial" : "AI"}
+                    </label>
+                  )}
                   <label className="flex items-center gap-1 text-[11px] whitespace-nowrap">
                     <Checkbox
                       checked={col.nullable}
