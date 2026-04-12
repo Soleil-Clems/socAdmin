@@ -1,0 +1,14 @@
+services:
+  socadmin:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persist SQLite database (users, settings, saved connections)
+      - socadmin-data:/data
+    environment:
+      - PORT=8080
+    restart: unless-stopped
+
+volumes:
+  socadmin-data:

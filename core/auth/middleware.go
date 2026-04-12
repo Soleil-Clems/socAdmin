@@ -34,3 +34,31 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
+
+// AuthFromQueryParam wraps a handler to authenticate via "token" query
+// parameter instead of the Authorization header. This is required for SSE
+// endpoints because the EventSource API does not support custom headers.
+// Admin-only.
+func AuthFromQueryParam(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := r.URL.Query().Get("token")
+		if token == "" {
+			http.Error(w, `{"error":"missing token parameter"}`, http.StatusUnauthorized)
+			return
+		}
+
+		claims, err := ValidateAccessToken(token)
+		if err != nil {
+			http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
+			return
+		}
+
+		if claims.Role != "admin" {
+			http.Error(w, `{"error":"admin only"}`, http.StatusForbidden)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), ClaimsKey, claims)
+		handler(w, r.WithContext(ctx))
+	}
+}

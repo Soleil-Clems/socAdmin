@@ -70,6 +70,36 @@ func main() {
 			port = p
 		}
 	}
-	fmt.Printf("socAdmin server running on http://localhost:%d\n", port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), handler))
+
+	// TLS support: set TLS_CERT and TLS_KEY env vars to enable HTTPS.
+	// When enabled, an HTTP→HTTPS redirect listener runs on port 80.
+	tlsCert := os.Getenv("TLS_CERT")
+	tlsKey := os.Getenv("TLS_KEY")
+
+	if tlsCert != "" && tlsKey != "" {
+		// HSTS header is already set in SecurityHeaders middleware.
+		// Start HTTP→HTTPS redirect on port 80 in background.
+		go func() {
+			redirectPort := 80
+			if envRedirectPort := os.Getenv("HTTP_REDIRECT_PORT"); envRedirectPort != "" {
+				if p, err := strconv.Atoi(envRedirectPort); err == nil && p > 0 {
+					redirectPort = p
+				}
+			}
+			redirect := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				target := fmt.Sprintf("https://%s%s", r.Host, r.RequestURI)
+				http.Redirect(w, r, target, http.StatusMovedPermanently)
+			})
+			log.Printf("HTTP→HTTPS redirect on :%d", redirectPort)
+			if err := http.ListenAndServe(fmt.Sprintf(":%d", redirectPort), redirect); err != nil {
+				log.Printf("Warning: HTTP redirect listener failed: %v", err)
+			}
+		}()
+
+		fmt.Printf("socAdmin server running on https://localhost:%d (TLS)\n", port)
+		log.Fatal(http.ListenAndServeTLS(fmt.Sprintf(":%d", port), tlsCert, tlsKey, handler))
+	} else {
+		fmt.Printf("socAdmin server running on http://localhost:%d\n", port)
+		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), handler))
+	}
 }

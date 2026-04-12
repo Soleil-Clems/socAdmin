@@ -752,6 +752,7 @@ type IndexInfo struct {
 	Keys   map[string]interface{} `json:"keys"`
 	Unique bool                   `json:"unique"`
 	Sparse bool                   `json:"sparse"`
+	Hidden bool                   `json:"hidden"`
 	TTL    *int32                 `json:"ttl,omitempty"`
 }
 
@@ -795,6 +796,9 @@ func (c *MongoConnector) ListIndexes(database, collection string) ([]IndexInfo, 
 		}
 		if ttl, ok := raw["expireAfterSeconds"].(int32); ok {
 			info.TTL = &ttl
+		}
+		if h, ok := raw["hidden"].(bool); ok {
+			info.Hidden = h
 		}
 		indexes = append(indexes, info)
 	}
@@ -2592,4 +2596,68 @@ func bsonArrayToQueryResult(arr bson.A) (*QueryResult, error) {
 		}
 	}
 	return docsToQueryResult(docs), nil
+}
+
+// ChangeEvent represents a single change stream event.
+type ChangeEvent struct {
+	OperationType string                 `json:"operationType"` // insert, update, replace, delete, etc.
+	FullDocument  map[string]interface{} `json:"fullDocument,omitempty"`
+	DocumentKey   map[string]interface{} `json:"documentKey,omitempty"`
+	Namespace     struct {
+		DB   string `json:"db"`
+		Coll string `json:"coll"`
+	} `json:"ns"`
+	Timestamp string `json:"timestamp"`
+}
+
+// WatchCollection opens a change stream on a collection and sends events
+// to the provided channel. It blocks until the context is cancelled.
+// The caller is responsible for closing the channel after this returns.
+func (c *MongoConnector) WatchCollection(ctx context.Context, database, collection string, events chan<- ChangeEvent) error {
+	coll := c.client.Database(database).Collection(collection)
+	opts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
+	cs, err := coll.Watch(ctx, mongo.Pipeline{}, opts)
+	if err != nil {
+		return fmt.Errorf("watch failed: %w", err)
+	}
+	defer cs.Close(ctx)
+
+	for cs.Next(ctx) {
+		var raw bson.M
+		if err := cs.Decode(&raw); err != nil {
+			continue
+		}
+
+		evt := ChangeEvent{
+			OperationType: fmt.Sprintf("%v", raw["operationType"]),
+			Timestamp:     time.Now().UTC().Format(time.RFC3339),
+		}
+
+		if ns, ok := raw["ns"].(bson.M); ok {
+			evt.Namespace.DB = fmt.Sprintf("%v", ns["db"])
+			evt.Namespace.Coll = fmt.Sprintf("%v", ns["coll"])
+		}
+
+		if fd, ok := raw["fullDocument"].(bson.M); ok {
+			evt.FullDocument = make(map[string]interface{})
+			for k, v := range fd {
+				evt.FullDocument[k] = v
+			}
+		}
+
+		if dk, ok := raw["documentKey"].(bson.M); ok {
+			evt.DocumentKey = make(map[string]interface{})
+			for k, v := range dk {
+				evt.DocumentKey[k] = v
+			}
+		}
+
+		select {
+		case events <- evt:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	return cs.Err()
 }

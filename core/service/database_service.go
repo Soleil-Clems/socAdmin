@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -682,6 +683,30 @@ func (s *DatabaseService) MongoCreateIndexAdvanced(database, collection, keysJSO
 	return mc.CreateIndexAdvanced(database, collection, keysJSON, unique, sparse, name, ttlSeconds, partialFilterJSON)
 }
 
+// MongoCreateIndexFull creates an index with the full option set.
+func (s *DatabaseService) MongoCreateIndexFull(database, collection, keysJSON string, opts connector.IndexCreateOptions) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.CreateIndexFull(database, collection, keysJSON, opts)
+}
+
+// MongoSetIndexHidden hides or unhides an existing index.
+func (s *DatabaseService) MongoSetIndexHidden(database, collection, indexName string, hidden bool) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.SetIndexHidden(database, collection, indexName, hidden)
+}
+
 // MongoDropIndex drops an index by name.
 func (s *DatabaseService) MongoDropIndex(database, collection, indexName string) error {
 	if s.conn == nil {
@@ -692,6 +717,18 @@ func (s *DatabaseService) MongoDropIndex(database, collection, indexName string)
 		return fmt.Errorf("not a MongoDB connection")
 	}
 	return mc.DropIndex(database, collection, indexName)
+}
+
+// MongoWatchCollection opens a change stream on a collection (SSE).
+func (s *DatabaseService) MongoWatchCollection(ctx context.Context, database, collection string, events chan<- connector.ChangeEvent) error {
+	if s.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+	mc, ok := s.conn.(*connector.MongoConnector)
+	if !ok {
+		return fmt.Errorf("not a MongoDB connection")
+	}
+	return mc.WatchCollection(ctx, database, collection, events)
 }
 
 // MongoCollectionStats returns stats for a MongoDB collection.

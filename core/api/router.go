@@ -120,6 +120,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 
 	// MongoDB-specific (write, admin only)
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/indexes", auth.RequireAdmin(dbController.MongoCreateIndex))
+	protected.HandleFunc("PUT "+p+"/databases/{db}/tables/{table}/indexes/hidden", auth.RequireAdmin(dbController.MongoSetIndexHidden))
 	protected.HandleFunc("DELETE "+p+"/databases/{db}/tables/{table}/indexes", auth.RequireAdmin(dbController.MongoDropIndex))
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/insertMany", auth.RequireAdmin(dbController.MongoInsertMany))
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/updateMany", auth.RequireAdmin(dbController.MongoUpdateMany))
@@ -161,6 +162,9 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	// Bulk whitelist — admin only
 	protected.HandleFunc("POST "+p+"/security/whitelist/bulk", auth.RequireAdmin(secController.BulkAddIPs))
 	protected.HandleFunc("GET "+p+"/security/whitelist/export", secController.ExportWhitelist)
+
+	// SSE endpoint — auth via query param "token" (EventSource can't set headers)
+	mux.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/watch", auth.AuthFromQueryParam(dbController.MongoWatchSSE))
 
 	mux.Handle(p+"/", auth.AuthMiddleware(protected))
 

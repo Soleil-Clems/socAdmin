@@ -838,12 +838,17 @@ func (c *DatabaseController) MongoListIndexes(w http.ResponseWriter, r *http.Req
 }
 
 type MongoCreateIndexRequest struct {
-	Keys          string `json:"keys"`           // JSON string, e.g. {"field": 1}
-	Unique        bool   `json:"unique"`
-	Sparse        bool   `json:"sparse"`
-	Name          string `json:"name"`
-	TTLSeconds    int    `json:"ttl_seconds"`
-	PartialFilter string `json:"partial_filter"` // JSON string for partial filter expression
+	Keys            string `json:"keys"`             // JSON string, e.g. {"field": 1}
+	Unique          bool   `json:"unique"`
+	Sparse          bool   `json:"sparse"`
+	Hidden          bool   `json:"hidden"`
+	Name            string `json:"name"`
+	TTLSeconds      int    `json:"ttl_seconds"`
+	PartialFilter   string `json:"partial_filter"`   // JSON
+	Collation       string `json:"collation"`        // JSON
+	WildcardProj    string `json:"wildcard_proj"`    // JSON
+	DefaultLanguage string `json:"default_language"` // text indexes
+	TextWeights     string `json:"text_weights"`     // JSON
 }
 
 func (c *DatabaseController) MongoCreateIndex(w http.ResponseWriter, r *http.Request) {
@@ -861,12 +866,56 @@ func (c *DatabaseController) MongoCreateIndex(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := c.dbService.MongoCreateIndexAdvanced(db, table, req.Keys, req.Unique, req.Sparse, req.Name, req.TTLSeconds, req.PartialFilter); err != nil {
+	opts := connector.IndexCreateOptions{
+		Unique:          req.Unique,
+		Sparse:          req.Sparse,
+		Hidden:          req.Hidden,
+		Name:            req.Name,
+		TTLSeconds:      req.TTLSeconds,
+		PartialFilter:   req.PartialFilter,
+		Collation:       req.Collation,
+		WildcardProj:    req.WildcardProj,
+		DefaultLanguage: req.DefaultLanguage,
+		TextWeights:     req.TextWeights,
+	}
+	if err := c.dbService.MongoCreateIndexFull(db, table, req.Keys, opts); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	jsonResponse(w, http.StatusCreated, map[string]string{"status": "created"})
+}
+
+type MongoSetIndexHiddenRequest struct {
+	Name   string `json:"name"`
+	Hidden bool   `json:"hidden"`
+}
+
+func (c *DatabaseController) MongoSetIndexHidden(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	var req MongoSetIndexHiddenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Name == "" {
+		jsonError(w, http.StatusBadRequest, "index name is required")
+		return
+	}
+
+	if err := c.dbService.MongoSetIndexHidden(db, table, req.Name, req.Hidden); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	action := "unhidden"
+	if req.Hidden {
+		action = "hidden"
+	}
+	jsonResponse(w, http.StatusOK, map[string]string{"status": action})
 }
 
 type MongoDropIndexRequest struct {
@@ -1961,6 +2010,59 @@ func (c *DatabaseController) RestoreDatabase(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// MongoWatchSSE streams change stream events as Server-Sent Events.
+// Auth is via Bearer token in "token" query parameter (EventSource API
+// cannot set custom headers).
+func (c *DatabaseController) MongoWatchSSE(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		jsonError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // nginx
+	flusher.Flush()
+
+	ctx := r.Context()
+	events := make(chan connector.ChangeEvent, 16)
+
+	go func() {
+		defer close(events)
+		if err := c.dbService.MongoWatchCollection(ctx, db, table, events); err != nil {
+			// context cancelled is expected when client disconnects
+			if ctx.Err() == nil {
+				// Send error event
+				data, _ := json.Marshal(map[string]string{"error": err.Error()})
+				fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
+				flusher.Flush()
+			}
+		}
+	}()
+
+	for {
+		select {
+		case evt, ok := <-events:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(evt)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {

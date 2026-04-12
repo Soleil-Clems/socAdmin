@@ -55,9 +55,10 @@ export type MongoCollectionStats = {
 
 export type MongoIndex = {
   name: string;
-  keys: Record<string, number>;
+  keys: Record<string, number | string>;
   unique: boolean;
   sparse: boolean;
+  hidden?: boolean;
   ttl?: number;
 };
 
@@ -114,6 +115,14 @@ export type SearchResult = {
   matches: Record<string, unknown>[];
   total: number;
   columns: string[];
+};
+
+export type ChangeEvent = {
+  operationType: string;
+  fullDocument?: Record<string, unknown>;
+  documentKey?: Record<string, unknown>;
+  ns: { db: string; coll: string };
+  timestamp: string;
 };
 
 type Column = {
@@ -219,13 +228,27 @@ export const databaseRequest = {
   mongoListIndexes: (db: string, collection: string) =>
     customfetch.get<MongoIndex[]>(`/databases/${db}/tables/${collection}/indexes`),
 
-  mongoCreateIndex: (db: string, collection: string, keys: string, unique: boolean, name?: string, sparse?: boolean, ttlSeconds?: number, partialFilter?: string) =>
+  mongoCreateIndex: (db: string, collection: string, opts: {
+    keys: string; unique?: boolean; sparse?: boolean; hidden?: boolean;
+    name?: string; ttl_seconds?: number; partial_filter?: string;
+    collation?: string; wildcard_proj?: string; default_language?: string; text_weights?: string;
+  }) =>
     customfetch.post(`/databases/${db}/tables/${collection}/indexes`, {
-      keys, unique, name: name || "",
-      sparse: sparse || false,
-      ttl_seconds: ttlSeconds || 0,
-      partial_filter: partialFilter || "",
+      keys: opts.keys,
+      unique: opts.unique || false,
+      sparse: opts.sparse || false,
+      hidden: opts.hidden || false,
+      name: opts.name || "",
+      ttl_seconds: opts.ttl_seconds || 0,
+      partial_filter: opts.partial_filter || "",
+      collation: opts.collation || "",
+      wildcard_proj: opts.wildcard_proj || "",
+      default_language: opts.default_language || "",
+      text_weights: opts.text_weights || "",
     }),
+
+  mongoSetIndexHidden: (db: string, collection: string, name: string, hidden: boolean) =>
+    customfetch.put(`/databases/${db}/tables/${collection}/indexes/hidden`, { name, hidden }),
 
   mongoDropIndex: (db: string, collection: string, name: string) =>
     customfetch.delete(`/databases/${db}/tables/${collection}/indexes`, { name }),

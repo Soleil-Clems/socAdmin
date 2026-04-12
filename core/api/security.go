@@ -1,10 +1,20 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+	"os"
+)
 
 // SecurityHeaders adds HTTP security headers to all responses
 func SecurityHeaders(next http.Handler) http.Handler {
+	tlsEnabled := os.Getenv("TLS_CERT") != "" && os.Getenv("TLS_KEY") != ""
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// HSTS — only when TLS is enabled
+		if tlsEnabled {
+			w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		}
+
 		// Prevent clickjacking
 		w.Header().Set("X-Frame-Options", "DENY")
 
