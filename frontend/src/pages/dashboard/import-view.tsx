@@ -3,6 +3,7 @@ import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
 import { useQueryClient } from "@tanstack/react-query";
 import { databaseRequest } from "@/requests/database.request";
+import { Input } from "@/components/ui/input";
 
 // Native dump detection — same heuristics as core/controller/database_controller.go
 // looksLikeNativeDump. Kept client-side so we can warn before uploading.
@@ -32,6 +33,10 @@ export default function ImportView() {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [collectionInput, setCollectionInput] = useState("");
+
+  // For MongoDB: use selectedTable from sidebar, or the manual input
+  const targetCollection = selectedTable || collectionInput.trim();
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -48,27 +53,22 @@ export default function ImportView() {
       let res: { inserted?: number; executed?: number; errors?: string[] };
 
       if (isMongo) {
-        // MongoDB: JSON and CSV only, into the selected collection.
+        // MongoDB: JSON and CSV only, into the target collection.
+        if (!selectedDb || !targetCollection) {
+          setError("Select a database and enter a collection name");
+          setImporting(false);
+          return;
+        }
         if (ext === "json") {
-          if (!selectedDb || !selectedTable) {
-            setError("Select a database and a collection first");
-            setImporting(false);
-            return;
-          }
-          res = await databaseRequest.importJSON(selectedDb, selectedTable, content);
+          res = await databaseRequest.importJSON(selectedDb, targetCollection, content);
           setResult(
-            `${res.inserted} documents inserted into ${selectedTable}` +
+            `${res.inserted} documents inserted into ${targetCollection}` +
               (res.errors?.length ? `. ${res.errors.length} error(s)` : ""),
           );
         } else if (ext === "csv") {
-          if (!selectedDb || !selectedTable) {
-            setError("Select a database and a collection first");
-            setImporting(false);
-            return;
-          }
-          res = await databaseRequest.importCSV(selectedDb, selectedTable, content);
+          res = await databaseRequest.importCSV(selectedDb, targetCollection, content);
           setResult(
-            `${res.inserted} documents inserted into ${selectedTable}` +
+            `${res.inserted} documents inserted into ${targetCollection}` +
               (res.errors?.length ? `. ${res.errors.length} error(s)` : ""),
           );
         } else {
@@ -122,10 +122,26 @@ export default function ImportView() {
             <p className="text-sm text-foreground font-medium">Import data from a file</p>
             <p className="text-xs text-muted-foreground">
               {isMongo
-                ? "JSON and CSV import into the selected collection."
+                ? "JSON and CSV import into a collection."
                 : "Import a SQL script into the selected database."}
             </p>
           </div>
+
+          {/* MongoDB: collection name input when no collection is selected in sidebar */}
+          {isMongo && !selectedTable && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">Target collection</label>
+              <Input
+                value={collectionInput}
+                onChange={(e) => setCollectionInput(e.target.value)}
+                placeholder="e.g. users, products, logs..."
+                className="h-9 text-sm"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                The collection will be created automatically if it doesn't exist.
+              </p>
+            </div>
+          )}
 
           <input
             ref={fileInputRef}
@@ -137,7 +153,9 @@ export default function ImportView() {
 
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary/40 hover:bg-accent/30 transition-colors"
+            className={`border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary/40 hover:bg-accent/30 transition-colors ${
+              isMongo && !selectedTable && !collectionInput.trim() ? "opacity-50 pointer-events-none" : ""
+            }`}
           >
             {importing ? (
               <p className="text-sm text-muted-foreground">Importing {fileName}...</p>
@@ -167,10 +185,10 @@ export default function ImportView() {
             {isMongo ? (
               <>
                 <p>
-                  <span className="font-medium">JSON:</span> Inserts documents into the selected collection (array of objects).
+                  <span className="font-medium">JSON:</span> Inserts documents into the collection (array of objects).
                 </p>
                 <p>
-                  <span className="font-medium">CSV:</span> Inserts documents into the selected collection (headers must match field names).
+                  <span className="font-medium">CSV:</span> Inserts documents into the collection (headers must match field names).
                 </p>
               </>
             ) : (

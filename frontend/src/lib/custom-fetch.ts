@@ -10,8 +10,21 @@ type BodyData = Record<string, unknown> | unknown[];
 
 let refreshPromise: Promise<boolean> | null = null;
 
+function getCookieValue(name: string): string | null {
+  const match = document.cookie
+    .split("; ")
+    .find((c) => c.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.split("=")[1]) : null;
+}
+
+function setCookieValue(name: string, value: string, days = 7) {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  const secure = location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Strict${secure}`;
+}
+
 async function tryRefreshToken(): Promise<boolean> {
-  const refreshToken = localStorage.getItem("refresh_token");
+  const refreshToken = getCookieValue("refresh_token");
   if (!refreshToken) return false;
 
   try {
@@ -25,8 +38,8 @@ async function tryRefreshToken(): Promise<boolean> {
 
     const data = await res.json();
     if (data.access_token && data.refresh_token) {
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
+      setCookieValue("access_token", data.access_token);
+      setCookieValue("refresh_token", data.refresh_token);
       return true;
     }
     return false;
@@ -60,7 +73,7 @@ class CustomFetch {
   }
 
   private getAuthHeader(): Record<string, string> {
-    const token = localStorage.getItem("access_token");
+    const token = getCookieValue("access_token");
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
@@ -122,8 +135,8 @@ class CustomFetch {
         res = await fetch(url, this.buildFetchOptions(options));
       }
       if (res.status === 401) {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
+        document.cookie = "access_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Strict";
+        document.cookie = "refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Strict";
         window.location.reload();
         throw new Error("Session expired");
       }
