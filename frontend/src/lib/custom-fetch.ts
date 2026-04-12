@@ -40,6 +40,9 @@ async function tryRefreshToken(): Promise<boolean> {
     if (data.access_token && data.refresh_token) {
       setCookieValue("access_token", data.access_token);
       setCookieValue("refresh_token", data.refresh_token);
+      // Sync Zustand store so the app state stays consistent
+      const { useAuthStore } = await import("@/stores/auth.store");
+      useAuthStore.getState().setTokens(data.access_token, data.refresh_token);
       return true;
     }
     return false;
