@@ -152,8 +152,8 @@ export default function ImportView() {
           </div>
 
           {result && (
-            <div className="bg-primary/5 border border-primary/20 rounded-md px-3 py-2">
-              <p className="text-xs text-primary font-medium">{result}</p>
+            <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/40 rounded-md px-3 py-2">
+              <p className="text-xs text-green-700 dark:text-green-400 font-medium">{result}</p>
             </div>
           )}
 

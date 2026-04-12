@@ -2,9 +2,25 @@ import { useState, useEffect } from "react";
 import { useExecuteQuery } from "@/hooks/mutations/use-execute-query";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+
+/** Detect DDL statements that change the schema (tables/databases). */
+function isDDL(sql: string): boolean {
+  const head = sql.trimStart().toUpperCase();
+  return /^(CREATE|DROP|ALTER|RENAME)\s/.test(head);
+}
+
+/** Map common MySQL-only keywords to PostgreSQL equivalents for error hints. */
+const PG_HINTS: Record<string, string> = {
+  AUTO_INCREMENT: "PostgreSQL uses SERIAL or GENERATED ALWAYS AS IDENTITY instead of AUTO_INCREMENT.",
+  ENGINE: "PostgreSQL does not support ENGINE=. Remove it.",
+  "UNSIGNED": "PostgreSQL does not support UNSIGNED. Use a CHECK constraint instead.",
+  TINYINT: "PostgreSQL does not have TINYINT. Use SMALLINT.",
+  DATETIME: "PostgreSQL uses TIMESTAMP instead of DATETIME.",
+};
 
 type QueryResult = {
   Columns: string[];
@@ -36,9 +52,12 @@ function saveHistory(history: HistoryEntry[]) {
 
 export default function QueryEditor() {
   const { selectedDb } = useNavigationStore();
-  const isMongo = useConnectionStore((s) => s.dbType) === "mongodb";
+  const dbType = useConnectionStore((s) => s.dbType);
+  const isMongo = dbType === "mongodb";
+  const isPg = dbType === "postgresql";
   const [query, setQuery] = useState("");
   const executeQuery = useExecuteQuery();
+  const queryClient = useQueryClient();
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -65,6 +84,11 @@ export default function QueryEditor() {
             },
             ...prev,
           ]);
+          // Refresh sidebar after DDL so new/dropped tables appear immediately.
+          if (isDDL(query)) {
+            queryClient.invalidateQueries({ queryKey: ["tables"] });
+            queryClient.invalidateQueries({ queryKey: ["databases"] });
+          }
         },
         onError: (err) => {
           setHistory((prev) => [
@@ -246,7 +270,16 @@ export default function QueryEditor() {
         {/* Error */}
         {executeQuery.isError && (
           <div className="px-3 py-2 text-xs text-destructive bg-destructive/5 border-b border-destructive/20">
-            {executeQuery.error.message}
+            <p>{executeQuery.error.message}</p>
+            {isPg && (() => {
+              const msg = executeQuery.error.message.toUpperCase();
+              const hint = Object.entries(PG_HINTS).find(([kw]) => msg.includes(kw));
+              return hint ? (
+                <p className="mt-1 text-[11px] text-muted-foreground font-medium">
+                  Hint: {hint[1]}
+                </p>
+              ) : null;
+            })()}
           </div>
         )}
 
@@ -254,9 +287,15 @@ export default function QueryEditor() {
         {result && (
           <ScrollArea className="h-full">
             <div className="p-3">
-              <p className="text-[11px] text-muted-foreground mb-2">
-                {result.Rows?.length ?? 0} rows returned
-              </p>
+              {isDDL(query) && !result.Rows?.length ? (
+                <p className="text-[11px] text-green-600 dark:text-green-400 mb-2 font-medium">
+                  Query executed successfully
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground mb-2">
+                  {result.Rows?.length ?? 0} rows returned
+                </p>
+              )}
               <table className="w-full data-table">
                 <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
                   <tr className="border-b border-border">

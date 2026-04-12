@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import ExplainPlan from "@/components/explain-plan";
+import { useToast } from "@/components/ui/toast";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -282,6 +283,7 @@ export default function DocumentView() {
   const { selectedDb, selectedTable } = useNavigationStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
@@ -602,7 +604,7 @@ export default function DocumentView() {
       setShowBulkInsert(false);
       setBulkJson("");
       invalidateFind();
-      alert(`${result.inserted} documents inserted`);
+      toast(`${result.inserted} documents inserted`, "success");
     } catch (e) {
       setBulkError((e as Error).message);
     } finally {
@@ -618,7 +620,7 @@ export default function DocumentView() {
       const result = await databaseRequest.mongoUpdateMany(selectedDb, selectedTable, bulkUpdateFilter, bulkUpdateOp);
       setShowBulkUpdate(false);
       invalidateFind();
-      alert(`${result.matched} matched, ${result.modified} modified`);
+      toast(`${result.matched} matched, ${result.modified} modified`, "success");
     } catch (e) {
       setBulkError((e as Error).message);
     } finally {
@@ -635,7 +637,7 @@ export default function DocumentView() {
       const result = await databaseRequest.mongoDeleteMany(selectedDb, selectedTable, bulkDeleteFilter);
       setShowBulkDelete(false);
       invalidateFind();
-      alert(`${result.deleted} documents deleted`);
+      toast(`${result.deleted} documents deleted`, "success");
     } catch (e) {
       setBulkError((e as Error).message);
     } finally {

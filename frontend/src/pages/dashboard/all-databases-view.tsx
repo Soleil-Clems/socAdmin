@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/toast";
 
 const dbTypeLabels: Record<string, string> = {
   mysql: "MySQL",
@@ -37,6 +38,7 @@ export default function AllDatabasesView() {
   });
   const createDb = useCreateDatabase();
   const dropDb = useDropDatabase();
+  const { toast } = useToast();
   const { setSelectedDb } = useNavigationStore();
   const dbType = useConnectionStore((s) => s.dbType);
   const isAdmin = useAuthStore((s) => s.isAdmin);
@@ -91,7 +93,7 @@ export default function AllDatabasesView() {
     try {
       await databaseRequest.backupDatabase(db, dbType);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Backup failed");
+      toast(e instanceof Error ? e.message : "Backup failed", "error");
     } finally {
       setBackupingDb(null);
     }
