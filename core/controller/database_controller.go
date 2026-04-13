@@ -234,6 +234,9 @@ func (c *DatabaseController) CreateTable(w http.ResponseWriter, r *http.Request)
 
 func (c *DatabaseController) ListTables(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
+	if !validatePathIdent(w, db, "database") {
+		return
+	}
 
 	tables, err := c.dbService.ListTables(db)
 	if err != nil {
@@ -247,6 +250,9 @@ func (c *DatabaseController) ListTables(w http.ResponseWriter, r *http.Request) 
 func (c *DatabaseController) DescribeTable(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 	table := r.PathValue("table")
+	if !validatePathIdent(w, db, "database") || !validatePathIdent(w, table, "table") {
+		return
+	}
 
 	columns, err := c.dbService.DescribeTable(db, table)
 	if err != nil {
@@ -260,6 +266,9 @@ func (c *DatabaseController) DescribeTable(w http.ResponseWriter, r *http.Reques
 func (c *DatabaseController) GetRows(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 	table := r.PathValue("table")
+	if !validatePathIdent(w, db, "database") || !validatePathIdent(w, table, "table") {
+		return
+	}
 
 	limit := 50
 	offset := 0
@@ -552,6 +561,7 @@ func (c *DatabaseController) ServerStatus(w http.ResponseWriter, r *http.Request
 func (c *DatabaseController) ImportSQL(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 
+	r.Body = http.MaxBytesReader(w, r.Body, 100<<20) // 100 MB
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, "failed to read body")
@@ -593,6 +603,7 @@ func (c *DatabaseController) ImportCSV(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
+	r.Body = http.MaxBytesReader(w, r.Body, 100<<20) // 100 MB
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, "failed to read body")
@@ -647,6 +658,7 @@ func (c *DatabaseController) ImportJSON(w http.ResponseWriter, r *http.Request) 
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
+	r.Body = http.MaxBytesReader(w, r.Body, 100<<20) // 100 MB
 	var rows []map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&rows); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid JSON array: "+err.Error())

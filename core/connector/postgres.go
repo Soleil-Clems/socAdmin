@@ -1,13 +1,18 @@
 package connector
 
 import (
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"time"
 
 	_ "github.com/lib/pq"
 )
+
+const queryTimeout = 30 * time.Second
+const maxResultRows = 10000
 
 type PostgresConfig struct {
 	Host     string
@@ -27,9 +32,9 @@ func NewPostgresConnector(config PostgresConfig) *PostgresConnector {
 
 func (c *PostgresConnector) Connect() error {
 	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=postgres sslmode=prefer connect_timeout=5",
-		c.config.Host, c.config.Port, c.config.User)
+		pgDSNEscape(c.config.Host), c.config.Port, pgDSNEscape(c.config.User))
 	if c.config.Password != "" {
-		dsn += fmt.Sprintf(" password=%s", c.config.Password)
+		dsn += fmt.Sprintf(" password=%s", pgDSNEscape(c.config.Password))
 	}
 
 	db, err := sql.Open("postgres", dsn)
@@ -419,17 +424,31 @@ func (c *PostgresConnector) QuoteIdentifier(name string) string {
 }
 
 func (c *PostgresConnector) connectToDb(database string) (*sql.DB, error) {
+	if err := ValidateIdentifier(database); err != nil {
+		return nil, fmt.Errorf("invalid database name: %w", err)
+	}
 	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=prefer connect_timeout=5",
-		c.config.Host, c.config.Port, c.config.User, database)
+		pgDSNEscape(c.config.Host), c.config.Port, pgDSNEscape(c.config.User), pgDSNEscape(database))
 	if c.config.Password != "" {
-		dsn += fmt.Sprintf(" password=%s", c.config.Password)
+		dsn += fmt.Sprintf(" password=%s", pgDSNEscape(c.config.Password))
 	}
 	return sql.Open("postgres", dsn)
 }
 
+// pgDSNEscape wraps a value in single quotes and escapes embedded quotes/backslashes
+// to prevent DSN parameter injection (e.g. "x sslmode=disable").
+func pgDSNEscape(val string) string {
+	val = strings.ReplaceAll(val, `\`, `\\`)
+	val = strings.ReplaceAll(val, `'`, `\'`)
+	return "'" + val + "'"
+}
+
 // scanQuery est partagé entre MySQL et PostgreSQL (même interface database/sql)
 func scanQuery(db *sql.DB, query string) (*QueryResult, error) {
-	rows, err := db.Query(query)
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
@@ -445,6 +464,9 @@ func scanQuery(db *sql.DB, query string) (*QueryResult, error) {
 
 	var results []map[string]interface{}
 	for rows.Next() {
+		if len(results) >= maxResultRows {
+			break
+		}
 		values := make([]interface{}, len(columns))
 		valuePtrs := make([]interface{}, len(columns))
 		for i := range values {

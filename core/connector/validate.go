@@ -6,19 +6,16 @@ import (
 	"strings"
 )
 
-// validateIdentifier ensures a name contains only safe characters for SQL identifiers.
-// Allows alphanumeric, underscore, hyphen, period, space. Max 128 chars.
+// identPattern is strict: ASCII letters, digits, underscore, hyphen, period.
+// No spaces (prevents DSN injection), no unicode homoglyphes, max 128 chars.
+var identPattern = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_\-.]{0,127}$`)
+
 func ValidateIdentifier(name string) error {
 	if name == "" {
 		return fmt.Errorf("identifier cannot be empty")
 	}
-	if len(name) > 128 {
-		return fmt.Errorf("identifier too long (max 128 characters)")
-	}
-	// Allow letters (including unicode), digits, underscore, hyphen, period, space
-	ok := regexp.MustCompile(`^[\p{L}\p{N}_\-. ]+$`).MatchString(name)
-	if !ok {
-		return fmt.Errorf("invalid identifier %q: only letters, digits, underscores, hyphens, periods and spaces are allowed", name)
+	if !identPattern.MatchString(name) {
+		return fmt.Errorf("invalid identifier %q: only ASCII letters, digits, underscores, hyphens, and periods are allowed (no spaces)", name)
 	}
 	return nil
 }

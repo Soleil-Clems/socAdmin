@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"os"
+	"strings"
 )
 
 const (
@@ -23,6 +25,16 @@ func CSRFProtection(apiPrefix string) func(http.Handler) http.Handler {
 	}
 }
 
+// secureCookies returns true when cookies should have the Secure flag.
+// True when behind TLS directly (r.TLS != nil), OR when SECURE_COOKIES=true
+// env var is set (for reverse proxy setups where Go sees plain HTTP).
+func secureCookies(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true")
+}
+
 func csrfHandler(next http.Handler, apiPrefix string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Ensure CSRF cookie exists
@@ -35,7 +47,7 @@ func csrfHandler(next http.Handler, apiPrefix string) http.Handler {
 				Path:     "/",
 				HttpOnly: false, // JS must read this
 				SameSite: http.SameSiteStrictMode,
-				Secure:   r.TLS != nil,
+				Secure:   secureCookies(r),
 			})
 			cookie = &http.Cookie{Value: token}
 		}

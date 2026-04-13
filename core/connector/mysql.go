@@ -248,6 +248,9 @@ func (c *MySQLConnector) QuoteIdentifier(name string) string {
 }
 
 func (c *MySQLConnector) connectToDb(database string) (*sql.DB, error) {
+	if err := ValidateIdentifier(database); err != nil {
+		return nil, fmt.Errorf("invalid database name: %w", err)
+	}
 	// multiStatements=true allows us to run an entire SQL dump (or any
 	// `;`-separated script) in a single Exec call without naïvely splitting
 	// it ourselves — MySQL handles comments, delimiters, strings correctly.

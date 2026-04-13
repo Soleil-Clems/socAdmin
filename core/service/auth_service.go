@@ -55,11 +55,17 @@ func (s *AuthService) Login(email, password string) (*auth.TokenPair, error) {
 
 	s.repo.RecordLoginAttempt(email)
 
+	// Constant-time: always run bcrypt even if user doesn't exist,
+	// so an attacker can't distinguish "unknown email" from "wrong password"
+	// by measuring response time.
+	dummyHash := []byte("$2a$12$000000000000000000000uGqDGzRXMiZqFOeAaagWQTCdSvaaDOq6")
+
 	user, err := s.repo.FindByEmail(email)
 	if err != nil {
 		return nil, err
 	}
 	if user == nil {
+		bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
