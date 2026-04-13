@@ -37,13 +37,28 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 		})
 	})
 
-	// Auth routes (publiques)
-	mux.HandleFunc("POST "+p+"/auth/register", authController.Register)
-	mux.HandleFunc("POST "+p+"/auth/login", authController.Login)
-	mux.HandleFunc("POST "+p+"/auth/refresh", authController.Refresh)
+	// Auth routes (publiques) — stricter rate limit (10 req/min per IP)
+	authLimiter := NewRateLimiter(10, time.Minute)
+	withAuthLimit := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			ip := security.NormalizeIP(security.ClientIP(r))
+			if !authLimiter.IsAllowed(ip) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Retry-After", "60")
+				w.WriteHeader(http.StatusTooManyRequests)
+				json.NewEncoder(w).Encode(map[string]string{"error": "too many requests, try again later"})
+				return
+			}
+			h(w, r)
+		}
+	}
+	mux.HandleFunc("POST "+p+"/auth/register", withAuthLimit(authController.Register))
+	mux.HandleFunc("POST "+p+"/auth/login", withAuthLimit(authController.Login))
+	mux.HandleFunc("POST "+p+"/auth/refresh", withAuthLimit(authController.Refresh))
 
-	// Routes protégées — tout le monde (admin + readonly)
+	// Logout (protégé mais accessible à tous les users authentifiés)
 	protected := http.NewServeMux()
+	protected.HandleFunc("POST "+p+"/auth/logout", authController.Logout)
 	protected.HandleFunc("GET "+p+"/auth/me", authController.Me)
 	protected.HandleFunc("GET "+p+"/connection/status", dbController.ConnectionStatus)
 	protected.HandleFunc("POST "+p+"/connect", dbController.Connect)

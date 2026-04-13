@@ -31,4 +31,7 @@ export const authRequest = {
   refresh: (data: RefreshPayload) => customfetch.post<AuthTokens>("/auth/refresh", data),
 
   me: () => customfetch.get<MeResponse>("/auth/me"),
+
+  logout: (refreshToken: string) =>
+    customfetch.post("/auth/logout", { refresh_token: refreshToken }),
 };

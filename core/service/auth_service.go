@@ -28,7 +28,7 @@ func (s *AuthService) Register(email, password string) (*auth.User, error) {
 		return nil, fmt.Errorf("email already registered")
 	}
 
-	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hashed, err := bcrypt.GenerateFromPassword([]byte(password), 12)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -88,6 +88,10 @@ func (s *AuthService) RefreshToken(refreshToken string) (*auth.TokenPair, error)
 	}
 
 	return s.generateTokenPair(user)
+}
+
+func (s *AuthService) RevokeRefreshToken(token string) {
+	s.repo.DeleteRefreshToken(token)
 }
 
 func (s *AuthService) ListUsers() ([]auth.User, error) {

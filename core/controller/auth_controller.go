@@ -2,8 +2,10 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"unicode"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
 	"github.com/soleilouisol/socAdmin/core/logger"
@@ -44,8 +46,8 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.Password) < 8 {
-		jsonError(w, http.StatusBadRequest, "password must be at least 8 characters")
+	if err := validatePassword(req.Password); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -177,4 +179,40 @@ func (c *AuthController) DeleteAppUser(w http.ResponseWriter, r *http.Request) {
 
 	logger.Admin(callerID, requestIP(r), "user_delete", strconv.FormatInt(id, 10))
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// Logout revokes the caller's refresh token so it can no longer be used.
+func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
+	var req RefreshRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
+		jsonError(w, http.StatusBadRequest, "refresh_token is required")
+		return
+	}
+	c.authService.RevokeRefreshToken(req.RefreshToken)
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "logged out"})
+}
+
+// validatePassword enforces a minimum password policy:
+// >= 10 chars, at least one uppercase, one lowercase, one digit, one special char.
+func validatePassword(password string) error {
+	if len(password) < 10 {
+		return fmt.Errorf("password must be at least 10 characters")
+	}
+	var hasUpper, hasLower, hasDigit, hasSpecial bool
+	for _, ch := range password {
+		switch {
+		case unicode.IsUpper(ch):
+			hasUpper = true
+		case unicode.IsLower(ch):
+			hasLower = true
+		case unicode.IsDigit(ch):
+			hasDigit = true
+		case unicode.IsPunct(ch) || unicode.IsSymbol(ch):
+			hasSpecial = true
+		}
+	}
+	if !hasUpper || !hasLower || !hasDigit || !hasSpecial {
+		return fmt.Errorf("password must contain uppercase, lowercase, digit, and special character")
+	}
+	return nil
 }

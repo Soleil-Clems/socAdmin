@@ -95,6 +95,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ role, isAdmin: role === "admin" });
   },
   logout: () => {
+    // Revoke refresh token server-side (fire-and-forget)
+    const rt = getCookie("refresh_token");
+    if (rt) {
+      import("@/requests/auth.request").then(({ authRequest }) => {
+        authRequest.logout(rt).catch(() => {});
+      });
+    }
     removeCookie("access_token");
     removeCookie("refresh_token");
     set({ accessToken: null, refreshToken: null, isAuthenticated: false, role: null, isAdmin: false });

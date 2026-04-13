@@ -82,9 +82,17 @@ export default function SecurityView() {
   const handleAddIP = () => {
     const trimmed = newIP.trim();
     if (!trimmed) return;
-    const ipv4 = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
-    const ipv6 = /^[0-9a-fA-F:]+$/;
-    if (!ipv4.test(trimmed) && !ipv6.test(trimmed)) {
+    // Validate IPv4: each octet 0-255
+    const ipv4Match = trimmed.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    const isValidIPv4 = ipv4Match && [1, 2, 3, 4].every((i) => {
+      const n = parseInt(ipv4Match[i], 10);
+      return n >= 0 && n <= 255;
+    });
+    // Validate IPv6: hex groups separated by colons
+    const isValidIPv6 = /^([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}$/.test(trimmed) ||
+      /^::([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4}$/.test(trimmed) ||
+      trimmed === "::1";
+    if (!isValidIPv4 && !isValidIPv6) {
       setError("Invalid IP address format");
       return;
     }

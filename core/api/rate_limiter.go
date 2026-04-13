@@ -36,7 +36,8 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 	return rl
 }
 
-func (rl *RateLimiter) isAllowed(ip string) bool {
+// IsAllowed checks whether the given IP is within the rate limit.
+func (rl *RateLimiter) IsAllowed(ip string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
@@ -86,7 +87,7 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := security.NormalizeIP(security.ClientIP(r))
 
-		if !rl.isAllowed(ip) {
+		if !rl.IsAllowed(ip) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Retry-After", "60")
 			w.WriteHeader(http.StatusTooManyRequests)

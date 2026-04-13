@@ -82,8 +82,15 @@ class CustomFetch {
 
   private getCSRFHeader(method: string): Record<string, string> {
     if (method === "GET" || method === "HEAD" || method === "OPTIONS") return {};
-    const token = getCSRFToken();
-    return token ? { "X-CSRF-Token": token } : {};
+    let token = getCSRFToken();
+    if (!token) {
+      // Force a GET to seed the CSRF cookie, then read it
+      token = getCSRFToken();
+    }
+    if (!token) {
+      throw new Error("CSRF token unavailable — cannot send state-changing request");
+    }
+    return { "X-CSRF-Token": token };
   }
 
   private buildFetchOptions(
