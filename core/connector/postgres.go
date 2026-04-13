@@ -26,7 +26,7 @@ func NewPostgresConnector(config PostgresConfig) *PostgresConnector {
 }
 
 func (c *PostgresConnector) Connect() error {
-	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=postgres sslmode=disable connect_timeout=5",
+	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=postgres sslmode=prefer connect_timeout=5",
 		c.config.Host, c.config.Port, c.config.User)
 	if c.config.Password != "" {
 		dsn += fmt.Sprintf(" password=%s", c.config.Password)
@@ -419,7 +419,7 @@ func (c *PostgresConnector) QuoteIdentifier(name string) string {
 }
 
 func (c *PostgresConnector) connectToDb(database string) (*sql.DB, error) {
-	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=disable connect_timeout=5",
+	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=prefer connect_timeout=5",
 		c.config.Host, c.config.Port, c.config.User, database)
 	if c.config.Password != "" {
 		dsn += fmt.Sprintf(" password=%s", c.config.Password)

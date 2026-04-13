@@ -22,11 +22,29 @@ function removeCookie(name: string) {
 }
 
 // ---------------------------------------------------------------------------
+// JWT role extraction — read role from signed token payload, not from a
+// client-writable cookie. The JWT is signed server-side so it can't be
+// spoofed via DevTools.
+// ---------------------------------------------------------------------------
+
+function extractRoleFromJWT(token: string | null): string | null {
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1]));
+    return payload.role ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Migrate from localStorage to cookies (one-time)
 // ---------------------------------------------------------------------------
 
 function migrateFromLocalStorage() {
-  const keys = ["access_token", "refresh_token", "socadmin_role"] as const;
+  const keys = ["access_token", "refresh_token"] as const;
   for (const key of keys) {
     const val = localStorage.getItem(key);
     if (val) {
@@ -34,6 +52,9 @@ function migrateFromLocalStorage() {
       localStorage.removeItem(key);
     }
   }
+  // Clean up old role cookie/localStorage — role now comes from JWT
+  localStorage.removeItem("socadmin_role");
+  removeCookie("socadmin_role");
 }
 
 migrateFromLocalStorage();
@@ -53,25 +74,29 @@ type AuthState = {
   logout: () => void;
 };
 
+const initialToken = getCookie("access_token");
+const initialRole = extractRoleFromJWT(initialToken);
+
 export const useAuthStore = create<AuthState>((set) => ({
-  accessToken: getCookie("access_token"),
+  accessToken: initialToken,
   refreshToken: getCookie("refresh_token"),
-  isAuthenticated: !!getCookie("access_token"),
-  role: getCookie("socadmin_role"),
-  isAdmin: getCookie("socadmin_role") === "admin",
+  isAuthenticated: !!initialToken,
+  role: initialRole,
+  isAdmin: initialRole === "admin",
   setTokens: (accessToken, refreshToken) => {
     setCookie("access_token", accessToken);
     setCookie("refresh_token", refreshToken);
-    set({ accessToken, refreshToken, isAuthenticated: true });
+    const role = extractRoleFromJWT(accessToken);
+    set({ accessToken, refreshToken, isAuthenticated: true, role, isAdmin: role === "admin" });
   },
+  // setRole is kept for the /auth/me sync on mount — it takes the server's
+  // authoritative role value. This does NOT persist to a cookie anymore.
   setRole: (role) => {
-    setCookie("socadmin_role", role);
     set({ role, isAdmin: role === "admin" });
   },
   logout: () => {
     removeCookie("access_token");
     removeCookie("refresh_token");
-    removeCookie("socadmin_role");
     set({ accessToken: null, refreshToken: null, isAuthenticated: false, role: null, isAdmin: false });
   },
 }));

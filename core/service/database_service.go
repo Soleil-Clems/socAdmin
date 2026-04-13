@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/soleilouisol/socAdmin/core/backup"
 	"github.com/soleilouisol/socAdmin/core/connector"
@@ -20,6 +21,7 @@ func toBsonMSlice(roles []map[string]interface{}) []bson.M {
 }
 
 type DatabaseService struct {
+	mu     sync.RWMutex
 	conn   connector.Connector
 	dbType string
 	host   string
@@ -32,6 +34,9 @@ func NewDatabaseService() *DatabaseService {
 }
 
 func (s *DatabaseService) Connect(host string, port int, user, password, dbType string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.conn != nil {
 		s.conn.Close()
 	}
@@ -68,10 +73,14 @@ func (s *DatabaseService) Connect(host string, port int, user, password, dbType 
 }
 
 func (s *DatabaseService) GetType() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.dbType
 }
 
 func (s *DatabaseService) IsConnected() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.conn != nil
 }
 
@@ -83,6 +92,8 @@ type ConnectionInfo struct {
 }
 
 func (s *DatabaseService) GetConnectionInfo() *ConnectionInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if s.conn == nil {
 		return nil
 	}
@@ -94,26 +105,60 @@ func (s *DatabaseService) GetConnectionInfo() *ConnectionInfo {
 	}
 }
 
+// getConn safely reads the current connector under read lock.
+func (s *DatabaseService) getConn() (connector.Connector, error) {
+	s.mu.RLock()
+	c := s.conn
+	s.mu.RUnlock()
+	if c == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	return c, nil
+}
+
+// getMongoConn safely reads the current connector and asserts it's MongoDB.
+func (s *DatabaseService) getMongoConn() (*connector.MongoConnector, error) {
+	s.mu.RLock()
+	c := s.conn
+	s.mu.RUnlock()
+	if c == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	mc, ok := c.(*connector.MongoConnector)
+	if !ok {
+		return nil, fmt.Errorf("not a MongoDB connection")
+	}
+	return mc, nil
+}
+
 // BackupDatabase streams a full dump of dbName to w using the appropriate
 // native binary (mysqldump/pg_dump/mongodump). The caller is responsible
 // for setting HTTP headers before calling.
 func (s *DatabaseService) BackupDatabase(dbName string, w io.Writer) error {
-	if s.conn == nil {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
 		return fmt.Errorf("not connected")
 	}
-	cfg := s.conn.GetConfig()
-	return backup.Backup(s.dbType, cfg, dbName, w)
+	cfg := c.GetConfig()
+	return backup.Backup(dt, cfg, dbName, w)
 }
 
 // RestoreDatabase replays a dump from r into dbName. For SQL dumps the
 // target database must already exist; for MongoDB the archive contains
 // the database name and is restored under dbName via --nsInclude.
 func (s *DatabaseService) RestoreDatabase(dbName string, r io.Reader) error {
-	if s.conn == nil {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
 		return fmt.Errorf("not connected")
 	}
-	cfg := s.conn.GetConfig()
-	return backup.Restore(s.dbType, cfg, dbName, r)
+	cfg := c.GetConfig()
+	return backup.Restore(dt, cfg, dbName, r)
 }
 
 // BackupBinariesAvailable returns a map[dbType]bool indicating whether
@@ -125,23 +170,31 @@ func (s *DatabaseService) BackupBinariesAvailable() map[string]bool {
 // BackupFormat returns the canonical extension and content-type for the
 // current connection's backup format.
 func (s *DatabaseService) BackupFormat() backup.Format {
-	return backup.FormatFor(s.dbType)
+	s.mu.RLock()
+	dt := s.dbType
+	s.mu.RUnlock()
+	return backup.FormatFor(dt)
 }
 
 func (s *DatabaseService) ListDatabases() ([]string, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return nil, err
 	}
-	return s.conn.ListDatabases()
+	return c.ListDatabases()
 }
 
 // ListDatabasesWithStats returns databases with table count and size info.
 func (s *DatabaseService) ListDatabasesWithStats() ([]connector.DatabaseInfo, error) {
-	if s.conn == nil {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
 		return nil, fmt.Errorf("not connected")
 	}
 
-	switch s.dbType {
+	switch dt {
 	case "mysql":
 		return s.mysqlDatabaseStats()
 	case "postgresql":
@@ -150,7 +203,7 @@ func (s *DatabaseService) ListDatabasesWithStats() ([]connector.DatabaseInfo, er
 		return s.mongoDatabaseStats()
 	default:
 		// Fallback: just names, no stats
-		names, err := s.conn.ListDatabases()
+		names, err := c.ListDatabases()
 		if err != nil {
 			return nil, err
 		}
@@ -163,7 +216,11 @@ func (s *DatabaseService) ListDatabasesWithStats() ([]connector.DatabaseInfo, er
 }
 
 func (s *DatabaseService) mysqlDatabaseStats() ([]connector.DatabaseInfo, error) {
-	result, err := s.conn.ExecuteQuery("", `
+	c, err := s.getConn()
+	if err != nil {
+		return nil, err
+	}
+	result, err := c.ExecuteQuery("", `
 		SELECT
 			s.SCHEMA_NAME,
 			COUNT(t.TABLE_NAME) AS table_count,
@@ -192,7 +249,11 @@ func (s *DatabaseService) mysqlDatabaseStats() ([]connector.DatabaseInfo, error)
 }
 
 func (s *DatabaseService) postgresDatabaseStats() ([]connector.DatabaseInfo, error) {
-	result, err := s.conn.ExecuteQuery("", `
+	c, err := s.getConn()
+	if err != nil {
+		return nil, err
+	}
+	result, err := c.ExecuteQuery("", `
 		SELECT
 			d.datname AS name,
 			pg_database_size(d.datname) AS size_bytes
@@ -208,7 +269,7 @@ func (s *DatabaseService) postgresDatabaseStats() ([]connector.DatabaseInfo, err
 		name := fmt.Sprintf("%v", row["name"])
 		sb := toInt64(row["size_bytes"])
 		// Table count requires per-DB connection, get it from ListTables
-		tables, _ := s.conn.ListTables(name)
+		tables, _ := c.ListTables(name)
 		infos = append(infos, connector.DatabaseInfo{
 			Name:       name,
 			TableCount: len(tables),
@@ -220,13 +281,17 @@ func (s *DatabaseService) postgresDatabaseStats() ([]connector.DatabaseInfo, err
 }
 
 func (s *DatabaseService) mongoDatabaseStats() ([]connector.DatabaseInfo, error) {
-	names, err := s.conn.ListDatabases()
+	c, err := s.getConn()
+	if err != nil {
+		return nil, err
+	}
+	names, err := c.ListDatabases()
 	if err != nil {
 		return nil, err
 	}
 	infos := make([]connector.DatabaseInfo, 0, len(names))
 	for _, name := range names {
-		tables, _ := s.conn.ListTables(name)
+		tables, _ := c.ListTables(name)
 		// MongoDB doesn't have a simple size query via the Connector interface
 		infos = append(infos, connector.DatabaseInfo{
 			Name:       name,
@@ -271,101 +336,115 @@ func formatBytes(b int64) string {
 
 
 func (s *DatabaseService) CreateDatabase(name string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return err
 	}
-	return s.conn.CreateDatabase(name)
+	return c.CreateDatabase(name)
 }
 
 func (s *DatabaseService) DropDatabase(name string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return err
 	}
-	return s.conn.DropDatabase(name)
+	return c.DropDatabase(name)
 }
 
 func (s *DatabaseService) CreateTable(database, table string, columns []connector.TableColumnDef) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return err
 	}
-	return s.conn.CreateTable(database, table, columns)
+	return c.CreateTable(database, table, columns)
 }
 
 func (s *DatabaseService) ListTables(database string) ([]string, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return nil, err
 	}
-	return s.conn.ListTables(database)
+	return c.ListTables(database)
 }
 
 func (s *DatabaseService) DescribeTable(database, table string) ([]connector.Column, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return nil, err
 	}
-	return s.conn.DescribeTable(database, table)
+	return c.DescribeTable(database, table)
 }
 
 func (s *DatabaseService) GetRows(database, table string, limit, offset int) (*connector.QueryResult, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return nil, err
 	}
-	return s.conn.GetRows(database, table, limit, offset)
+	return c.GetRows(database, table, limit, offset)
 }
 
 func (s *DatabaseService) InsertRow(database, table string, data map[string]interface{}) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return err
 	}
-	return s.conn.InsertRow(database, table, data)
+	return c.InsertRow(database, table, data)
 }
 
 func (s *DatabaseService) UpdateRow(database, table string, primaryKey map[string]interface{}, data map[string]interface{}) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return err
 	}
-	return s.conn.UpdateRow(database, table, primaryKey, data)
+	return c.UpdateRow(database, table, primaryKey, data)
 }
 
 func (s *DatabaseService) DeleteRow(database, table string, primaryKey map[string]interface{}) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return err
 	}
-	return s.conn.DeleteRow(database, table, primaryKey)
+	return c.DeleteRow(database, table, primaryKey)
 }
 
 func (s *DatabaseService) ExecuteQuery(database, query string) (*connector.QueryResult, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return nil, err
 	}
-	return s.conn.ExecuteQuery(database, query)
+	return c.ExecuteQuery(database, query)
 }
 
 func (s *DatabaseService) ExecuteScript(database, script string) (int, error) {
-	if s.conn == nil {
-		return 0, fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return 0, err
 	}
-	return s.conn.ExecuteScript(database, script)
+	return c.ExecuteScript(database, script)
 }
 
 func (s *DatabaseService) DropTable(database, table string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return err
 	}
-	return s.conn.DropTable(database, table)
+	return c.DropTable(database, table)
 }
 
 func (s *DatabaseService) AlterColumn(database, table string, op connector.AlterColumnOp) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return err
 	}
-	return s.conn.AlterColumn(database, table, op)
+	return c.AlterColumn(database, table, op)
 }
 
 func (s *DatabaseService) TruncateTable(database, table string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return err
 	}
-	return s.conn.TruncateTable(database, table)
+	return c.TruncateTable(database, table)
 }
 
 // SearchGlobalResult represents search results from one table.
@@ -378,11 +457,15 @@ type SearchGlobalResult struct {
 
 // SearchGlobal searches for a term across all tables/collections in a database.
 func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]SearchGlobalResult, error) {
-	if s.conn == nil {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
 		return nil, fmt.Errorf("not connected")
 	}
 
-	tables, err := s.conn.ListTables(database)
+	tables, err := c.ListTables(database)
 	if err != nil {
 		return nil, err
 	}
@@ -390,7 +473,7 @@ func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]Sea
 	var results []SearchGlobalResult
 
 	for _, table := range tables {
-		cols, err := s.conn.DescribeTable(database, table)
+		cols, err := c.DescribeTable(database, table)
 		if err != nil {
 			continue
 		}
@@ -398,16 +481,16 @@ func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]Sea
 		// Build a search query based on SGBD type
 		var searchQuery string
 		colNames := make([]string, len(cols))
-		for i, c := range cols {
-			colNames[i] = c.Name
+		for i, col := range cols {
+			colNames[i] = col.Name
 		}
 
-		switch s.dbType {
+		switch dt {
 		case "mysql":
 			// CONCAT_WS all columns and LIKE search
 			var castCols []string
-			for _, c := range cols {
-				castCols = append(castCols, fmt.Sprintf("COALESCE(CAST(`%s` AS CHAR),'')", c.Name))
+			for _, col := range cols {
+				castCols = append(castCols, fmt.Sprintf("COALESCE(CAST(`%s` AS CHAR),'')", col.Name))
 			}
 			searchQuery = fmt.Sprintf(
 				"SELECT * FROM `%s`.`%s` WHERE CONCAT_WS(' ',%s) LIKE '%%%s%%' LIMIT %d",
@@ -415,8 +498,8 @@ func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]Sea
 			)
 		case "postgresql":
 			var castCols []string
-			for _, c := range cols {
-				castCols = append(castCols, fmt.Sprintf(`COALESCE("%s"::text,'')`, c.Name))
+			for _, col := range cols {
+				castCols = append(castCols, fmt.Sprintf(`COALESCE("%s"::text,'')`, col.Name))
 			}
 			// PostgreSQL: ExecuteQuery connects to the specific DB, so just use public."table"
 			searchQuery = fmt.Sprintf(
@@ -425,7 +508,7 @@ func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]Sea
 			)
 		case "mongodb":
 			// For MongoDB, search via regex on all string fields
-			result, err := s.conn.GetRows(database, table, 100, 0)
+			result, err := c.GetRows(database, table, 100, 0)
 			if err != nil {
 				continue
 			}
@@ -433,8 +516,8 @@ func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]Sea
 			lowerQ := fmt.Sprintf("%v", query)
 			for _, row := range result.Rows {
 				for _, v := range row {
-					s := fmt.Sprintf("%v", v)
-					if containsCI(s, lowerQ) {
+					sv := fmt.Sprintf("%v", v)
+					if containsCI(sv, lowerQ) {
 						matches = append(matches, row)
 						break
 					}
@@ -457,7 +540,7 @@ func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]Sea
 		}
 
 		// Execute SQL search
-		result, err := s.conn.ExecuteQuery(database, searchQuery)
+		result, err := c.ExecuteQuery(database, searchQuery)
 		if err != nil {
 			continue
 		}
@@ -500,11 +583,12 @@ func containsCI(s, substr string) bool {
 
 // GetSchema returns the full schema for a database (tables, columns, foreign keys).
 func (s *DatabaseService) GetSchema(database string) ([]connector.TableSchema, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
+	c, err := s.getConn()
+	if err != nil {
+		return nil, err
 	}
 
-	tables, err := s.conn.ListTables(database)
+	tables, err := c.ListTables(database)
 	if err != nil {
 		return nil, err
 	}
@@ -514,7 +598,7 @@ func (s *DatabaseService) GetSchema(database string) ([]connector.TableSchema, e
 
 	var schema []connector.TableSchema
 	for _, tableName := range tables {
-		cols, err := s.conn.DescribeTable(database, tableName)
+		cols, err := c.DescribeTable(database, tableName)
 		if err != nil {
 			continue
 		}
@@ -546,12 +630,16 @@ func (s *DatabaseService) GetSchema(database string) ([]connector.TableSchema, e
 
 func (s *DatabaseService) getForeignKeys(database string) map[string]connector.FKInfo {
 	fkMap := make(map[string]connector.FKInfo)
-	if s.conn == nil {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
 		return fkMap
 	}
 
 	var query string
-	switch s.dbType {
+	switch dt {
 	case "mysql":
 		query = fmt.Sprintf(`
 			SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
@@ -581,7 +669,7 @@ func (s *DatabaseService) getForeignKeys(database string) map[string]connector.F
 		return fkMap // MongoDB has no foreign keys
 	}
 
-	result, err := s.conn.ExecuteQuery(database, query)
+	result, err := c.ExecuteQuery(database, query)
 	if err != nil {
 		return fkMap
 	}
@@ -613,132 +701,99 @@ func (s *DatabaseService) getForeignKeys(database string) map[string]connector.F
 
 // MongoFind performs a server-side find with filter, sort, projection, limit, skip.
 func (s *DatabaseService) MongoFind(database, collection, filter, sort, projection string, limit, skip int) (*connector.QueryResult, int64, error) {
-	if s.conn == nil {
-		return nil, 0, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, 0, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, 0, err
 	}
 	return mc.FindDocuments(database, collection, filter, sort, projection, limit, skip)
 }
 
 // MongoExplain runs explain on a find query.
 func (s *DatabaseService) MongoExplain(database, collection, filter, sort string) (map[string]interface{}, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.ExplainFind(database, collection, filter, sort)
 }
 
 // MongoCount returns total document count for a collection.
 func (s *DatabaseService) MongoCount(database, collection string) (int64, error) {
-	if s.conn == nil {
-		return 0, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return 0, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return 0, err
 	}
 	return mc.CountDocuments(database, collection)
 }
 
 // MongoListIndexes returns indexes for a collection.
 func (s *DatabaseService) MongoListIndexes(database, collection string) ([]connector.IndexInfo, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.ListIndexes(database, collection)
 }
 
 // MongoCreateIndex creates an index on a collection.
 func (s *DatabaseService) MongoCreateIndex(database, collection, keysJSON string, unique bool, name string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.CreateIndex(database, collection, keysJSON, unique, name)
 }
 
 // MongoCreateIndexAdvanced creates an index with advanced options.
 func (s *DatabaseService) MongoCreateIndexAdvanced(database, collection, keysJSON string, unique, sparse bool, name string, ttlSeconds int, partialFilterJSON string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.CreateIndexAdvanced(database, collection, keysJSON, unique, sparse, name, ttlSeconds, partialFilterJSON)
 }
 
 // MongoCreateIndexFull creates an index with the full option set.
 func (s *DatabaseService) MongoCreateIndexFull(database, collection, keysJSON string, opts connector.IndexCreateOptions) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.CreateIndexFull(database, collection, keysJSON, opts)
 }
 
 // MongoSetIndexHidden hides or unhides an existing index.
 func (s *DatabaseService) MongoSetIndexHidden(database, collection, indexName string, hidden bool) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.SetIndexHidden(database, collection, indexName, hidden)
 }
 
 // MongoDropIndex drops an index by name.
 func (s *DatabaseService) MongoDropIndex(database, collection, indexName string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.DropIndex(database, collection, indexName)
 }
 
 // MongoWatchCollection opens a change stream on a collection (SSE).
 func (s *DatabaseService) MongoWatchCollection(ctx context.Context, database, collection string, events chan<- connector.ChangeEvent) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.WatchCollection(ctx, database, collection, events)
 }
 
 // MongoCollectionStats returns stats for a MongoDB collection.
 func (s *DatabaseService) MongoCollectionStats(database, collection string) (*connector.CollectionStats, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.CollectionStats(database, collection)
 }
@@ -746,34 +801,25 @@ func (s *DatabaseService) MongoCollectionStats(database, collection string) (*co
 // ── Bulk Operations ──
 
 func (s *DatabaseService) MongoInsertMany(database, collection string, docs []map[string]interface{}) (int, error) {
-	if s.conn == nil {
-		return 0, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return 0, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return 0, err
 	}
 	return mc.InsertMany(database, collection, docs)
 }
 
 func (s *DatabaseService) MongoUpdateMany(database, collection, filter, update string) (int64, int64, error) {
-	if s.conn == nil {
-		return 0, 0, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return 0, 0, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return 0, 0, err
 	}
 	return mc.UpdateMany(database, collection, filter, update)
 }
 
 func (s *DatabaseService) MongoDeleteMany(database, collection, filter string) (int64, error) {
-	if s.conn == nil {
-		return 0, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return 0, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return 0, err
 	}
 	return mc.DeleteMany(database, collection, filter)
 }
@@ -781,12 +827,9 @@ func (s *DatabaseService) MongoDeleteMany(database, collection, filter string) (
 // ── Distinct ──
 
 func (s *DatabaseService) MongoDistinct(database, collection, field, filter string) ([]interface{}, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.Distinct(database, collection, field, filter)
 }
@@ -794,45 +837,33 @@ func (s *DatabaseService) MongoDistinct(database, collection, field, filter stri
 // ── User Management ──
 
 func (s *DatabaseService) MongoCreateUser(database, username, password string, roles []map[string]interface{}) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.MongoCreateUser(database, username, password, toBsonMSlice(roles))
 }
 
 func (s *DatabaseService) MongoDropUser(database, username string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.MongoDropUser(database, username)
 }
 
 func (s *DatabaseService) MongoUpdateUserRoles(database, username string, roles []map[string]interface{}) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.MongoUpdateUserRoles(database, username, toBsonMSlice(roles))
 }
 
 func (s *DatabaseService) MongoListRoles(database string) ([]string, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.MongoListRoles(database)
 }
@@ -840,23 +871,17 @@ func (s *DatabaseService) MongoListRoles(database string) ([]string, error) {
 // ── currentOp / killOp ──
 
 func (s *DatabaseService) MongoCurrentOp() ([]map[string]interface{}, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.CurrentOp()
 }
 
 func (s *DatabaseService) MongoKillOp(opid interface{}) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.KillOp(opid)
 }
@@ -864,23 +889,17 @@ func (s *DatabaseService) MongoKillOp(opid interface{}) error {
 // ── MongoDB Views ──
 
 func (s *DatabaseService) MongoCreateView(database, viewName, source, pipelineJSON string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.CreateView(database, viewName, source, pipelineJSON)
 }
 
 func (s *DatabaseService) MongoListViews(database string) ([]map[string]interface{}, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.ListViews(database)
 }
@@ -888,23 +907,17 @@ func (s *DatabaseService) MongoListViews(database string) ([]map[string]interfac
 // ── Schema Validation ──
 
 func (s *DatabaseService) MongoGetValidation(database, collection string) (map[string]interface{}, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.GetValidationRules(database, collection)
 }
 
 func (s *DatabaseService) MongoSetValidation(database, collection, validatorJSON, level, action string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.SetValidationRules(database, collection, validatorJSON, level, action)
 }
@@ -912,12 +925,9 @@ func (s *DatabaseService) MongoSetValidation(database, collection, validatorJSON
 // ── Rename Collection ──
 
 func (s *DatabaseService) MongoRenameCollection(database, oldName, newName string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.RenameCollection(database, oldName, newName)
 }
@@ -925,34 +935,25 @@ func (s *DatabaseService) MongoRenameCollection(database, oldName, newName strin
 // ── Database Profiler ──
 
 func (s *DatabaseService) MongoGetProfilingLevel(database string) (map[string]interface{}, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.GetProfilingLevel(database)
 }
 
 func (s *DatabaseService) MongoSetProfilingLevel(database string, level, slowms int) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.SetProfilingLevel(database, level, slowms)
 }
 
 func (s *DatabaseService) MongoGetProfileData(database string, limit int) ([]map[string]interface{}, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.GetProfileData(database, limit)
 }
@@ -960,12 +961,9 @@ func (s *DatabaseService) MongoGetProfileData(database string, limit int) ([]map
 // ── Database Stats ──
 
 func (s *DatabaseService) MongoDatabaseStats(database string) (map[string]interface{}, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.DatabaseStats(database)
 }
@@ -973,23 +971,17 @@ func (s *DatabaseService) MongoDatabaseStats(database string) (map[string]interf
 // ── Capped Collections ──
 
 func (s *DatabaseService) MongoCreateCappedCollection(database, collection string, sizeBytes, maxDocs int64) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.CreateCappedCollection(database, collection, sizeBytes, maxDocs)
 }
 
 func (s *DatabaseService) MongoIsCollectionCapped(database, collection string) (bool, error) {
-	if s.conn == nil {
-		return false, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return false, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return false, err
 	}
 	return mc.IsCollectionCapped(database, collection)
 }
@@ -997,12 +989,9 @@ func (s *DatabaseService) MongoIsCollectionCapped(database, collection string) (
 // ── Compact Collection ──
 
 func (s *DatabaseService) MongoCompactCollection(database, collection string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.CompactCollection(database, collection)
 }
@@ -1010,12 +999,9 @@ func (s *DatabaseService) MongoCompactCollection(database, collection string) er
 // ── Duplicate Collection ──
 
 func (s *DatabaseService) MongoDuplicateCollection(database, source, target string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.DuplicateCollection(database, source, target)
 }
@@ -1023,12 +1009,9 @@ func (s *DatabaseService) MongoDuplicateCollection(database, source, target stri
 // ── Server Log ──
 
 func (s *DatabaseService) MongoGetServerLog(logType string) ([]string, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.GetServerLog(logType)
 }
@@ -1036,12 +1019,9 @@ func (s *DatabaseService) MongoGetServerLog(logType string) ([]string, error) {
 // ── Convert to Capped ──
 
 func (s *DatabaseService) MongoConvertToCapped(database, collection string, sizeBytes int64) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.ConvertToCapped(database, collection, sizeBytes)
 }
@@ -1049,12 +1029,9 @@ func (s *DatabaseService) MongoConvertToCapped(database, collection string, size
 // ── Collection Metadata ──
 
 func (s *DatabaseService) MongoListCollectionsWithMeta(database string) ([]connector.CollectionMetadata, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.ListCollectionsWithMeta(database)
 }
@@ -1062,12 +1039,9 @@ func (s *DatabaseService) MongoListCollectionsWithMeta(database string) ([]conne
 // ── Replica Set Info ──
 
 func (s *DatabaseService) MongoReplicaSetStatus() (map[string]interface{}, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.ReplicaSetStatus()
 }
@@ -1075,12 +1049,9 @@ func (s *DatabaseService) MongoReplicaSetStatus() (map[string]interface{}, error
 // ── Sample Documents ──
 
 func (s *DatabaseService) MongoSampleDocuments(database, collection string, n int) (*connector.QueryResult, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.SampleDocuments(database, collection, n)
 }
@@ -1088,12 +1059,9 @@ func (s *DatabaseService) MongoSampleDocuments(database, collection string, n in
 // ── Index Usage Stats ──
 
 func (s *DatabaseService) MongoIndexUsageStats(database, collection string) ([]map[string]interface{}, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.IndexUsageStats(database, collection)
 }
@@ -1101,12 +1069,9 @@ func (s *DatabaseService) MongoIndexUsageStats(database, collection string) ([]m
 // ── Field Type Analysis ──
 
 func (s *DatabaseService) MongoFieldTypeAnalysis(database, collection string, sampleSize int) ([]map[string]interface{}, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.FieldTypeAnalysis(database, collection, sampleSize)
 }
@@ -1114,23 +1079,17 @@ func (s *DatabaseService) MongoFieldTypeAnalysis(database, collection string, sa
 // ── Top Commands ──
 
 func (s *DatabaseService) MongoTopStats() ([]map[string]interface{}, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.TopStats()
 }
 
 func (s *DatabaseService) MongoRunAggregation(database, collection, pipelineJSON string) (*connector.QueryResult, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.RunAggregation(database, collection, pipelineJSON)
 }
@@ -1138,45 +1097,33 @@ func (s *DatabaseService) MongoRunAggregation(database, collection, pipelineJSON
 // ── Custom Roles ──
 
 func (s *DatabaseService) MongoListRolesDetailed(database string, showBuiltin bool) ([]connector.RoleInfo, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.ListRolesDetailed(database, showBuiltin)
 }
 
 func (s *DatabaseService) MongoCreateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.CreateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON)
 }
 
 func (s *DatabaseService) MongoUpdateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.UpdateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON)
 }
 
 func (s *DatabaseService) MongoDropCustomRole(database, roleName string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.DropCustomRole(database, roleName)
 }
@@ -1184,56 +1131,41 @@ func (s *DatabaseService) MongoDropCustomRole(database, roleName string) error {
 // ── GridFS ──
 
 func (s *DatabaseService) MongoListGridFSBuckets(database string) ([]string, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.ListGridFSBuckets(database)
 }
 
 func (s *DatabaseService) MongoListGridFSFiles(database, bucket string, limit int) ([]connector.GridFSFileInfo, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.ListGridFSFiles(database, bucket, limit)
 }
 
 func (s *DatabaseService) MongoUploadGridFSFile(database, bucket, filename string, data []byte) (string, error) {
-	if s.conn == nil {
-		return "", fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return "", fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return "", err
 	}
 	return mc.UploadGridFSFile(database, bucket, filename, data)
 }
 
 func (s *DatabaseService) MongoDownloadGridFSFile(database, bucket, fileID string) ([]byte, string, error) {
-	if s.conn == nil {
-		return nil, "", fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, "", fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, "", err
 	}
 	return mc.DownloadGridFSFile(database, bucket, fileID)
 }
 
 func (s *DatabaseService) MongoDeleteGridFSFile(database, bucket, fileID string) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.DeleteGridFSFile(database, bucket, fileID)
 }
@@ -1241,23 +1173,17 @@ func (s *DatabaseService) MongoDeleteGridFSFile(database, bucket, fileID string)
 // ── Time Series ──
 
 func (s *DatabaseService) MongoCreateTimeSeriesCollection(database, collection, timeField, metaField, granularity string, expireAfterSeconds int64) error {
-	if s.conn == nil {
-		return fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return err
 	}
 	return mc.CreateTimeSeriesCollection(database, collection, timeField, metaField, granularity, expireAfterSeconds)
 }
 
 func (s *DatabaseService) MongoGetTimeSeriesInfo(database, collection string) (*connector.TimeSeriesOptions, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.GetTimeSeriesInfo(database, collection)
 }
@@ -1265,28 +1191,24 @@ func (s *DatabaseService) MongoGetTimeSeriesInfo(database, collection string) (*
 // ── Sharding ──
 
 func (s *DatabaseService) MongoGetClusterShardingInfo() (*connector.ShardedClusterInfo, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.GetClusterShardingInfo()
 }
 
 func (s *DatabaseService) MongoGetCollectionShardingInfo(database, collection string) (*connector.CollectionShardingInfo, error) {
-	if s.conn == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	mc, ok := s.conn.(*connector.MongoConnector)
-	if !ok {
-		return nil, fmt.Errorf("not a MongoDB connection")
+	mc, err := s.getMongoConn()
+	if err != nil {
+		return nil, err
 	}
 	return mc.GetCollectionShardingInfo(database, collection)
 }
 
 func (s *DatabaseService) Disconnect() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.conn != nil {
 		err := s.conn.Close()
 		s.conn = nil
@@ -1298,19 +1220,24 @@ func (s *DatabaseService) Disconnect() error {
 
 // ListUsers returns the database server users
 func (s *DatabaseService) ListUsers() (*connector.QueryResult, error) {
-	if s.conn == nil {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
 		return nil, fmt.Errorf("not connected")
 	}
-	switch s.dbType {
+	switch dt {
 	case "mysql":
-		return s.conn.ExecuteQuery("", "SELECT User, Host FROM mysql.user ORDER BY User")
+		return c.ExecuteQuery("", "SELECT User, Host FROM mysql.user ORDER BY User")
 	case "postgresql":
-		return s.conn.ExecuteQuery("", "SELECT rolname AS \"User\", CASE WHEN rolcanlogin THEN 'Yes' ELSE 'No' END AS \"Can Login\", CASE WHEN rolsuper THEN 'Yes' ELSE 'No' END AS \"Superuser\", CASE WHEN rolcreatedb THEN 'Yes' ELSE 'No' END AS \"Create DB\", CASE WHEN rolcreaterole THEN 'Yes' ELSE 'No' END AS \"Create Role\" FROM pg_roles ORDER BY rolname")
+		return c.ExecuteQuery("", "SELECT rolname AS \"User\", CASE WHEN rolcanlogin THEN 'Yes' ELSE 'No' END AS \"Can Login\", CASE WHEN rolsuper THEN 'Yes' ELSE 'No' END AS \"Superuser\", CASE WHEN rolcreatedb THEN 'Yes' ELSE 'No' END AS \"Create DB\", CASE WHEN rolcreaterole THEN 'Yes' ELSE 'No' END AS \"Create Role\" FROM pg_roles ORDER BY rolname")
 	case "mongodb":
-		if mc, ok := s.conn.(*connector.MongoConnector); ok {
-			return mc.ListUsers()
+		mc, ok := c.(*connector.MongoConnector)
+		if !ok {
+			return nil, fmt.Errorf("unexpected connector type")
 		}
-		return nil, fmt.Errorf("unexpected connector type")
+		return mc.ListUsers()
 	default:
 		return nil, fmt.Errorf("unsupported for this database type")
 	}
@@ -1318,19 +1245,24 @@ func (s *DatabaseService) ListUsers() (*connector.QueryResult, error) {
 
 // ServerStatus returns key server status information
 func (s *DatabaseService) ServerStatus() (*connector.QueryResult, error) {
-	if s.conn == nil {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
 		return nil, fmt.Errorf("not connected")
 	}
-	switch s.dbType {
+	switch dt {
 	case "mysql":
-		return s.conn.ExecuteQuery("", "SHOW GLOBAL STATUS WHERE Variable_name IN ('Uptime','Threads_connected','Questions','Slow_queries','Open_tables','Bytes_received','Bytes_sent','Connections','Aborted_connects','Max_used_connections')")
+		return c.ExecuteQuery("", "SHOW GLOBAL STATUS WHERE Variable_name IN ('Uptime','Threads_connected','Questions','Slow_queries','Open_tables','Bytes_received','Bytes_sent','Connections','Aborted_connects','Max_used_connections')")
 	case "postgresql":
-		return s.conn.ExecuteQuery("", "SELECT name AS \"Variable_name\", setting AS \"Value\" FROM pg_settings WHERE name IN ('max_connections','shared_buffers','work_mem','effective_cache_size','maintenance_work_mem') UNION ALL SELECT 'server_version', version() UNION ALL SELECT 'active_connections', count(*)::text FROM pg_stat_activity WHERE state = 'active'")
+		return c.ExecuteQuery("", "SELECT name AS \"Variable_name\", setting AS \"Value\" FROM pg_settings WHERE name IN ('max_connections','shared_buffers','work_mem','effective_cache_size','maintenance_work_mem') UNION ALL SELECT 'server_version', version() UNION ALL SELECT 'active_connections', count(*)::text FROM pg_stat_activity WHERE state = 'active'")
 	case "mongodb":
-		if mc, ok := s.conn.(*connector.MongoConnector); ok {
-			return mc.ServerStatus()
+		mc, ok := c.(*connector.MongoConnector)
+		if !ok {
+			return nil, fmt.Errorf("unexpected connector type")
 		}
-		return nil, fmt.Errorf("unexpected connector type")
+		return mc.ServerStatus()
 	default:
 		return nil, fmt.Errorf("unsupported for this database type")
 	}
