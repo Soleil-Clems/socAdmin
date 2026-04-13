@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -32,13 +31,8 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 
 	// Route publique : infos système pour le formulaire de connexion
 	mux.HandleFunc("GET "+p+"/system/info", func(w http.ResponseWriter, r *http.Request) {
-		username := ""
-		if u, err := user.Current(); err == nil {
-			username = u.Username
-		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"os_user":        username,
 			"installed_sgbd": detectInstalledSGBD(),
 		})
 	})
@@ -161,7 +155,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 
 	// Bulk whitelist — admin only
 	protected.HandleFunc("POST "+p+"/security/whitelist/bulk", auth.RequireAdmin(secController.BulkAddIPs))
-	protected.HandleFunc("GET "+p+"/security/whitelist/export", secController.ExportWhitelist)
+	protected.HandleFunc("GET "+p+"/security/whitelist/export", auth.RequireAdmin(secController.ExportWhitelist))
 
 	// SSE endpoint — auth via query param "token" (EventSource can't set headers)
 	mux.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/watch", auth.AuthFromQueryParam(dbController.MongoWatchSSE))
@@ -172,7 +166,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	rateLimiter := NewRateLimiter(200, time.Minute) // 200 req/min per IP
 	var handler http.Handler = mux
 	handler = SecurityHeaders(handler)
-	handler = CSRFProtection(handler)
+	handler = CSRFProtection(apiPrefix)(handler)
 	handler = rateLimiter.Middleware(handler)
 	handler = whitelist.Middleware(handler)
 

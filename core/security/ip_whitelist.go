@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 )
@@ -82,18 +83,70 @@ func (w *IPWhitelist) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// ClientIP extracts the real client IP, checking X-Forwarded-For and X-Real-IP first (for reverse proxies)
-func ClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.SplitN(xff, ",", 2)
-		ip := strings.TrimSpace(parts[0])
-		if ip != "" {
-			return ip
+// trustedProxies is the set of IPs allowed to set X-Forwarded-For/X-Real-IP.
+// Populated from the TRUSTED_PROXY env var (comma-separated IPs/CIDRs).
+// If empty, proxy headers are NEVER trusted — only r.RemoteAddr is used.
+var (
+	trustedProxyCIDRs []*net.IPNet
+	trustedProxyIPs   map[string]bool
+	trustedProxyOnce  sync.Once
+)
+
+func initTrustedProxies() {
+	trustedProxyIPs = make(map[string]bool)
+	raw := os.Getenv("TRUSTED_PROXY")
+	if raw == "" {
+		return
+	}
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if _, cidr, err := net.ParseCIDR(entry); err == nil {
+			trustedProxyCIDRs = append(trustedProxyCIDRs, cidr)
+		} else if ip := net.ParseIP(entry); ip != nil {
+			trustedProxyIPs[ip.String()] = true
 		}
 	}
+}
 
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
+func isProxyTrusted(remoteAddr string) bool {
+	trustedProxyOnce.Do(initTrustedProxies)
+	if len(trustedProxyIPs) == 0 && len(trustedProxyCIDRs) == 0 {
+		return false
+	}
+	ip := net.ParseIP(ExtractIP(remoteAddr))
+	if ip == nil {
+		return false
+	}
+	if trustedProxyIPs[ip.String()] {
+		return true
+	}
+	for _, cidr := range trustedProxyCIDRs {
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// ClientIP extracts the real client IP. Proxy headers (X-Forwarded-For,
+// X-Real-IP) are only trusted when the direct connection comes from an
+// IP listed in the TRUSTED_PROXY env var. Otherwise, only r.RemoteAddr
+// is used — this prevents attackers from spoofing their IP.
+func ClientIP(r *http.Request) string {
+	if isProxyTrusted(r.RemoteAddr) {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.SplitN(xff, ",", 2)
+			ip := strings.TrimSpace(parts[0])
+			if ip != "" {
+				return ip
+			}
+		}
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			return strings.TrimSpace(xri)
+		}
 	}
 
 	return r.RemoteAddr

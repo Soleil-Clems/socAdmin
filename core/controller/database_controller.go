@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"net"
+
 	"github.com/soleilouisol/socAdmin/core/connector"
 	"github.com/soleilouisol/socAdmin/core/logger"
 	"github.com/soleilouisol/socAdmin/core/service"
@@ -85,6 +87,12 @@ func (c *DatabaseController) Connect(w http.ResponseWriter, r *http.Request) {
 	dbType := req.Type
 	if dbType == "" {
 		dbType = "mysql"
+	}
+
+	// SSRF protection — block connections to link-local / cloud metadata IPs
+	if isBlockedHost(req.Host) {
+		jsonError(w, http.StatusBadRequest, "connection to this address is not allowed")
+		return
 	}
 
 	if err := c.dbService.Connect(req.Host, req.Port, req.User, req.Password, dbType); err != nil {
@@ -2072,5 +2080,41 @@ func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 }
 
 func jsonError(w http.ResponseWriter, status int, message string) {
-	jsonResponse(w, status, map[string]string{"error": message})
+	jsonResponse(w, status, map[string]string{"error": sanitizeErrorMessage(message)})
+}
+
+// sanitizeErrorMessage strips filesystem paths and internal details from errors
+// to avoid leaking server internals to the client.
+func sanitizeErrorMessage(msg string) string {
+	// Remove absolute paths (Unix and Windows)
+	for _, prefix := range []string{"/home/", "/root/", "/tmp/", "/var/", "/usr/", "C:\\", "D:\\"} {
+		if idx := strings.Index(msg, prefix); idx != -1 {
+			// Find the end of the path (space or colon)
+			end := idx
+			for end < len(msg) && msg[end] != ' ' && msg[end] != ':' && msg[end] != '\n' {
+				end++
+			}
+			msg = msg[:idx] + "[path]" + msg[end:]
+		}
+	}
+	return msg
+}
+
+// isBlockedHost returns true for hosts that should never be used as DB targets
+// (cloud metadata endpoints, link-local addresses, loopback when inappropriate).
+func isBlockedHost(host string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		// Hostname — block known metadata hostnames
+		lower := strings.ToLower(host)
+		return lower == "metadata.google.internal" ||
+			lower == "metadata.google" ||
+			strings.HasSuffix(lower, ".internal")
+	}
+	// Block link-local 169.254.0.0/16 (AWS/GCP/Azure metadata)
+	if ip4 := ip.To4(); ip4 != nil {
+		return ip4[0] == 169 && ip4[1] == 254
+	}
+	// Block IPv6 link-local (fe80::/10)
+	return ip.IsLinkLocalUnicast()
 }

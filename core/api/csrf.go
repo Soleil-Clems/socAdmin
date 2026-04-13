@@ -16,7 +16,14 @@ const (
 // A random token is set as a cookie. For state-changing requests (POST/PUT/DELETE),
 // the client must send the same token in the X-CSRF-Token header.
 // GET/HEAD/OPTIONS requests are exempt.
-func CSRFProtection(next http.Handler) http.Handler {
+// apiPrefix is the dynamic random prefix used in routes (e.g. "a1b2c3d4").
+func CSRFProtection(apiPrefix string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return csrfHandler(next, apiPrefix)
+	}
+}
+
+func csrfHandler(next http.Handler, apiPrefix string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Ensure CSRF cookie exists
 		cookie, err := r.Cookie(csrfCookieName)
@@ -40,7 +47,7 @@ func CSRFProtection(next http.Handler) http.Handler {
 		}
 
 		// For auth endpoints (login/register/refresh), skip CSRF since they use credentials
-		if isAuthEndpoint(r.URL.Path) {
+		if isAuthEndpoint(r.URL.Path, apiPrefix) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -58,10 +65,11 @@ func CSRFProtection(next http.Handler) http.Handler {
 	})
 }
 
-func isAuthEndpoint(path string) bool {
-	return path == "/api/auth/login" ||
-		path == "/api/auth/register" ||
-		path == "/api/auth/refresh"
+func isAuthEndpoint(path, apiPrefix string) bool {
+	base := "/" + apiPrefix + "/api/auth/"
+	return path == base+"login" ||
+		path == base+"register" ||
+		path == base+"refresh"
 }
 
 func generateCSRFToken() string {

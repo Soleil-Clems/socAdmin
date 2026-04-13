@@ -110,13 +110,13 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
       setValue("user", "");
       setValue("password", "");
     } else if (value === "postgresql") {
-      setValue("user", systemInfo?.os_user || "");
+      setValue("user", "postgres");
       setValue("password", "");
     } else {
       setValue("user", "root");
       setValue("password", "");
     }
-  }, [setValue, systemInfo?.os_user, connectMutation]);
+  }, [setValue, connectMutation]);
 
   // Switch to first available type if current selection isn't installed
   useEffect(() => {

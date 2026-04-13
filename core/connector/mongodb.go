@@ -205,6 +205,22 @@ func (c *MongoConnector) ExecuteScript(database, script string) (int, error) {
 }
 
 // ExecuteQuery exécute une commande JSON MongoDB (ex: {"find": "users", "filter": {"age": {"$gt": 25}}})
+// allowedMongoCommands is the set of MongoDB commands that can be executed
+// via the query editor. Dangerous commands (eval, shutdown, etc.) are blocked.
+var allowedMongoCommands = map[string]bool{
+	"find": true, "aggregate": true, "count": true, "distinct": true,
+	"mapReduce": true, "insert": true, "update": true, "delete": true,
+	"findAndModify": true, "getMore": true,
+	"createIndexes": true, "dropIndexes": true, "listIndexes": true,
+	"collStats": true, "dbStats": true, "serverStatus": true,
+	"ping": true, "connectionStatus": true, "buildInfo": true,
+	"listCollections": true, "listDatabases": true,
+	"explain": true, "validate": true, "collMod": true,
+	"create": true, "drop": true, "renameCollection": true,
+	"currentOp": true, "killOp": true,
+	"usersInfo": true, "rolesInfo": true,
+}
+
 func (c *MongoConnector) ExecuteQuery(database, query string) (*QueryResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -212,6 +228,22 @@ func (c *MongoConnector) ExecuteQuery(database, query string) (*QueryResult, err
 	var cmd bson.D
 	if err := bson.UnmarshalExtJSON([]byte(query), true, &cmd); err != nil {
 		return nil, fmt.Errorf("invalid JSON command: %w", err)
+	}
+
+	// Whitelist check — the first key in a bson.D is the command name
+	if len(cmd) > 0 {
+		cmdName := strings.ToLower(cmd[0].Key)
+		// Normalize to canonical casing for lookup
+		found := false
+		for allowed := range allowedMongoCommands {
+			if strings.ToLower(allowed) == cmdName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("command %q is not allowed", cmd[0].Key)
+		}
 	}
 
 	// Utiliser la database passée en paramètre, sinon chercher dans la commande, sinon "test"

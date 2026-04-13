@@ -1,9 +1,6 @@
 import customfetch from "@/lib/custom-fetch";
 
 type SystemInfo = {
-  os_user: string;
-  os: string;
-  arch: string;
   installed_sgbd: string[];
 };
 
