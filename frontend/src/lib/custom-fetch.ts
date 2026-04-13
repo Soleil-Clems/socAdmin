@@ -82,15 +82,11 @@ class CustomFetch {
 
   private getCSRFHeader(method: string): Record<string, string> {
     if (method === "GET" || method === "HEAD" || method === "OPTIONS") return {};
-    let token = getCSRFToken();
-    if (!token) {
-      // Force a GET to seed the CSRF cookie, then read it
-      token = getCSRFToken();
-    }
-    if (!token) {
-      throw new Error("CSRF token unavailable — cannot send state-changing request");
-    }
-    return { "X-CSRF-Token": token };
+    const token = getCSRFToken();
+    // Token may be absent on the very first POST (login/register) before any
+    // GET has seeded the cookie. The backend skips CSRF for auth endpoints,
+    // so sending without the header is safe in that case.
+    return token ? { "X-CSRF-Token": token } : {};
   }
 
   private buildFetchOptions(
