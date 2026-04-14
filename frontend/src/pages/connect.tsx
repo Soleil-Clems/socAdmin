@@ -252,6 +252,13 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
                 )}
               </div>
             )}
+            {deleteSavedMutation.isError && (
+              <div className="text-xs bg-destructive/10 px-3 py-2.5 rounded-md mt-2">
+                <p className="text-destructive font-medium">
+                  {deleteSavedMutation.error.message}
+                </p>
+              </div>
+            )}
             <div className="flex items-center gap-3 my-5">
               <div className="flex-1 h-px bg-border" />
               <span className="text-[11px] text-muted-foreground">or connect manually</span>

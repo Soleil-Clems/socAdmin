@@ -432,7 +432,15 @@ func (c *PostgresConnector) connectToDb(database string) (*sql.DB, error) {
 	if c.config.Password != "" {
 		dsn += fmt.Sprintf(" password=%s", pgDSNEscape(c.config.Password))
 	}
-	return sql.Open("postgres", dsn)
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("cannot reach database %q: %w", database, err)
+	}
+	return db, nil
 }
 
 // pgDSNEscape wraps a value in single quotes and escapes embedded quotes/backslashes

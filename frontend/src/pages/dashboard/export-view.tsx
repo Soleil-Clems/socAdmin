@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
 import { databaseRequest } from "@/requests/database.request";
+import { useToast } from "@/components/ui/toast";
 
 type Format = "csv" | "json" | "sql" | "yaml";
 
@@ -20,15 +22,33 @@ export default function ExportView() {
   const { selectedDb, selectedTable } = useNavigationStore();
   const isMongo = useConnectionStore((s) => s.dbType) === "mongodb";
   const formats = isMongo ? mongoFormats : sqlFormats;
+  const { toast } = useToast();
+  const [exporting, setExporting] = useState<string | null>(null);
 
-  const handleExportTable = (format: Format) => {
+  const handleExportTable = async (format: Format) => {
     if (!selectedDb || !selectedTable) return;
-    databaseRequest.exportTable(selectedDb, selectedTable, format);
+    setExporting(`table-${format}`);
+    try {
+      await databaseRequest.exportTable(selectedDb, selectedTable, format);
+      toast(`${selectedTable}.${format} exported`, "success");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Export failed", "error");
+    } finally {
+      setExporting(null);
+    }
   };
 
-  const handleExportDatabase = (format: Format) => {
+  const handleExportDatabase = async (format: Format) => {
     if (!selectedDb) return;
-    databaseRequest.exportDatabase(selectedDb, format);
+    setExporting(`db-${format}`);
+    try {
+      await databaseRequest.exportDatabase(selectedDb, format);
+      toast(`${selectedDb}.${format} exported`, "success");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Export failed", "error");
+    } finally {
+      setExporting(null);
+    }
   };
 
   return (
@@ -61,10 +81,11 @@ export default function ExportView() {
                   <button
                     key={f.value}
                     onClick={() => handleExportDatabase(f.value)}
-                    className="border border-border rounded-lg p-3 text-center hover:border-primary/40 hover:bg-accent/30 transition-colors group"
+                    disabled={!!exporting}
+                    className="border border-border rounded-lg p-3 text-center hover:border-primary/40 hover:bg-accent/30 transition-colors group disabled:opacity-50 disabled:pointer-events-none"
                   >
                     <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
-                      {f.label}
+                      {exporting === `db-${f.value}` ? "Exporting..." : f.label}
                     </p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">{f.desc}</p>
                   </button>
@@ -86,10 +107,11 @@ export default function ExportView() {
                     <button
                       key={f.value}
                       onClick={() => handleExportTable(f.value)}
-                      className="border border-border rounded-lg p-3 text-center hover:border-primary/40 hover:bg-accent/30 transition-colors group"
+                      disabled={!!exporting}
+                      className="border border-border rounded-lg p-3 text-center hover:border-primary/40 hover:bg-accent/30 transition-colors group disabled:opacity-50 disabled:pointer-events-none"
                     >
                       <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
-                        {f.label}
+                        {exporting === `table-${f.value}` ? "Exporting..." : f.label}
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-0.5">{f.desc}</p>
                     </button>
