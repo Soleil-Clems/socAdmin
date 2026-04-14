@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 // Categories of MongoDB actions for the UI builder
 const ACTION_CATEGORIES: { label: string; actions: string[] }[] = [
@@ -55,6 +56,7 @@ type Privilege = {
 export default function RolesView() {
   const { selectedDb } = useNavigationStore();
   const confirm = useConfirm();
+  const { toast } = useToast();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const queryClient = useQueryClient();
   const [showBuiltin, setShowBuiltin] = useState(false);
@@ -116,8 +118,9 @@ export default function RolesView() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mongo-roles-detailed"] });
       setEditMode(null);
+      toast("Role created", "success");
     },
-    onError: (e) => setError((e as Error).message),
+    onError: (e) => { setError((e as Error).message); toast((e as Error).message, "error"); },
   });
 
   const updateMutation = useMutation({
@@ -131,13 +134,15 @@ export default function RolesView() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mongo-roles-detailed"] });
       setEditMode(null);
+      toast("Role updated", "success");
     },
-    onError: (e) => setError((e as Error).message),
+    onError: (e) => { setError((e as Error).message); toast((e as Error).message, "error"); },
   });
 
   const dropMutation = useMutation({
     mutationFn: (name: string) => databaseRequest.mongoDropCustomRole(selectedDb, name),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mongo-roles-detailed"] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["mongo-roles-detailed"] }); toast("Role dropped", "success"); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Failed to drop role", "error"),
   });
 
   const handleSubmit = () => {

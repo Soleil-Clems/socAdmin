@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -30,6 +31,7 @@ export default function GridFSView() {
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
@@ -55,9 +57,11 @@ export default function GridFSView() {
       queryClient.invalidateQueries({ queryKey: ["gridfs-buckets", selectedDb] });
       setUploadError(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      toast("File uploaded", "success");
     },
     onError: (err: Error) => {
       setUploadError(err.message);
+      toast(err.message, "error");
     },
   });
 
@@ -66,7 +70,9 @@ export default function GridFSView() {
       databaseRequest.mongoDeleteGridFSFile(selectedDb, selectedBucket!, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["gridfs-files", selectedDb, selectedBucket] });
+      toast("File deleted", "success");
     },
+    onError: (e) => toast(e.message, "error"),
   });
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {

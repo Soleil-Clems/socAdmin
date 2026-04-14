@@ -72,14 +72,19 @@ export default function AllDatabasesView() {
 
   const handleCreate = async () => {
     if (!newDbName.trim()) return;
-    await createDb.mutateAsync(newDbName.trim());
-    setShowCreate(false);
-    setNewDbName("");
+    try {
+      await createDb.mutateAsync(newDbName.trim());
+      setShowCreate(false);
+      setNewDbName("");
+      toast("Database created", "success");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Failed to create database", "error");
+    }
   };
 
   const handleDrop = async (db: string) => {
     if (!await confirm({ title: "Drop database", message: `Drop database "${db}"? This cannot be undone.`, confirmLabel: "Drop", variant: "destructive" })) return;
-    dropDb.mutate(db);
+    dropDb.mutate(db, { onSuccess: () => toast("Database dropped", "success"), onError: (e) => toast(e.message, "error") });
   };
 
   const handleExportDb = (db: string) => {

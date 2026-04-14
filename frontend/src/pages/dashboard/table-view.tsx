@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 type Column = {
   Name: string;
@@ -97,6 +98,7 @@ export default function TableView() {
   const { selectedDb, selectedTable } = useNavigationStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const confirm = useConfirm();
+  const { toast } = useToast();
 
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
@@ -249,7 +251,7 @@ export default function TableView() {
     }
     insertRow.mutate(
       { db: selectedDb, table: selectedTable, data },
-      { onSuccess: () => setShowInsert(false) }
+      { onSuccess: () => { setShowInsert(false); toast("Row inserted", "success"); }, onError: (e) => toast(e.message, "error") }
     );
   };
 
@@ -268,17 +270,16 @@ export default function TableView() {
         primaryKey: getPrimaryKey(editingRow),
         data,
       },
-      { onSuccess: () => setEditingRow(null) }
+      { onSuccess: () => { setEditingRow(null); toast("Row updated", "success"); }, onError: (e) => toast(e.message, "error") }
     );
   };
 
   const handleDelete = async (row: Record<string, unknown>) => {
     if (!await confirm({ title: "Delete row", message: "Delete this row?", confirmLabel: "Delete", variant: "destructive" })) return;
-    deleteRow.mutate({
-      db: selectedDb,
-      table: selectedTable,
-      primaryKey: getPrimaryKey(row),
-    });
+    deleteRow.mutate(
+      { db: selectedDb, table: selectedTable, primaryKey: getPrimaryKey(row) },
+      { onSuccess: () => toast("Row deleted", "success"), onError: (e) => toast(e.message, "error") }
+    );
   };
 
   const isLoading = colLoading || rowsLoading;

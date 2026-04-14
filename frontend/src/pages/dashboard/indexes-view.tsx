@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 type IndexType = "regular" | "text" | "2dsphere" | "hashed" | "wildcard";
 
@@ -56,6 +57,7 @@ export default function IndexesView() {
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const { toast } = useToast();
   const [showUsage, setShowUsage] = useState(false);
 
   const { data: indexes, isLoading } = useQuery<MongoIndex[]>({
@@ -85,19 +87,23 @@ export default function IndexesView() {
       invalidateIndexes();
       setShowCreate(false);
       resetForm();
+      toast("Index created", "success");
     },
+    onError: (e) => toast(e.message, "error"),
   });
 
   const dropMutation = useMutation({
     mutationFn: (name: string) =>
       databaseRequest.mongoDropIndex(selectedDb, selectedTable, name),
-    onSuccess: invalidateIndexes,
+    onSuccess: () => { invalidateIndexes(); toast("Index dropped", "success"); },
+    onError: (e) => toast(e.message, "error"),
   });
 
   const hideMutation = useMutation({
     mutationFn: ({ name, hidden }: { name: string; hidden: boolean }) =>
       databaseRequest.mongoSetIndexHidden(selectedDb, selectedTable, name, hidden),
-    onSuccess: invalidateIndexes,
+    onSuccess: () => { invalidateIndexes(); toast("Index visibility updated", "success"); },
+    onError: (e) => toast(e.message, "error"),
   });
 
   // --- Create form state ---

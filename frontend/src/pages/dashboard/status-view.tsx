@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 type QueryResult = {
   Columns: string[];
@@ -55,6 +56,7 @@ export default function StatusView() {
   const { host, port, dbType } = useConnectionStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const confirm = useConfirm();
+  const { toast } = useToast();
   const isMongo = dbType === "mongodb";
   const queryClient = useQueryClient();
   const result = data as QueryResult | undefined;
@@ -81,7 +83,9 @@ export default function StatusView() {
     mutationFn: (opid: unknown) => databaseRequest.mongoKillOp(opid),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mongo-currentop"] });
+      toast("Operation killed", "success");
     },
+    onError: (e) => toast(e instanceof Error ? e.message : "Kill failed", "error"),
   });
 
   const { data: rsData } = useQuery({

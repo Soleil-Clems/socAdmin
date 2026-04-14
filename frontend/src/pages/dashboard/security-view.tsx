@@ -4,6 +4,7 @@ import { securityRequest, type WhitelistResponse } from "@/requests/security.req
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/stores/auth.store";
+import { useToast } from "@/components/ui/toast";
 
 function ipLabel(ip: string): string | null {
   if (ip === "127.0.0.1" || ip === "::1") return "localhost";
@@ -13,6 +14,7 @@ function ipLabel(ip: string): string | null {
 
 export default function SecurityView() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const [newIP, setNewIP] = useState("");
   const [error, setError] = useState("");
@@ -26,8 +28,8 @@ export default function SecurityView() {
 
   const toggleMutation = useMutation({
     mutationFn: (enabled: boolean) => securityRequest.toggleWhitelist(enabled),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["security", "whitelist"] }),
-    onError: (e: Error) => setError(e.message),
+    onSuccess: (_d, enabled) => { queryClient.invalidateQueries({ queryKey: ["security", "whitelist"] }); toast(enabled ? "Whitelist enabled" : "Whitelist disabled", "success"); },
+    onError: (e: Error) => { setError(e.message); toast(e.message, "error"); },
   });
 
   const addMutation = useMutation({
@@ -36,14 +38,15 @@ export default function SecurityView() {
       queryClient.invalidateQueries({ queryKey: ["security", "whitelist"] });
       setNewIP("");
       setError("");
+      toast("IP added", "success");
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => { setError(e.message); toast(e.message, "error"); },
   });
 
   const removeMutation = useMutation({
     mutationFn: (ip: string) => securityRequest.removeIP(ip),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["security", "whitelist"] }),
-    onError: (e: Error) => setError(e.message),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["security", "whitelist"] }); toast("IP removed", "success"); },
+    onError: (e: Error) => { setError(e.message); toast(e.message, "error"); },
   });
 
   const bulkMutation = useMutation({
@@ -53,8 +56,9 @@ export default function SecurityView() {
       setBulkText("");
       setShowBulk(false);
       setError("");
+      toast("IPs imported", "success");
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => { setError(e.message); toast(e.message, "error"); },
   });
 
   const handleBulkImport = () => {

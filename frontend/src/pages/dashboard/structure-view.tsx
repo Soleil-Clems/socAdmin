@@ -31,6 +31,7 @@ import JsonSchemaBuilder, {
   type SchemaField,
 } from "@/components/json-schema-builder";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 type Column = {
   Name: string;
@@ -66,6 +67,7 @@ export default function StructureView() {
   const { data: columns, isLoading } = useColumns(selectedDb, selectedTable);
   const alter = useAlterColumn();
   const confirm = useConfirm();
+  const { toast } = useToast();
 
   const queryClient = useQueryClient();
 
@@ -75,6 +77,8 @@ export default function StructureView() {
   // Compact
   const compactMutation = useMutation({
     mutationFn: () => databaseRequest.mongoCompactCollection(selectedDb, selectedTable),
+    onSuccess: () => toast("Collection compacted", "success"),
+    onError: (e) => toast(e.message, "error"),
   });
 
   // Duplicate
@@ -85,7 +89,9 @@ export default function StructureView() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tables", selectedDb] });
       setShowDuplicate(false);
+      toast("Collection duplicated", "success");
     },
+    onError: (e) => toast(e.message, "error"),
   });
 
   // Convert to Capped
@@ -93,7 +99,8 @@ export default function StructureView() {
   const [convertSize, setConvertSize] = useState("10485760");
   const convertCappedMutation = useMutation({
     mutationFn: () => databaseRequest.mongoConvertToCapped(selectedDb, selectedTable, parseInt(convertSize, 10)),
-    onSuccess: () => setShowConvertCapped(false),
+    onSuccess: () => { setShowConvertCapped(false); toast("Converted to capped", "success"); },
+    onError: (e) => toast(e.message, "error"),
   });
 
   // Rename collection
@@ -104,7 +111,9 @@ export default function StructureView() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tables", selectedDb] });
       setShowRename(false);
+      toast("Collection renamed", "success");
     },
+    onError: (e) => toast(e.message, "error"),
   });
 
   // Field type analysis
@@ -152,7 +161,9 @@ export default function StructureView() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mongo-validation", selectedDb, selectedTable] });
       setShowValidation(false);
+      toast("Validation updated", "success");
     },
+    onError: (e) => toast(e.message, "error"),
   });
 
   const openAdd = () => {
@@ -178,7 +189,7 @@ export default function StructureView() {
     setError("");
     alter.mutate(
       { db: selectedDb, table: selectedTable, op: { op: "drop", name } },
-      { onError: (e) => setError((e as Error).message) }
+      { onSuccess: () => toast("Column dropped", "success"), onError: (e) => { setError((e as Error).message); toast((e as Error).message, "error"); } }
     );
   };
 
@@ -234,8 +245,10 @@ export default function StructureView() {
         });
       }
       setEdit(null);
+      toast(edit.mode === "add" ? "Column added" : "Column modified", "success");
     } catch (e) {
       setError((e as Error).message);
+      toast((e as Error).message, "error");
     }
   };
 

@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 type MongoView = {
   name: string;
@@ -34,6 +35,7 @@ export default function ViewsView() {
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const { toast } = useToast();
 
   const { data: views, isLoading } = useQuery<MongoView[]>({
     queryKey: ["mongo-views", selectedDb],
@@ -55,7 +57,9 @@ export default function ViewsView() {
       queryClient.invalidateQueries({ queryKey: ["tables", selectedDb] });
       setShowCreate(false);
       resetForm();
+      toast("View created", "success");
     },
+    onError: (e) => toast(e.message, "error"),
   });
 
   const dropMutation = useMutation({
@@ -63,7 +67,9 @@ export default function ViewsView() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mongo-views", selectedDb] });
       queryClient.invalidateQueries({ queryKey: ["tables", selectedDb] });
+      toast("View dropped", "success");
     },
+    onError: (e) => toast(e.message, "error"),
   });
 
   const [showCreate, setShowCreate] = useState(false);

@@ -526,7 +526,7 @@ export default function DocumentView() {
     setJsonError("");
     insertRow.mutate(
       { db: selectedDb, table: selectedTable, data },
-      { onSuccess: () => { setShowInsert(false); invalidateFind(); } }
+      { onSuccess: () => { setShowInsert(false); invalidateFind(); toast("Document inserted", "success"); }, onError: (e) => toast(e.message, "error") }
     );
   };
 
@@ -537,7 +537,7 @@ export default function DocumentView() {
     setJsonError("");
     updateRow.mutate(
       { db: selectedDb, table: selectedTable, primaryKey: { _id: editingDoc._id }, data },
-      { onSuccess: () => { setEditingDoc(null); invalidateFind(); } }
+      { onSuccess: () => { setEditingDoc(null); invalidateFind(); toast("Document updated", "success"); }, onError: (e) => toast(e.message, "error") }
     );
   };
 
@@ -545,7 +545,7 @@ export default function DocumentView() {
     if (!await confirm({ title: "Delete document", message: "Delete this document?", confirmLabel: "Delete", variant: "destructive" })) return;
     deleteRow.mutate(
       { db: selectedDb, table: selectedTable, primaryKey: { _id: doc._id } },
-      { onSuccess: invalidateFind }
+      { onSuccess: () => { invalidateFind(); toast("Document deleted", "success"); }, onError: (e) => toast(e.message, "error") }
     );
   };
 

@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 
 type ProfileEntry = {
   op: string;
@@ -30,6 +31,7 @@ export default function ProfilerView() {
   const { selectedDb } = useNavigationStore();
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const { data: profiling, isLoading: levelLoading } = useQuery({
     queryKey: ["mongo-profiling", selectedDb],
@@ -56,7 +58,9 @@ export default function ProfilerView() {
       queryClient.invalidateQueries({ queryKey: ["mongo-profiling", selectedDb] });
       setNewLevel(null);
       setNewSlowms("");
+      toast("Profiling level updated", "success");
     },
+    onError: (e) => toast(e.message, "error"),
   });
 
   const currentLevel = profiling?.was ?? 0;
