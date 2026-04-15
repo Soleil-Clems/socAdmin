@@ -2130,3 +2130,116 @@ func isBlockedHost(host string) bool {
 	// Block IPv6 link-local (fe80::/10)
 	return ip.IsLinkLocalUnicast()
 }
+
+// ── Triggers ─────────────────────────────────────────────────────────────
+
+func (c *DatabaseController) ListTriggers(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	triggers, err := c.dbService.ListTriggers(db)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
+		return
+	}
+	if triggers == nil {
+		triggers = []connector.TriggerInfo{}
+	}
+	jsonResponse(w, http.StatusOK, triggers)
+}
+
+func (c *DatabaseController) DropTrigger(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	var req struct {
+		Name  string `json:"name"`
+		Table string `json:"table"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := c.dbService.DropTrigger(db, req.Name, req.Table); err != nil {
+		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// ── Routines ─────────────────────────────────────────────────────────────
+
+func (c *DatabaseController) ListRoutines(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	routines, err := c.dbService.ListRoutines(db)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
+		return
+	}
+	if routines == nil {
+		routines = []connector.RoutineInfo{}
+	}
+	jsonResponse(w, http.StatusOK, routines)
+}
+
+func (c *DatabaseController) DropRoutine(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	var req struct {
+		Name string `json:"name"`
+		Type string `json:"type"` // PROCEDURE or FUNCTION
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if err := c.dbService.DropRoutine(db, req.Name, req.Type); err != nil {
+		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// ── Schemas (PostgreSQL) ─────────────────────────────────────────────────
+
+func (c *DatabaseController) ListSchemas(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	schemas, err := c.dbService.ListSchemas(db)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
+		return
+	}
+	if schemas == nil {
+		schemas = []string{}
+	}
+	jsonResponse(w, http.StatusOK, schemas)
+}
+
+func (c *DatabaseController) ListTablesInSchema(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	schema := r.PathValue("schema")
+	tables, err := c.dbService.ListTablesInSchema(db, schema)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
+		return
+	}
+	if tables == nil {
+		tables = []string{}
+	}
+	jsonResponse(w, http.StatusOK, tables)
+}
+
+// ── Table Maintenance ────────────────────────────────────────────────────
+
+func (c *DatabaseController) MaintenanceTable(w http.ResponseWriter, r *http.Request) {
+	db := r.PathValue("db")
+	table := r.PathValue("table")
+	var req struct {
+		Operation string `json:"operation"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	result, err := c.dbService.MaintenanceTable(db, table, req.Operation)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]string{"result": result})
+}

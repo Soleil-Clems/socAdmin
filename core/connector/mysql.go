@@ -340,3 +340,153 @@ func quoteIdentifier(name string) string {
 	escaped := strings.ReplaceAll(name, "`", "``")
 	return "`" + escaped + "`"
 }
+
+// ── Triggers ─────────────────────────────────────────────────────────────
+
+func (c *MySQLConnector) ListTriggers(database string) ([]TriggerInfo, error) {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT TRIGGER_NAME, EVENT_OBJECT_TABLE, EVENT_MANIPULATION, ACTION_TIMING, ACTION_STATEMENT
+		FROM INFORMATION_SCHEMA.TRIGGERS
+		WHERE TRIGGER_SCHEMA = ?
+		ORDER BY EVENT_OBJECT_TABLE, ACTION_TIMING, EVENT_MANIPULATION`, database)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var triggers []TriggerInfo
+	for rows.Next() {
+		var t TriggerInfo
+		if err := rows.Scan(&t.Name, &t.Table, &t.Event, &t.Timing, &t.Statement); err != nil {
+			return nil, err
+		}
+		triggers = append(triggers, t)
+	}
+	return triggers, nil
+}
+
+func (c *MySQLConnector) DropTrigger(database, name string) error {
+	if err := ValidateIdentifier(name); err != nil {
+		return err
+	}
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec("DROP TRIGGER " + quoteIdentifier(name))
+	return err
+}
+
+// ── Routines (stored procedures & functions) ─────────────────────────────
+
+func (c *MySQLConnector) ListRoutines(database string) ([]RoutineInfo, error) {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT ROUTINE_NAME, ROUTINE_TYPE, IFNULL(DTD_IDENTIFIER, ''), ROUTINE_DEFINITION, IFNULL(ROUTINE_COMMENT, '')
+		FROM INFORMATION_SCHEMA.ROUTINES
+		WHERE ROUTINE_SCHEMA = ?
+		ORDER BY ROUTINE_TYPE, ROUTINE_NAME`, database)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var routines []RoutineInfo
+	for rows.Next() {
+		var r RoutineInfo
+		var comment string
+		if err := rows.Scan(&r.Name, &r.Type, &r.ReturnType, &r.Body, &comment); err != nil {
+			return nil, err
+		}
+		routines = append(routines, r)
+	}
+
+	// Get param lists with SHOW CREATE
+	for i, r := range routines {
+		keyword := "PROCEDURE"
+		if r.Type == "FUNCTION" {
+			keyword = "FUNCTION"
+		}
+		row := db.QueryRow("SHOW CREATE " + keyword + " " + quoteIdentifier(r.Name))
+		var createName, createSQL, charset, collation string
+		if r.Type == "FUNCTION" {
+			// SHOW CREATE FUNCTION returns: Function, sql_mode, Create Function, character_set_client, collation_connection, Database Collation
+			var sqlMode string
+			if err := row.Scan(&createName, &sqlMode, &createSQL, &charset, &collation, &collation); err == nil {
+				routines[i].Body = createSQL
+			}
+		} else {
+			var sqlMode string
+			if err := row.Scan(&createName, &sqlMode, &createSQL, &charset, &collation, &collation); err == nil {
+				routines[i].Body = createSQL
+			}
+		}
+	}
+
+	return routines, nil
+}
+
+func (c *MySQLConnector) DropRoutine(database, name, routineType string) error {
+	if err := ValidateIdentifier(name); err != nil {
+		return err
+	}
+	keyword := "PROCEDURE"
+	if strings.ToUpper(routineType) == "FUNCTION" {
+		keyword = "FUNCTION"
+	}
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec("DROP " + keyword + " IF EXISTS " + quoteIdentifier(name))
+	return err
+}
+
+// ── Table Maintenance ────────────────────────────────────────────────────
+
+func (c *MySQLConnector) MaintenanceTable(database, table, operation string) (string, error) {
+	if err := ValidateIdentifier(table); err != nil {
+		return "", err
+	}
+	allowed := map[string]bool{"OPTIMIZE": true, "REPAIR": true, "CHECK": true, "ANALYZE": true}
+	op := strings.ToUpper(operation)
+	if !allowed[op] {
+		return "", fmt.Errorf("invalid operation: %s", operation)
+	}
+
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return "", err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(op + " TABLE " + quoteIdentifier(table))
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	// MySQL returns: Table, Op, Msg_type, Msg_text
+	var results []string
+	for rows.Next() {
+		var tbl, opName, msgType, msgText string
+		if err := rows.Scan(&tbl, &opName, &msgType, &msgText); err != nil {
+			continue
+		}
+		results = append(results, fmt.Sprintf("%s: %s", msgType, msgText))
+	}
+	return strings.Join(results, "; "), nil
+}

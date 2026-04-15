@@ -107,6 +107,12 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("GET "+p+"/databases/{db}/backup", dbController.BackupDatabase)
 	protected.HandleFunc("GET "+p+"/security/whitelist", secController.GetWhitelist)
 
+	// Triggers, routines, schemas (read — available to all authenticated users)
+	protected.HandleFunc("GET "+p+"/databases/{db}/triggers", dbController.ListTriggers)
+	protected.HandleFunc("GET "+p+"/databases/{db}/routines", dbController.ListRoutines)
+	protected.HandleFunc("GET "+p+"/databases/{db}/schemas", dbController.ListSchemas)
+	protected.HandleFunc("GET "+p+"/databases/{db}/schemas/{schema}/tables", dbController.ListTablesInSchema)
+
 	// Saved connections — tout le monde peut lister et utiliser
 	protected.HandleFunc("GET "+p+"/connections", connController.ListConnections)
 	protected.HandleFunc("POST "+p+"/connections/{id}/use", connController.UseSavedConnection)
@@ -126,6 +132,11 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/import/csv", auth.RequireAdmin(dbController.ImportCSV))
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/import/json", auth.RequireAdmin(dbController.ImportJSON))
 	protected.HandleFunc("POST "+p+"/query", auth.RequireAdmin(dbController.ExecuteQuery))
+
+	// Triggers, routines, maintenance (admin only)
+	protected.HandleFunc("DELETE "+p+"/databases/{db}/triggers", auth.RequireAdmin(dbController.DropTrigger))
+	protected.HandleFunc("DELETE "+p+"/databases/{db}/routines", auth.RequireAdmin(dbController.DropRoutine))
+	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/maintenance", auth.RequireAdmin(dbController.MaintenanceTable))
 
 	// MongoDB-specific (write, admin only)
 	protected.HandleFunc("POST "+p+"/databases/{db}/tables/{table}/indexes", auth.RequireAdmin(dbController.MongoCreateIndex))

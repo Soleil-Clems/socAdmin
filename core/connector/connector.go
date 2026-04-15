@@ -100,3 +100,21 @@ type QueryResult struct {
 	Columns []string
 	Rows    []map[string]interface{}
 }
+
+// TriggerInfo describes a database trigger.
+type TriggerInfo struct {
+	Name      string `json:"name"`
+	Table     string `json:"table"`
+	Event     string `json:"event"`     // INSERT, UPDATE, DELETE
+	Timing    string `json:"timing"`    // BEFORE, AFTER
+	Statement string `json:"statement"` // trigger body / definition
+}
+
+// RoutineInfo describes a stored procedure or function.
+type RoutineInfo struct {
+	Name       string `json:"name"`
+	Type       string `json:"type"` // PROCEDURE or FUNCTION
+	ReturnType string `json:"return_type,omitempty"`
+	Body       string `json:"body"`
+	ParamList  string `json:"param_list,omitempty"`
+}

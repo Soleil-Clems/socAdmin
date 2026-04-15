@@ -1,8 +1,11 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useDatabases } from "@/hooks/queries/use-databases";
 import { useTables } from "@/hooks/queries/use-tables";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
 import { useAuthStore } from "@/stores/auth.store";
+import { databaseRequest } from "@/requests/database.request";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,8 +39,26 @@ export default function Sidebar() {
     reset: resetNav,
   } = useNavigationStore();
 
+  const isPostgres = dbType === "postgresql";
+  const [selectedSchema, setSelectedSchema] = useState("public");
+
   const { data: databases, isLoading: dbLoading } = useDatabases();
   const { data: tables, isLoading: tablesLoading } = useTables(selectedDb);
+
+  const { data: schemas } = useQuery<string[]>({
+    queryKey: ["schemas", selectedDb],
+    queryFn: () => databaseRequest.listSchemas(selectedDb),
+    enabled: !!selectedDb && isPostgres,
+  });
+
+  const { data: schemaTables, isLoading: schemaTablesLoading } = useQuery<string[]>({
+    queryKey: ["schema-tables", selectedDb, selectedSchema],
+    queryFn: () => databaseRequest.listTablesInSchema(selectedDb, selectedSchema),
+    enabled: !!selectedDb && isPostgres && selectedSchema !== "public",
+  });
+
+  const displayTables = isPostgres && selectedSchema !== "public" ? schemaTables : tables;
+  const displayLoading = isPostgres && selectedSchema !== "public" ? schemaTablesLoading : tablesLoading;
 
   return (
     <aside className="w-56 bg-sidebar text-sidebar-foreground flex flex-col h-screen min-h-0 border-r border-sidebar-border overflow-hidden">
@@ -99,11 +120,26 @@ export default function Sidebar() {
         <div className="px-2 py-1">
           {selectedDb && (
             <>
+              {isPostgres && schemas && schemas.length > 1 && (
+                <div className="px-1 mb-1.5">
+                  <Select value={selectedSchema} onValueChange={(v) => v && setSelectedSchema(v)}>
+                    <SelectTrigger className="h-6 text-[11px] bg-sidebar-accent/50 border-sidebar-border text-sidebar-foreground">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {schemas.map((s) => (
+                        <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <p className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 px-2 mb-1">
-                Tables
+                {isPostgres && selectedSchema !== "public" ? `${selectedSchema} · Tables` : "Tables"}
               </p>
 
-              {tablesLoading && (
+              {displayLoading && (
                 <div className="space-y-0.5 px-1">
                   {Array.from({ length: 4 }).map((_, i) => (
                     <Skeleton key={i} className="h-6 w-full bg-sidebar-accent/30" />
@@ -111,7 +147,7 @@ export default function Sidebar() {
                 </div>
               )}
 
-              {tables?.map((table: string) => (
+              {displayTables?.map((table: string) => (
                 <button
                   key={table}
                   onClick={() => setSelectedTable(table)}
@@ -125,7 +161,7 @@ export default function Sidebar() {
                 </button>
               ))}
 
-              {!tablesLoading && tables?.length === 0 && (
+              {!displayLoading && displayTables?.length === 0 && (
                 <p className="text-[11px] text-sidebar-foreground/30 px-2 py-2">
                   No tables
                 </p>

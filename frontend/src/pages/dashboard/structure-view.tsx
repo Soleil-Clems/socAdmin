@@ -51,6 +51,59 @@ type EditState = {
   default_value: string;
 };
 
+function MaintenanceDropdown({ db, table, dbType }: { db: string; table: string; dbType: string | null }) {
+  const [open, setOpen] = useState(false);
+  const { toast } = useToast();
+  const [running, setRunning] = useState<string | null>(null);
+
+  const ops = dbType === "postgresql"
+    ? ["VACUUM", "VACUUM_FULL", "ANALYZE", "REINDEX"]
+    : ["OPTIMIZE", "REPAIR", "CHECK", "ANALYZE"];
+
+  const labels: Record<string, string> = {
+    VACUUM: "Vacuum", VACUUM_FULL: "Vacuum Full", ANALYZE: "Analyze", REINDEX: "Reindex",
+    OPTIMIZE: "Optimize", REPAIR: "Repair", CHECK: "Check",
+  };
+
+  const run = async (op: string) => {
+    setRunning(op);
+    try {
+      const res = await databaseRequest.maintenanceTable(db, table, op);
+      toast(res.result || `${labels[op] || op} completed`, "success");
+    } catch (e: any) {
+      toast(e.message || "Maintenance failed", "error");
+    } finally {
+      setRunning(null);
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={() => setOpen(!open)}>
+        {running ? `${labels[running]}…` : "Maintenance ▾"}
+      </Button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 mt-1 z-50 bg-popover border border-border rounded-md shadow-md py-1 min-w-[140px]">
+            {ops.map((op) => (
+              <button
+                key={op}
+                disabled={!!running}
+                onClick={() => run(op)}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                {labels[op] || op}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const emptyEdit = (mode: "add" | "edit"): EditState => ({
   mode,
   originalName: "",
@@ -340,9 +393,12 @@ export default function StructureView() {
             </>
           )}
           {isAdmin && !isMongo && (
-            <Button size="sm" className="h-7 text-xs px-3" onClick={openAdd}>
-              + Column
-            </Button>
+            <>
+              <MaintenanceDropdown db={selectedDb} table={selectedTable} dbType={dbType} />
+              <Button size="sm" className="h-7 text-xs px-3" onClick={openAdd}>
+                + Column
+              </Button>
+            </>
           )}
         </div>
       </div>

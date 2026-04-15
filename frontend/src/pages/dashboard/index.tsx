@@ -14,6 +14,8 @@ import SecurityView from "@/pages/dashboard/security-view";
 import AccountsView from "@/pages/dashboard/accounts-view";
 import SearchView from "@/pages/dashboard/search-view";
 import SchemaView from "@/pages/dashboard/schema-view";
+import TriggersView from "@/pages/dashboard/triggers-view";
+import RoutinesView from "@/pages/dashboard/routines-view";
 import IndexesView from "@/pages/dashboard/indexes-view";
 import ViewsView from "@/pages/dashboard/views-view";
 import ProfilerView from "@/pages/dashboard/profiler-view";
@@ -132,6 +134,12 @@ export default function DashboardPage() {
               {!isMongo && (
                 <TabsTrigger value="schema" className={tabClass}>Schema</TabsTrigger>
               )}
+              {!isMongo && (
+                <TabsTrigger value="triggers" className={tabClass}>Triggers</TabsTrigger>
+              )}
+              {!isMongo && (
+                <TabsTrigger value="routines" className={tabClass}>Routines</TabsTrigger>
+              )}
               {isMongo && selectedTable && (
                 <TabsTrigger value="indexes" className={tabClass}>Indexes</TabsTrigger>
               )}
@@ -186,6 +194,16 @@ export default function DashboardPage() {
           {!isMongo && (
             <TabsContent value="schema" className="flex-1 overflow-hidden m-0 min-h-0">
               <SchemaView />
+            </TabsContent>
+          )}
+          {!isMongo && (
+            <TabsContent value="triggers" className="flex-1 overflow-hidden m-0 min-h-0">
+              <TriggersView />
+            </TabsContent>
+          )}
+          {!isMongo && (
+            <TabsContent value="routines" className="flex-1 overflow-hidden m-0 min-h-0">
+              <RoutinesView />
             </TabsContent>
           )}
           {isMongo && selectedTable && (

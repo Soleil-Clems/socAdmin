@@ -1267,3 +1267,129 @@ func (s *DatabaseService) ServerStatus() (*connector.QueryResult, error) {
 		return nil, fmt.Errorf("unsupported for this database type")
 	}
 }
+
+// ── Triggers ─────────────────────────────────────────────────────────────
+
+func (s *DatabaseService) ListTriggers(database string) ([]connector.TriggerInfo, error) {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	switch dt {
+	case "mysql":
+		return c.(*connector.MySQLConnector).ListTriggers(database)
+	case "postgresql":
+		return c.(*connector.PostgresConnector).ListTriggers(database)
+	default:
+		return nil, fmt.Errorf("triggers not supported for %s", dt)
+	}
+}
+
+func (s *DatabaseService) DropTrigger(database, name, table string) error {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
+		return fmt.Errorf("not connected")
+	}
+	switch dt {
+	case "mysql":
+		return c.(*connector.MySQLConnector).DropTrigger(database, name)
+	case "postgresql":
+		return c.(*connector.PostgresConnector).DropTrigger(database, name, table)
+	default:
+		return fmt.Errorf("triggers not supported for %s", dt)
+	}
+}
+
+// ── Routines ─────────────────────────────────────────────────────────────
+
+func (s *DatabaseService) ListRoutines(database string) ([]connector.RoutineInfo, error) {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	switch dt {
+	case "mysql":
+		return c.(*connector.MySQLConnector).ListRoutines(database)
+	case "postgresql":
+		return c.(*connector.PostgresConnector).ListRoutines(database)
+	default:
+		return nil, fmt.Errorf("routines not supported for %s", dt)
+	}
+}
+
+func (s *DatabaseService) DropRoutine(database, name, routineType string) error {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
+		return fmt.Errorf("not connected")
+	}
+	switch dt {
+	case "mysql":
+		return c.(*connector.MySQLConnector).DropRoutine(database, name, routineType)
+	case "postgresql":
+		return c.(*connector.PostgresConnector).DropRoutine(database, name, routineType)
+	default:
+		return fmt.Errorf("routines not supported for %s", dt)
+	}
+}
+
+// ── Schemas (PostgreSQL) ─────────────────────────────────────────────────
+
+func (s *DatabaseService) ListSchemas(database string) ([]string, error) {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	if dt != "postgresql" {
+		return nil, fmt.Errorf("schemas not supported for %s", dt)
+	}
+	return c.(*connector.PostgresConnector).ListSchemas(database)
+}
+
+func (s *DatabaseService) ListTablesInSchema(database, schema string) ([]string, error) {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	if dt != "postgresql" {
+		return nil, fmt.Errorf("schemas not supported for %s", dt)
+	}
+	return c.(*connector.PostgresConnector).ListTablesInSchema(database, schema)
+}
+
+// ── Table Maintenance ────────────────────────────────────────────────────
+
+func (s *DatabaseService) MaintenanceTable(database, table, operation string) (string, error) {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
+		return "", fmt.Errorf("not connected")
+	}
+	switch dt {
+	case "mysql":
+		return c.(*connector.MySQLConnector).MaintenanceTable(database, table, operation)
+	case "postgresql":
+		return c.(*connector.PostgresConnector).MaintenanceTable(database, table, operation)
+	default:
+		return "", fmt.Errorf("maintenance not supported for %s", dt)
+	}
+}

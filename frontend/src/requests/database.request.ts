@@ -117,6 +117,22 @@ export type SearchResult = {
   columns: string[];
 };
 
+export type TriggerInfo = {
+  name: string;
+  table: string;
+  event: string;
+  timing: string;
+  statement: string;
+};
+
+export type RoutineInfo = {
+  name: string;
+  type: string;
+  return_type?: string;
+  body: string;
+  param_list?: string;
+};
+
 export type ChangeEvent = {
   operationType: string;
   fullDocument?: Record<string, unknown>;
@@ -451,4 +467,29 @@ export const databaseRequest = {
     form.append("file", file);
     return customfetch.upload(`/databases/${db}/restore`, form);
   },
+
+  // ── Triggers ──
+  listTriggers: (db: string) =>
+    customfetch.get<TriggerInfo[]>(`/databases/${db}/triggers`),
+
+  dropTrigger: (db: string, name: string, table: string) =>
+    customfetch.delete(`/databases/${db}/triggers`, { name, table }),
+
+  // ── Routines (stored procedures / functions) ──
+  listRoutines: (db: string) =>
+    customfetch.get<RoutineInfo[]>(`/databases/${db}/routines`),
+
+  dropRoutine: (db: string, name: string, type: string) =>
+    customfetch.delete(`/databases/${db}/routines`, { name, type }),
+
+  // ── Schemas (PostgreSQL) ──
+  listSchemas: (db: string) =>
+    customfetch.get<string[]>(`/databases/${db}/schemas`),
+
+  listTablesInSchema: (db: string, schema: string) =>
+    customfetch.get<string[]>(`/databases/${db}/schemas/${schema}/tables`),
+
+  // ── Table Maintenance ──
+  maintenanceTable: (db: string, table: string, operation: string) =>
+    customfetch.post<{ result: string }>(`/databases/${db}/tables/${table}/maintenance`, { operation }),
 };

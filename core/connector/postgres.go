@@ -518,3 +518,200 @@ func formatUUID(b []byte) string {
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
+
+// ── Triggers ─────────────────────────────────────────────────────────────
+
+func (c *PostgresConnector) ListTriggers(database string) ([]TriggerInfo, error) {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT t.trigger_name, t.event_object_table, t.event_manipulation,
+		       t.action_timing, pg_get_triggerdef(pg.oid) AS definition
+		FROM information_schema.triggers t
+		JOIN pg_trigger pg ON pg.tgname = t.trigger_name
+		JOIN pg_class c ON c.oid = pg.tgrelid AND c.relname = t.event_object_table
+		WHERE t.trigger_schema = 'public'
+		  AND NOT pg.tgisinternal
+		ORDER BY t.event_object_table, t.action_timing, t.event_manipulation`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var triggers []TriggerInfo
+	for rows.Next() {
+		var t TriggerInfo
+		if err := rows.Scan(&t.Name, &t.Table, &t.Event, &t.Timing, &t.Statement); err != nil {
+			return nil, err
+		}
+		triggers = append(triggers, t)
+	}
+	return triggers, nil
+}
+
+func (c *PostgresConnector) DropTrigger(database, name, table string) error {
+	if err := ValidateIdentifier(name); err != nil {
+		return err
+	}
+	if err := ValidateIdentifier(table); err != nil {
+		return err
+	}
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec("DROP TRIGGER " + pgQuoteIdent(name) + " ON " + pgQuoteIdent(table))
+	return err
+}
+
+// ── Routines (stored procedures & functions) ─────────────────────────────
+
+func (c *PostgresConnector) ListRoutines(database string) ([]RoutineInfo, error) {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT p.proname,
+		       CASE p.prokind WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END,
+		       COALESCE(pg_get_function_result(p.oid), ''),
+		       pg_get_functiondef(p.oid),
+		       pg_get_function_arguments(p.oid)
+		FROM pg_proc p
+		JOIN pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = 'public'
+		  AND p.prokind IN ('f', 'p')
+		ORDER BY p.prokind, p.proname`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var routines []RoutineInfo
+	for rows.Next() {
+		var r RoutineInfo
+		if err := rows.Scan(&r.Name, &r.Type, &r.ReturnType, &r.Body, &r.ParamList); err != nil {
+			return nil, err
+		}
+		routines = append(routines, r)
+	}
+	return routines, nil
+}
+
+func (c *PostgresConnector) DropRoutine(database, name, routineType string) error {
+	if err := ValidateIdentifier(name); err != nil {
+		return err
+	}
+	keyword := "FUNCTION"
+	if strings.ToUpper(routineType) == "PROCEDURE" {
+		keyword = "PROCEDURE"
+	}
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	// CASCADE drops dependent objects; IF EXISTS avoids errors
+	_, err = db.Exec("DROP " + keyword + " IF EXISTS " + pgQuoteIdent(name) + " CASCADE")
+	return err
+}
+
+// ── Schemas ──────────────────────────────────────────────────────────────
+
+func (c *PostgresConnector) ListSchemas(database string) ([]string, error) {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT schema_name FROM information_schema.schemata
+		WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+		ORDER BY schema_name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schemas []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		schemas = append(schemas, s)
+	}
+	return schemas, nil
+}
+
+func (c *PostgresConnector) ListTablesInSchema(database, schema string) ([]string, error) {
+	if err := ValidateIdentifier(schema); err != nil {
+		return nil, err
+	}
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT table_name FROM information_schema.tables
+		WHERE table_schema = $1 AND table_type IN ('BASE TABLE', 'VIEW')
+		ORDER BY table_name`, schema)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		tables = append(tables, t)
+	}
+	return tables, nil
+}
+
+// ── Table Maintenance ────────────────────────────────────────────────────
+
+func (c *PostgresConnector) MaintenanceTable(database, table, operation string) (string, error) {
+	if err := ValidateIdentifier(table); err != nil {
+		return "", err
+	}
+	op := strings.ToUpper(operation)
+	var stmt string
+	switch op {
+	case "VACUUM":
+		stmt = "VACUUM " + pgQuoteIdent(table)
+	case "VACUUM_FULL":
+		stmt = "VACUUM FULL " + pgQuoteIdent(table)
+	case "ANALYZE":
+		stmt = "ANALYZE " + pgQuoteIdent(table)
+	case "REINDEX":
+		stmt = "REINDEX TABLE " + pgQuoteIdent(table)
+	default:
+		return "", fmt.Errorf("invalid operation: %s", operation)
+	}
+
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return "", err
+	}
+	defer db.Close()
+
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return "", err
+	}
+	return op + " completed successfully", nil
+}
