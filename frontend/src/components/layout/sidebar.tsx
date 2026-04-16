@@ -24,6 +24,67 @@ const dbTypeLabels: Record<string, string> = {
   mongodb: "MongoDB",
 };
 
+function SchemaSection({
+  db,
+  schema,
+  expanded,
+  onToggle,
+  selectedTable,
+  onSelectTable,
+}: {
+  db: string;
+  schema: string;
+  expanded: boolean;
+  onToggle: () => void;
+  selectedTable: string;
+  onSelectTable: (t: string) => void;
+}) {
+  const { data: tables, isLoading } = useQuery<string[]>({
+    queryKey: ["schema-tables", db, schema],
+    queryFn: () => databaseRequest.listTablesInSchema(db, schema),
+    enabled: expanded,
+  });
+
+  return (
+    <div className="mb-0.5">
+      <button
+        onClick={onToggle}
+        className="w-full text-left px-2 py-1 rounded text-[11px] font-medium text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors flex items-center gap-1"
+      >
+        <span className="text-[9px] w-3 inline-block">{expanded ? "▼" : "▶"}</span>
+        <span className="truncate">{schema}</span>
+      </button>
+      {expanded && (
+        <div className="pl-3">
+          {isLoading && (
+            <div className="space-y-0.5 px-1 py-1">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-5 w-full bg-sidebar-accent/30" />
+              ))}
+            </div>
+          )}
+          {tables?.map((table) => (
+            <button
+              key={table}
+              onClick={() => onSelectTable(table)}
+              className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors truncate ${
+                selectedTable === table
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
+                  : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+              }`}
+            >
+              {table}
+            </button>
+          ))}
+          {!isLoading && tables?.length === 0 && (
+            <p className="text-[11px] text-sidebar-foreground/30 px-2 py-1">empty</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Sidebar() {
   const { host, port, user, dbType, disconnect } = useConnectionStore();
   const logout = useAuthStore((s) => s.logout);
@@ -40,7 +101,7 @@ export default function Sidebar() {
   } = useNavigationStore();
 
   const isPostgres = dbType === "postgresql";
-  const [selectedSchema, setSelectedSchema] = useState("public");
+  const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set(["public"]));
 
   const { data: databases, isLoading: dbLoading } = useDatabases();
   const { data: tables, isLoading: tablesLoading } = useTables(selectedDb);
@@ -51,14 +112,17 @@ export default function Sidebar() {
     enabled: !!selectedDb && isPostgres,
   });
 
-  const { data: schemaTables, isLoading: schemaTablesLoading } = useQuery<string[]>({
-    queryKey: ["schema-tables", selectedDb, selectedSchema],
-    queryFn: () => databaseRequest.listTablesInSchema(selectedDb, selectedSchema),
-    enabled: !!selectedDb && isPostgres && selectedSchema !== "public",
-  });
+  const showSchemas = isPostgres && schemas && schemas.length > 1;
+  const tablesHeaderActive = !!selectedDb && !selectedTable && !showAllDatabases;
 
-  const displayTables = isPostgres && selectedSchema !== "public" ? schemaTables : tables;
-  const displayLoading = isPostgres && selectedSchema !== "public" ? schemaTablesLoading : tablesLoading;
+  const toggleSchema = (s: string) => {
+    setExpandedSchemas((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      return next;
+    });
+  };
 
   return (
     <aside className="w-56 bg-sidebar text-sidebar-foreground flex flex-col h-screen min-h-0 border-r border-sidebar-border overflow-hidden">
@@ -120,51 +184,60 @@ export default function Sidebar() {
         <div className="px-2 py-1">
           {selectedDb && (
             <>
-              {isPostgres && schemas && schemas.length > 1 && (
-                <div className="px-1 mb-1.5">
-                  <Select value={selectedSchema} onValueChange={(v) => v && setSelectedSchema(v)}>
-                    <SelectTrigger className="h-6 text-[11px] bg-sidebar-accent/50 border-sidebar-border text-sidebar-foreground">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {schemas.map((s) => (
-                        <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              {/* Clickable "Tables" header — returns to DB overview */}
+              <button
+                onClick={() => setSelectedTable("")}
+                className={`w-full text-left px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-widest transition-colors mb-1 ${
+                  tablesHeaderActive
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/40 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground/70"
+                }`}
+              >
+                Tables
+              </button>
 
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 px-2 mb-1">
-                {isPostgres && selectedSchema !== "public" ? `${selectedSchema} · Tables` : "Tables"}
-              </p>
-
-              {displayLoading && (
-                <div className="space-y-0.5 px-1">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} className="h-6 w-full bg-sidebar-accent/30" />
+              {showSchemas ? (
+                <>
+                  {schemas!.map((s) => (
+                    <SchemaSection
+                      key={s}
+                      db={selectedDb}
+                      schema={s}
+                      expanded={expandedSchemas.has(s)}
+                      onToggle={() => toggleSchema(s)}
+                      selectedTable={selectedTable}
+                      onSelectTable={setSelectedTable}
+                    />
                   ))}
-                </div>
-              )}
-
-              {displayTables?.map((table: string) => (
-                <button
-                  key={table}
-                  onClick={() => setSelectedTable(table)}
-                  className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors truncate ${
-                    selectedTable === table
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
-                      : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                  }`}
-                >
-                  {table}
-                </button>
-              ))}
-
-              {!displayLoading && displayTables?.length === 0 && (
-                <p className="text-[11px] text-sidebar-foreground/30 px-2 py-2">
-                  No tables
-                </p>
+                </>
+              ) : (
+                <>
+                  {tablesLoading && (
+                    <div className="space-y-0.5 px-1">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <Skeleton key={i} className="h-6 w-full bg-sidebar-accent/30" />
+                      ))}
+                    </div>
+                  )}
+                  {tables?.map((table: string) => (
+                    <button
+                      key={table}
+                      onClick={() => setSelectedTable(table)}
+                      className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors truncate ${
+                        selectedTable === table
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
+                          : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                      }`}
+                    >
+                      {table}
+                    </button>
+                  ))}
+                  {!tablesLoading && tables?.length === 0 && (
+                    <p className="text-[11px] text-sidebar-foreground/30 px-2 py-2">
+                      No tables
+                    </p>
+                  )}
+                </>
               )}
             </>
           )}
