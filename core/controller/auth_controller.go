@@ -2,10 +2,8 @@ package controller
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
-	"unicode"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
 	"github.com/soleilouisol/socAdmin/core/logger"
@@ -46,7 +44,7 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := validatePassword(req.Password); err != nil {
+	if err := auth.ValidatePassword(req.Password); err != nil {
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -192,27 +190,32 @@ func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "logged out"})
 }
 
-// validatePassword enforces a minimum password policy:
-// >= 10 chars, at least one uppercase, one lowercase, one digit, one special char.
-func validatePassword(password string) error {
-	if len(password) < 10 {
-		return fmt.Errorf("password must be at least 10 characters")
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// ChangePassword lets the authenticated user change their own password.
+// Revokes all refresh tokens on success, forcing re-login.
+func (c *AuthController) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	claims := r.Context().Value(auth.ClaimsKey).(*auth.Claims)
+
+	var req ChangePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
 	}
-	var hasUpper, hasLower, hasDigit, hasSpecial bool
-	for _, ch := range password {
-		switch {
-		case unicode.IsUpper(ch):
-			hasUpper = true
-		case unicode.IsLower(ch):
-			hasLower = true
-		case unicode.IsDigit(ch):
-			hasDigit = true
-		case unicode.IsPunct(ch) || unicode.IsSymbol(ch):
-			hasSpecial = true
-		}
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		jsonError(w, http.StatusBadRequest, "current_password and new_password are required")
+		return
 	}
-	if !hasUpper || !hasLower || !hasDigit || !hasSpecial {
-		return fmt.Errorf("password must contain uppercase, lowercase, digit, and special character")
+
+	if err := c.authService.ChangePassword(claims.UserID, req.CurrentPassword, req.NewPassword); err != nil {
+		logger.AuthFail("password_change", requestIP(r))
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
 	}
-	return nil
+
+	logger.Auth("password_change", claims.UserID, requestIP(r))
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "password updated"})
 }

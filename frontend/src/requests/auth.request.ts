@@ -34,4 +34,10 @@ export const authRequest = {
 
   logout: (refreshToken: string) =>
     customfetch.post("/auth/logout", { refresh_token: refreshToken }),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    customfetch.post<{ status: string }>("/auth/password", {
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
 };

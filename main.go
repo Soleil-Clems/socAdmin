@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,9 +14,20 @@ import (
 )
 
 func main() {
+	resetEmail := flag.String("reset-password", "", "Reset the password of the user with this email (interactive). Does not start the server.")
+	flag.Parse()
+
 	authRepo, err := auth.NewRepository("socadmin.db")
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
+	}
+
+	if *resetEmail != "" {
+		if err := runPasswordReset(authRepo, *resetEmail); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
 	// Initialize JWT secret from DB (generated once, persisted)

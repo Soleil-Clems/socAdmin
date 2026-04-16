@@ -216,6 +216,19 @@ func (r *Repository) DeleteUser(id int64) error {
 	return err
 }
 
+// UpdatePassword updates a user's bcrypt password hash.
+func (r *Repository) UpdatePassword(userID int64, hashedPassword string) error {
+	_, err := r.db.Exec("UPDATE users SET password = ? WHERE id = ?", hashedPassword, userID)
+	return err
+}
+
+// RevokeAllRefreshTokens deletes every refresh token for a given user.
+// Called after a password change so other devices are forced to re-login.
+func (r *Repository) RevokeAllRefreshTokens(userID int64) error {
+	_, err := r.db.Exec("DELETE FROM refresh_tokens WHERE user_id = ?", userID)
+	return err
+}
+
 func (r *Repository) FindByEmail(email string) (*User, error) {
 	var user User
 	err := r.db.QueryRow(

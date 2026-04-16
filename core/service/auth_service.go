@@ -152,6 +152,43 @@ func (s *AuthService) DeleteUser(id int64) error {
 	return s.repo.DeleteUser(id)
 }
 
+// ChangePassword verifies the user's current password, hashes the new one,
+// updates it, and revokes all refresh tokens (forces re-login on other devices).
+func (s *AuthService) ChangePassword(userID int64, currentPassword, newPassword string) error {
+	if err := auth.ValidatePassword(newPassword); err != nil {
+		return err
+	}
+
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return fmt.Errorf("user not found")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(currentPassword)); err != nil {
+		return fmt.Errorf("current password is incorrect")
+	}
+
+	if currentPassword == newPassword {
+		return fmt.Errorf("new password must be different from current password")
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), 12)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	if err := s.repo.UpdatePassword(userID, string(hashed)); err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	// Best-effort: revoke other refresh tokens
+	s.repo.RevokeAllRefreshTokens(userID)
+	return nil
+}
+
 func (s *AuthService) GetUser(userID int64) (*auth.User, error) {
 	user, err := s.repo.FindByID(userID)
 	if err != nil {

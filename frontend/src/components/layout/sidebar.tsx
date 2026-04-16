@@ -6,6 +6,7 @@ import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { databaseRequest } from "@/requests/database.request";
+import ChangePasswordDialog from "@/components/change-password-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -102,6 +103,7 @@ export default function Sidebar() {
 
   const isPostgres = dbType === "postgresql";
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set(["public"]));
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const { data: databases, isLoading: dbLoading } = useDatabases();
   const { data: tables, isLoading: tablesLoading } = useTables(selectedDb);
@@ -269,6 +271,14 @@ export default function Sidebar() {
           variant="ghost"
           size="sm"
           className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 h-7 text-xs"
+          onClick={() => setShowChangePassword(true)}
+        >
+          Change password
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 h-7 text-xs"
           onClick={() => { resetNav(); disconnect(); }}
         >
           Disconnect
@@ -282,6 +292,8 @@ export default function Sidebar() {
           Logout
         </Button>
       </div>
+
+      <ChangePasswordDialog open={showChangePassword} onOpenChange={setShowChangePassword} />
     </aside>
   );
 }
