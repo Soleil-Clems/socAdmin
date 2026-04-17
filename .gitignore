@@ -1,6 +1,8 @@
 *.claude
 *.agents
 .claude
+skills-lock*
+CLAUDE.md
 .env
 *.env
 node_module
