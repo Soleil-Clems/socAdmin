@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -66,7 +67,7 @@ func csrfHandler(next http.Handler, apiPrefix string) http.Handler {
 
 		// State-changing request — validate token
 		headerToken := r.Header.Get(csrfHeaderName)
-		if headerToken == "" || headerToken != cookie.Value {
+		if headerToken == "" || subtle.ConstantTimeCompare([]byte(headerToken), []byte(cookie.Value)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			json.NewEncoder(w).Encode(map[string]string{"error": "CSRF token missing or invalid"})

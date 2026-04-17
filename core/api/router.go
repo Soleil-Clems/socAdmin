@@ -60,7 +60,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected := http.NewServeMux()
 	protected.HandleFunc("POST "+p+"/auth/logout", authController.Logout)
 	protected.HandleFunc("GET "+p+"/auth/me", authController.Me)
-	protected.HandleFunc("POST "+p+"/auth/password", authController.ChangePassword)
+	protected.HandleFunc("POST "+p+"/auth/password", withAuthLimit(authController.ChangePassword))
 	protected.HandleFunc("GET "+p+"/connection/status", dbController.ConnectionStatus)
 	protected.HandleFunc("POST "+p+"/connect", dbController.Connect)
 	protected.HandleFunc("GET "+p+"/databases", dbController.ListDatabases)

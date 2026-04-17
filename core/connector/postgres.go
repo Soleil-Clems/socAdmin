@@ -43,8 +43,12 @@ func (c *PostgresConnector) Connect() error {
 	}
 
 	if err := db.Ping(); err != nil {
+		db.Close()
 		return fmt.Errorf("failed to ping PostgreSQL: %w", err)
 	}
+
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
 
 	c.db = db
 	return nil

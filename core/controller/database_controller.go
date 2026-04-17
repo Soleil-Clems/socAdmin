@@ -212,6 +212,9 @@ func (c *DatabaseController) DropDatabase(w http.ResponseWriter, r *http.Request
 
 func (c *DatabaseController) CreateTable(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
+	if !validatePathIdent(w, db, "database") {
+		return
+	}
 
 	var req CreateTableRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -219,9 +222,15 @@ func (c *DatabaseController) CreateTable(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if req.Name == "" {
-		jsonError(w, http.StatusBadRequest, "table name is required")
+	if !validatePathIdent(w, req.Name, "table name") {
 		return
+	}
+	for _, col := range req.Columns {
+		if col.Name != "" {
+			if !validatePathIdent(w, col.Name, "column name") {
+				return
+			}
+		}
 	}
 
 	if err := c.dbService.CreateTable(db, req.Name, req.Columns); err != nil {
@@ -350,6 +359,9 @@ func (c *DatabaseController) ExecuteQuery(w http.ResponseWriter, r *http.Request
 func (c *DatabaseController) DropTable(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 	table := r.PathValue("table")
+	if !validatePathIdent(w, db, "database") || !validatePathIdent(w, table, "table") {
+		return
+	}
 
 	if err := c.dbService.DropTable(db, table); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
@@ -400,6 +412,9 @@ func (c *DatabaseController) AlterColumn(w http.ResponseWriter, r *http.Request)
 func (c *DatabaseController) TruncateTable(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 	table := r.PathValue("table")
+	if !validatePathIdent(w, db, "database") || !validatePathIdent(w, table, "table") {
+		return
+	}
 
 	if err := c.dbService.TruncateTable(db, table); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
@@ -2135,6 +2150,9 @@ func isBlockedHost(host string) bool {
 
 func (c *DatabaseController) ListTriggers(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
+	if !validatePathIdent(w, db, "database") {
+		return
+	}
 	triggers, err := c.dbService.ListTriggers(db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
@@ -2148,12 +2166,21 @@ func (c *DatabaseController) ListTriggers(w http.ResponseWriter, r *http.Request
 
 func (c *DatabaseController) DropTrigger(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
+	if !validatePathIdent(w, db, "database") {
+		return
+	}
 	var req struct {
 		Name  string `json:"name"`
 		Table string `json:"table"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if !validatePathIdent(w, req.Name, "trigger name") {
+		return
+	}
+	if req.Table != "" && !validatePathIdent(w, req.Table, "table") {
 		return
 	}
 	if err := c.dbService.DropTrigger(db, req.Name, req.Table); err != nil {
@@ -2167,6 +2194,9 @@ func (c *DatabaseController) DropTrigger(w http.ResponseWriter, r *http.Request)
 
 func (c *DatabaseController) ListRoutines(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
+	if !validatePathIdent(w, db, "database") {
+		return
+	}
 	routines, err := c.dbService.ListRoutines(db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
@@ -2180,12 +2210,22 @@ func (c *DatabaseController) ListRoutines(w http.ResponseWriter, r *http.Request
 
 func (c *DatabaseController) DropRoutine(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
+	if !validatePathIdent(w, db, "database") {
+		return
+	}
 	var req struct {
 		Name string `json:"name"`
 		Type string `json:"type"` // PROCEDURE or FUNCTION
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if !validatePathIdent(w, req.Name, "routine name") {
+		return
+	}
+	if req.Type != "PROCEDURE" && req.Type != "FUNCTION" {
+		jsonError(w, http.StatusBadRequest, "type must be PROCEDURE or FUNCTION")
 		return
 	}
 	if err := c.dbService.DropRoutine(db, req.Name, req.Type); err != nil {
@@ -2199,6 +2239,9 @@ func (c *DatabaseController) DropRoutine(w http.ResponseWriter, r *http.Request)
 
 func (c *DatabaseController) ListSchemas(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
+	if !validatePathIdent(w, db, "database") {
+		return
+	}
 	schemas, err := c.dbService.ListSchemas(db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
@@ -2213,6 +2256,9 @@ func (c *DatabaseController) ListSchemas(w http.ResponseWriter, r *http.Request)
 func (c *DatabaseController) ListTablesInSchema(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 	schema := r.PathValue("schema")
+	if !validatePathIdent(w, db, "database") || !validatePathIdent(w, schema, "schema") {
+		return
+	}
 	tables, err := c.dbService.ListTablesInSchema(db, schema)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
@@ -2229,11 +2275,22 @@ func (c *DatabaseController) ListTablesInSchema(w http.ResponseWriter, r *http.R
 func (c *DatabaseController) MaintenanceTable(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 	table := r.PathValue("table")
+	if !validatePathIdent(w, db, "database") || !validatePathIdent(w, table, "table") {
+		return
+	}
 	var req struct {
 		Operation string `json:"operation"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	allowed := map[string]bool{
+		"OPTIMIZE": true, "REPAIR": true, "CHECK": true, "ANALYZE": true,
+		"VACUUM": true, "VACUUM_FULL": true, "REINDEX": true,
+	}
+	if !allowed[strings.ToUpper(req.Operation)] {
+		jsonError(w, http.StatusBadRequest, "invalid maintenance operation")
 		return
 	}
 	result, err := c.dbService.MaintenanceTable(db, table, req.Operation)

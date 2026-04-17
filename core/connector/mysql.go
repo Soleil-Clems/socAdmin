@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 )
 
 type MySQLConfig struct {
@@ -25,9 +25,14 @@ func NewMySQLConnector(config MySQLConfig) *MySQLConnector {
 }
 
 func (c *MySQLConnector) Connect() error {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/", c.config.User, c.config.Password, c.config.Host, c.config.Port)
+	cfg := mysql.NewConfig()
+	cfg.User = c.config.User
+	cfg.Passwd = c.config.Password
+	cfg.Net = "tcp"
+	cfg.Addr = fmt.Sprintf("%s:%d", c.config.Host, c.config.Port)
+	cfg.InterpolateParams = true
 
-	db, err := sql.Open("mysql", dsn)
+	db, err := sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
 		return fmt.Errorf("failed to open connection: %w", err)
 	}
@@ -35,6 +40,9 @@ func (c *MySQLConnector) Connect() error {
 	if err := db.Ping(); err != nil {
 		return fmt.Errorf("failed to ping MySQL: %w", err)
 	}
+
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
 
 	c.db = db
 	return nil
@@ -254,9 +262,16 @@ func (c *MySQLConnector) connectToDb(database string) (*sql.DB, error) {
 	// multiStatements=true allows us to run an entire SQL dump (or any
 	// `;`-separated script) in a single Exec call without naïvely splitting
 	// it ourselves — MySQL handles comments, delimiters, strings correctly.
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?multiStatements=true&parseTime=true",
-		c.config.User, c.config.Password, c.config.Host, c.config.Port, database)
-	db, err := sql.Open("mysql", dsn)
+	cfg := mysql.NewConfig()
+	cfg.User = c.config.User
+	cfg.Passwd = c.config.Password
+	cfg.Net = "tcp"
+	cfg.Addr = fmt.Sprintf("%s:%d", c.config.Host, c.config.Port)
+	cfg.DBName = database
+	cfg.MultiStatements = true
+	cfg.ParseTime = true
+	cfg.InterpolateParams = true
+	db, err := sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
 		return nil, err
 	}
