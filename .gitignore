@@ -3,5 +3,13 @@
 .claude
 .env
 *.env
-node_module
+
+node_modules
 .impeccable.md
+CLAUDE.md
+skills-lock.json
+socadmin.db
+frontend/node_modules
+frontend/dist
+manager/frontend/dist
+manager/frontend/node_modules
