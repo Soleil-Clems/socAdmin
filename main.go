@@ -17,7 +17,20 @@ func main() {
 	resetEmail := flag.String("reset-password", "", "Reset the password of the user with this email (interactive). Does not start the server.")
 	flag.Parse()
 
-	authRepo, err := auth.NewRepository("socadmin.db")
+	// Data directory: all persistent files (socadmin.db, TLS certs, etc.)
+	// live here. Configurable via DATA_DIR env var, defaults to current dir.
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir != "" {
+		if err := os.MkdirAll(dataDir, 0700); err != nil {
+			log.Fatalf("Failed to create data directory %s: %v", dataDir, err)
+		}
+	}
+	dbPath := "socadmin.db"
+	if dataDir != "" {
+		dbPath = dataDir + "/socadmin.db"
+	}
+
+	authRepo, err := auth.NewRepository(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
