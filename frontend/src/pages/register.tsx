@@ -16,6 +16,7 @@ export default function RegisterPage({ onSwitchToLogin }: Props) {
   const registerMutation = useRegister();
   const [serverError, setServerError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [isFirstUser, setIsFirstUser] = useState(false);
 
   const {
     register,
@@ -30,7 +31,8 @@ export default function RegisterPage({ onSwitchToLogin }: Props) {
     registerMutation.mutate(
       { email: data.email, password: data.password },
       {
-        onSuccess: () => {
+        onSuccess: (res: Record<string, unknown>) => {
+          if (res?.role === "admin") setIsFirstUser(true);
           setSuccess(true);
         },
         onError: (err) => {
@@ -47,12 +49,42 @@ export default function RegisterPage({ onSwitchToLogin }: Props) {
           <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xl">
             ✓
           </div>
-          <div>
-            <h2 className="text-xl font-semibold">Account created</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              You can now sign in with your credentials
-            </p>
-          </div>
+          {isFirstUser ? (
+            <div className="space-y-3">
+              <h2 className="text-xl font-semibold">Welcome to socAdmin</h2>
+              <div className="text-sm text-muted-foreground space-y-2 text-left bg-muted/50 rounded-lg p-4">
+                <p>
+                  You are the <span className="font-semibold text-primary">administrator</span> of this instance.
+                </p>
+                <ul className="space-y-1.5 list-none">
+                  <li className="flex gap-2">
+                    <span className="text-primary shrink-0">&#x2022;</span>
+                    <span>Full access: create, edit, and delete databases, tables, and rows</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-primary shrink-0">&#x2022;</span>
+                    <span>Run SQL queries, import and export data</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-primary shrink-0">&#x2022;</span>
+                    <span>Manage users, security settings, and saved connections</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-primary shrink-0">&#x2022;</span>
+                    <span>Other users who register will be <span className="font-medium">read-only</span> by default — you can promote them later</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <h2 className="text-xl font-semibold">Account created</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                You can now sign in with your credentials.
+                Your account is <span className="font-medium">read-only</span> — an administrator can grant you write access.
+              </p>
+            </div>
+          )}
           <Button className="w-full h-9" onClick={onSwitchToLogin}>
             Go to sign in
           </Button>
