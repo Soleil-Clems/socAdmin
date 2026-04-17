@@ -23,7 +23,7 @@ func runPasswordReset(repo *auth.Repository, email string) error {
 		return fmt.Errorf("database error: %w", err)
 	}
 	if user == nil {
-		return fmt.Errorf("no user found with email %q", email)
+		return fmt.Errorf("You don't have any permissions for %q", email)
 	}
 
 	fmt.Printf("About to reset password for: %s (id=%d, role=%s)\n", user.Email, user.ID, user.Role)
