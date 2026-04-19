@@ -420,8 +420,19 @@ export default function QueryEditor() {
       <div className="flex-1 overflow-hidden">
         {/* History panel */}
         {showHistory && (
-          <div className="border-b border-border bg-card">
-            <ScrollArea className="max-h-56">
+          <div className="border-b border-border bg-card flex flex-col" style={{ maxHeight: "40vh" }}>
+            {history.length > 0 && (
+              <div className="px-3 py-1.5 border-b border-border flex items-center justify-between shrink-0">
+                <span className="text-[11px] text-muted-foreground">{history.length} queries</span>
+                <button
+                  className="text-[11px] text-destructive hover:underline"
+                  onClick={clearHistory}
+                >
+                  Clear history
+                </button>
+              </div>
+            )}
+            <ScrollArea className="flex-1 min-h-0">
               <div className="p-2 space-y-0.5">
                 {history.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-6">
@@ -458,16 +469,6 @@ export default function QueryEditor() {
                 ))}
               </div>
             </ScrollArea>
-            {history.length > 0 && (
-              <div className="px-3 py-1 border-t border-border">
-                <button
-                  className="text-[11px] text-destructive hover:underline"
-                  onClick={clearHistory}
-                >
-                  Clear history
-                </button>
-              </div>
-            )}
           </div>
         )}
 
