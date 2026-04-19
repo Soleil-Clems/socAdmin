@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useAuthStore } from "@/stores/auth.store";
 import { useConnectionStore } from "@/stores/connection.store";
 import { authRequest } from "@/requests/auth.request";
-import { databaseRequest } from "@/requests/database.request";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import ConnectPage from "@/pages/connect";
@@ -15,7 +14,6 @@ function App() {
   const setRole = useAuthStore((s) => s.setRole);
   const logout = useAuthStore((s) => s.logout);
   const isConnected = useConnectionStore((s) => s.isConnected);
-  const setConnected = useConnectionStore((s) => s.setConnected);
   const [authPage, setAuthPage] = useState<"login" | "register">("login");
   const [showAdminSettings, setShowAdminSettings] = useState(false);
   const [verifying, setVerifying] = useState(isAuthenticated);
@@ -40,18 +38,6 @@ function App() {
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Check if the backend already has an active DB connection (e.g. from env vars).
-  // If so, sync the frontend connection store to skip the connect page.
-  useEffect(() => {
-    if (!isAuthenticated || isConnected || verifying) return;
-    let cancelled = false;
-    databaseRequest.connectionStatus().then((res) => {
-      if (!cancelled && res.connected && res.host && res.type) {
-        setConnected(res.host, res.port || 0, res.user || "", res.type as "mysql" | "postgresql" | "mongodb");
-      }
-    }).catch(() => { /* not connected, show connect page */ });
-    return () => { cancelled = true; };
-  }, [isAuthenticated, isConnected, verifying]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (verifying) {
     return (

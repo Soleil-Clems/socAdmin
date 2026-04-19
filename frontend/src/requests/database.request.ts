@@ -159,6 +159,11 @@ export const databaseRequest = {
   connectionStatus: () =>
     customfetch.get<{ connected: boolean; host?: string; port?: number; user?: string; type?: string }>("/connection/status"),
 
+  disconnect: () => customfetch.post<{ status: string }>("/disconnect"),
+
+  listPreconfigured: () =>
+    customfetch.get<{ type: string; host: string; port: number; user: string; password: string }[]>("/preconfigured"),
+
   list: () => customfetch.get<string[]>("/databases"),
 
   listWithStats: () => customfetch.get<DatabaseInfo[]>("/databases/stats"),

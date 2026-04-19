@@ -105,6 +105,35 @@ func (c *DatabaseController) Connect(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "connected", "type": dbType})
 }
 
+func (c *DatabaseController) Disconnect(w http.ResponseWriter, r *http.Request) {
+	if err := c.dbService.Disconnect(); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "disconnected"})
+}
+
+func (c *DatabaseController) ListPreconfigured(w http.ResponseWriter, r *http.Request) {
+	preconfigs := c.dbService.ListPreconfigured()
+	if preconfigs == nil {
+		preconfigs = []service.PreconfiguredDB{}
+	}
+	// Include passwords so the frontend can pre-fill the connect form.
+	// This endpoint is auth-protected; credentials come from server env vars.
+	type preconfigResp struct {
+		Type     string `json:"type"`
+		Host     string `json:"host"`
+		Port     int    `json:"port"`
+		User     string `json:"user"`
+		Password string `json:"password"`
+	}
+	out := make([]preconfigResp, len(preconfigs))
+	for i, pc := range preconfigs {
+		out[i] = preconfigResp{Type: pc.Type, Host: pc.Host, Port: pc.Port, User: pc.User, Password: pc.Password}
+	}
+	jsonResponse(w, http.StatusOK, out)
+}
+
 func (c *DatabaseController) ListDatabases(w http.ResponseWriter, r *http.Request) {
 	databases, err := c.dbService.ListDatabases()
 	if err != nil {

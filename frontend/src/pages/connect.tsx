@@ -7,6 +7,7 @@ import { useConnectionStore } from "@/stores/connection.store";
 import { useSystemInfo } from "@/hooks/queries/use-system-info";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { connectionRequest, type SavedConnection } from "@/requests/connection.request";
+import { databaseRequest } from "@/requests/database.request";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,10 +34,10 @@ const dbIcons: Record<string, string> = {
 function isServiceDown(msg: string): boolean {
   const lower = msg.toLowerCase();
   return lower.includes("connection refused") ||
-    lower.includes("failed to ping") ||
-    lower.includes("failed to connect") ||
     lower.includes("no such host") ||
-    lower.includes("i/o timeout");
+    lower.includes("i/o timeout") ||
+    lower.includes("network is unreachable") ||
+    lower.includes("no route to host");
 }
 
 type Props = {
@@ -55,6 +56,11 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
   const { data: savedConnections } = useQuery<SavedConnection[]>({
     queryKey: ["saved-connections"],
     queryFn: connectionRequest.listSaved,
+  });
+
+  const { data: preconfigured } = useQuery({
+    queryKey: ["preconfigured-connections"],
+    queryFn: databaseRequest.listPreconfigured,
   });
 
   const useSavedMutation = useMutation({
@@ -196,6 +202,48 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
           </p>
         </div>
 
+        {/* Pre-configured connections from env vars — click to pre-fill form */}
+        {preconfigured && preconfigured.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+              Pre-configured
+            </p>
+            <div className="flex gap-2">
+              {preconfigured.map((pc) => (
+                <button
+                  key={pc.type}
+                  type="button"
+                  onClick={() => {
+                    setValue("type", pc.type as ConnectFormData["type"]);
+                    setValue("host", pc.host);
+                    setValue("port", pc.port);
+                    setValue("user", "");
+                    setValue("password", "");
+                    connectMutation.reset();
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium transition-colors border ${
+                    selectedType === pc.type
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : pc.type === "mysql" ? "border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 text-blue-600 dark:text-blue-400" :
+                        pc.type === "postgresql" ? "border-indigo-500/30 bg-indigo-500/5 hover:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400" :
+                        "border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                  }`}
+                >
+                  <span className={`w-6 h-6 rounded text-xs font-bold flex items-center justify-center ${
+                    selectedType === pc.type ? "bg-primary-foreground/20 text-primary-foreground" :
+                    pc.type === "mysql" ? "bg-blue-500/10" :
+                    pc.type === "postgresql" ? "bg-indigo-500/10" :
+                    "bg-emerald-500/10"
+                  }`}>
+                    {dbIcons[pc.type] || "?"}
+                  </span>
+                  {dbLabels[pc.type] || pc.type}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Saved connections */}
         {hasSaved && (
           <div>
@@ -242,14 +290,9 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
               <div className="text-xs bg-destructive/10 px-3 py-2.5 rounded-md mt-2 space-y-1">
                 <p className="text-destructive font-medium">
                   {isServiceDown(useSavedMutation.error.message)
-                    ? "Database service is not running"
+                    ? "Cannot reach the database — check that the service is running."
                     : useSavedMutation.error.message}
                 </p>
-                {isServiceDown(useSavedMutation.error.message) && (
-                  <p className="text-muted-foreground">
-                    Start it from <span className="font-semibold text-foreground">socAdmin Manager</span> (Databases tab), then try again.
-                  </p>
-                )}
               </div>
             )}
             {deleteSavedMutation.isError && (
@@ -267,8 +310,8 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
           </div>
         )}
 
-        {/* DB type selector as segmented control */}
-        <Controller
+        {/* DB type selector — hidden when preconfigured connections exist */}
+        {!(preconfigured && preconfigured.length > 0) && <Controller
           name="type"
           control={control}
           render={({ field }) => (
@@ -296,7 +339,7 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
               ))}
             </div>
           )}
-        />
+        />}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
@@ -334,14 +377,9 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
             <div className="text-xs bg-destructive/10 px-3 py-2.5 rounded-md space-y-1">
               <p className="text-destructive font-medium">
                 {isServiceDown(connectMutation.error.message)
-                  ? `${dbLabels[selectedType] || selectedType} is not running`
+                  ? `Cannot reach ${dbLabels[selectedType] || selectedType} — check that the service is running and the host/port are correct.`
                   : connectMutation.error.message}
               </p>
-              {isServiceDown(connectMutation.error.message) && (
-                <p className="text-muted-foreground">
-                  Start it from <span className="font-semibold text-foreground">socAdmin Manager</span> (Databases tab), then try again.
-                </p>
-              )}
             </div>
           )}
 

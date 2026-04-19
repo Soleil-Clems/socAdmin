@@ -78,13 +78,12 @@ func main() {
 		}
 	}
 
-	// Auto-provision admin from env vars (Docker/phpMyAdmin-style)
+	// Auto-provision admin from env vars (Docker/phpMyAdmin-style).
+	// Idempotent: skips if the email already exists.
 	if adminEmail := os.Getenv("ADMIN_EMAIL"); adminEmail != "" {
 		if adminPass := os.Getenv("ADMIN_PASSWORD"); adminPass != "" {
-			count, err := authRepo.UserCount()
-			if err != nil {
-				log.Printf("Warning: failed to check user count: %v", err)
-			} else if count == 0 {
+			existing, _ := authRepo.FindByEmail(adminEmail)
+			if existing == nil {
 				if err := auth.ValidatePassword(adminPass); err != nil {
 					log.Fatalf("ADMIN_PASSWORD is invalid: %v", err)
 				}
@@ -103,37 +102,47 @@ func main() {
 	// Create database service (shared between auto-connect and router)
 	dbService := service.NewDatabaseService()
 
-	// Auto-connect to database from env vars (Docker/phpMyAdmin-style)
-	if dbType := os.Getenv("DB_TYPE"); dbType != "" {
-		dbHost := os.Getenv("DB_HOST")
-		if dbHost == "" {
-			dbHost = "127.0.0.1"
-		}
-		dbPortStr := os.Getenv("DB_PORT")
-		dbUser := os.Getenv("DB_USER")
-		dbPass := os.Getenv("DB_PASSWORD")
+	// Pre-configured database connections from env vars (Docker/phpMyAdmin-style).
+	// Supports all 3 types simultaneously: MYSQL_HOST, POSTGRES_HOST, MONGO_HOST, etc.
+	type dbEnvConfig struct {
+		envPrefix   string
+		dbType      string
+		defaultPort int
+		defaultUser string
+	}
+	dbConfigs := []dbEnvConfig{
+		{"MYSQL", "mysql", 3306, "root"},
+		{"POSTGRES", "postgresql", 5432, "postgres"},
+		{"MONGO", "mongodb", 27017, ""},
+	}
 
-		dbPort := 0
-		switch dbType {
-		case "mysql":
-			dbPort = 3306
-		case "postgresql":
-			dbPort = 5432
-		case "mongodb":
-			dbPort = 27017
+	var preconfigs []service.PreconfiguredDB
+	for _, cfg := range dbConfigs {
+		host := os.Getenv(cfg.envPrefix + "_HOST")
+		if host == "" {
+			continue
 		}
-		if dbPortStr != "" {
-			if p, err := strconv.Atoi(dbPortStr); err == nil && p > 0 {
-				dbPort = p
+		port := cfg.defaultPort
+		if p := os.Getenv(cfg.envPrefix + "_PORT"); p != "" {
+			if v, err := strconv.Atoi(p); err == nil && v > 0 {
+				port = v
 			}
 		}
-
-		if err := dbService.Connect(dbHost, dbPort, dbUser, dbPass, dbType); err != nil {
-			log.Printf("Warning: auto-connect to %s at %s:%d failed: %v", dbType, dbHost, dbPort, err)
-		} else {
-			log.Printf("Auto-connected to %s at %s:%d", dbType, dbHost, dbPort)
+		user := cfg.defaultUser
+		if u := os.Getenv(cfg.envPrefix + "_USER"); u != "" {
+			user = u
 		}
+		password := os.Getenv(cfg.envPrefix + "_PASSWORD")
+
+		preconfigs = append(preconfigs, service.PreconfiguredDB{
+			Type:     cfg.dbType,
+			Host:     host,
+			Port:     port,
+			User:     user,
+			Password: password,
+		})
 	}
+	dbService.SetPreconfigured(preconfigs)
 
 	apiHandler := api.NewRouter(authRepo, whitelist, encKey, apiPrefix, dbService)
 	frontend := FrontendHandler(apiPrefix)

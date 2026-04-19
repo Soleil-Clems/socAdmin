@@ -20,18 +20,39 @@ func toBsonMSlice(roles []map[string]interface{}) []bson.M {
 	return out
 }
 
+// PreconfiguredDB holds connection info from env vars (Docker compose).
+type PreconfiguredDB struct {
+	Type     string `json:"type"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	User     string `json:"user"`
+	Password string
+}
+
 type DatabaseService struct {
-	mu     sync.RWMutex
-	conn   connector.Connector
-	dbType string
-	host   string
-	port   int
-	user   string
+	mu            sync.RWMutex
+	conn          connector.Connector
+	dbType        string
+	host          string
+	port          int
+	user          string
+	preconfigured []PreconfiguredDB
 }
 
 func NewDatabaseService() *DatabaseService {
 	return &DatabaseService{}
 }
+
+// SetPreconfigured stores DB configs from env vars.
+func (s *DatabaseService) SetPreconfigured(configs []PreconfiguredDB) {
+	s.preconfigured = configs
+}
+
+// ListPreconfigured returns the pre-configured connections (without passwords).
+func (s *DatabaseService) ListPreconfigured() []PreconfiguredDB {
+	return s.preconfigured
+}
+
 
 func (s *DatabaseService) Connect(host string, port int, user, password, dbType string) error {
 	s.mu.Lock()

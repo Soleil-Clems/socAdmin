@@ -279,7 +279,7 @@ export default function Sidebar() {
           variant="ghost"
           size="sm"
           className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 h-7 text-xs"
-          onClick={() => { resetNav(); disconnect(); }}
+          onClick={() => { databaseRequest.disconnect().catch(() => {}); resetNav(); disconnect(); }}
         >
           Disconnect
         </Button>
@@ -287,7 +287,7 @@ export default function Sidebar() {
           variant="ghost"
           size="sm"
           className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 h-7 text-xs"
-          onClick={() => { resetNav(); disconnect(); logout(); }}
+          onClick={() => { databaseRequest.disconnect().catch(() => {}); resetNav(); disconnect(); logout(); }}
         >
           Logout
         </Button>

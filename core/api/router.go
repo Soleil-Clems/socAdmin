@@ -62,6 +62,8 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("POST "+p+"/auth/password", withAuthLimit(authController.ChangePassword))
 	protected.HandleFunc("GET "+p+"/connection/status", dbController.ConnectionStatus)
 	protected.HandleFunc("POST "+p+"/connect", dbController.Connect)
+	protected.HandleFunc("POST "+p+"/disconnect", dbController.Disconnect)
+	protected.HandleFunc("GET "+p+"/preconfigured", dbController.ListPreconfigured)
 	protected.HandleFunc("GET "+p+"/databases", dbController.ListDatabases)
 	protected.HandleFunc("GET "+p+"/databases/stats", dbController.ListDatabasesWithStats)
 	protected.HandleFunc("GET "+p+"/databases/{db}/tables", dbController.ListTables)
