@@ -8,6 +8,16 @@ services:
       - socadmin-data:/data
     environment:
       - PORT=8080
+      - DATA_DIR=/data
+      # Auto-provision admin (only on first run, when no users exist)
+      # - ADMIN_EMAIL=admin@example.com
+      # - ADMIN_PASSWORD=MyStr0ng!Pass
+      # Auto-connect to a database at startup
+      # - DB_TYPE=mysql          # mysql | postgresql | mongodb
+      # - DB_HOST=db
+      # - DB_PORT=3306
+      # - DB_USER=root
+      # - DB_PASSWORD=secret
     restart: unless-stopped
 
 volumes:

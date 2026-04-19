@@ -156,6 +156,9 @@ type QueryResult = {
 };
 
 export const databaseRequest = {
+  connectionStatus: () =>
+    customfetch.get<{ connected: boolean; host?: string; port?: number; user?: string; type?: string }>("/connection/status"),
+
   list: () => customfetch.get<string[]>("/databases"),
 
   listWithStats: () => customfetch.get<DatabaseInfo[]>("/databases/stats"),

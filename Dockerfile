@@ -12,7 +12,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # --- Stage 2: build Go binary ---
-FROM golang:1.24-alpine AS backend
+FROM golang:1.26-alpine AS backend
 RUN apk add --no-cache gcc musl-dev
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -27,19 +27,17 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata \
     && addgroup -S socadmin && adduser -S socadmin -G socadmin
 
-WORKDIR /data
+WORKDIR /app
 COPY --from=backend /socadmin /usr/local/bin/socadmin
 
-# Optional: copy backup CLI tools if available on host
-# For full backup/restore, mount the host binaries or install them:
-#   apk add --no-cache mysql-client postgresql-client mongodb-tools
-
-RUN chown -R socadmin:socadmin /data
-USER socadmin
-
-EXPOSE 8080
-
+# Persistent data: socadmin.db, TLS certs, etc.
+RUN mkdir -p /data && chown -R socadmin:socadmin /data
+VOLUME /data
+ENV DATA_DIR=/data
 ENV PORT=8080
+
+USER socadmin
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD wget -qO- http://localhost:${PORT}/ || exit 1

@@ -11,6 +11,8 @@ import (
 	"github.com/soleilouisol/socAdmin/core/api"
 	"github.com/soleilouisol/socAdmin/core/auth"
 	"github.com/soleilouisol/socAdmin/core/security"
+	"github.com/soleilouisol/socAdmin/core/service"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
@@ -76,7 +78,64 @@ func main() {
 		}
 	}
 
-	apiHandler := api.NewRouter(authRepo, whitelist, encKey, apiPrefix)
+	// Auto-provision admin from env vars (Docker/phpMyAdmin-style)
+	if adminEmail := os.Getenv("ADMIN_EMAIL"); adminEmail != "" {
+		if adminPass := os.Getenv("ADMIN_PASSWORD"); adminPass != "" {
+			count, err := authRepo.UserCount()
+			if err != nil {
+				log.Printf("Warning: failed to check user count: %v", err)
+			} else if count == 0 {
+				if err := auth.ValidatePassword(adminPass); err != nil {
+					log.Fatalf("ADMIN_PASSWORD is invalid: %v", err)
+				}
+				hashed, err := bcrypt.GenerateFromPassword([]byte(adminPass), bcrypt.DefaultCost)
+				if err != nil {
+					log.Fatalf("Failed to hash admin password: %v", err)
+				}
+				if _, err := authRepo.CreateUser(adminEmail, string(hashed), "admin"); err != nil {
+					log.Fatalf("Failed to create admin user: %v", err)
+				}
+				log.Printf("Auto-provisioned admin user: %s", adminEmail)
+			}
+		}
+	}
+
+	// Create database service (shared between auto-connect and router)
+	dbService := service.NewDatabaseService()
+
+	// Auto-connect to database from env vars (Docker/phpMyAdmin-style)
+	if dbType := os.Getenv("DB_TYPE"); dbType != "" {
+		dbHost := os.Getenv("DB_HOST")
+		if dbHost == "" {
+			dbHost = "127.0.0.1"
+		}
+		dbPortStr := os.Getenv("DB_PORT")
+		dbUser := os.Getenv("DB_USER")
+		dbPass := os.Getenv("DB_PASSWORD")
+
+		dbPort := 0
+		switch dbType {
+		case "mysql":
+			dbPort = 3306
+		case "postgresql":
+			dbPort = 5432
+		case "mongodb":
+			dbPort = 27017
+		}
+		if dbPortStr != "" {
+			if p, err := strconv.Atoi(dbPortStr); err == nil && p > 0 {
+				dbPort = p
+			}
+		}
+
+		if err := dbService.Connect(dbHost, dbPort, dbUser, dbPass, dbType); err != nil {
+			log.Printf("Warning: auto-connect to %s at %s:%d failed: %v", dbType, dbHost, dbPort, err)
+		} else {
+			log.Printf("Auto-connected to %s at %s:%d", dbType, dbHost, dbPort)
+		}
+	}
+
+	apiHandler := api.NewRouter(authRepo, whitelist, encKey, apiPrefix, dbService)
 	frontend := FrontendHandler(apiPrefix)
 
 	// Serve API routes under /{prefix}/api/, everything else is the React SPA

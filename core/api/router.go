@@ -15,13 +15,12 @@ import (
 	"github.com/soleilouisol/socAdmin/core/service"
 )
 
-func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKey []byte, apiPrefix string) http.Handler {
+func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKey []byte, apiPrefix string, dbService *service.DatabaseService) http.Handler {
 	mux := http.NewServeMux()
 	p := "/" + apiPrefix + "/api"
 
 	// Services
 	authService := service.NewAuthService(authRepo)
-	dbService := service.NewDatabaseService()
 
 	// Controllers
 	authController := controller.NewAuthController(authService)
