@@ -28,8 +28,46 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token"`
+// setAuthCookies writes HttpOnly cookies for access and refresh tokens.
+func setAuthCookies(w http.ResponseWriter, tokens *auth.TokenPair) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "access_token",
+		Value:    tokens.AccessToken,
+		Path:     "/",
+		MaxAge:   int(auth.AccessTokenDuration.Seconds()),
+		HttpOnly: true,
+		Secure:   false, // set to true when behind TLS reverse proxy
+		SameSite: http.SameSiteStrictMode,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    tokens.RefreshToken,
+		Path:     "/",
+		MaxAge:   int(auth.RefreshTokenDuration.Seconds()),
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+// clearAuthCookies expires both auth cookies.
+func clearAuthCookies(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "access_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
 }
 
 func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
@@ -49,15 +87,20 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := c.authService.Register(req.Email, req.Password)
+	result, err := c.authService.Register(req.Email, req.Password)
 	if err != nil {
 		logger.AuthFail("register", requestIP(r))
 		jsonError(w, http.StatusConflict, err.Error())
 		return
 	}
 
-	logger.Auth("register", user.ID, requestIP(r))
-	jsonResponse(w, http.StatusCreated, user)
+	setAuthCookies(w, result.Tokens)
+	logger.Auth("register", result.User.ID, requestIP(r))
+	jsonResponse(w, http.StatusCreated, map[string]interface{}{
+		"id":    result.User.ID,
+		"email": result.User.Email,
+		"role":  result.User.Role,
+	})
 }
 
 func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
@@ -72,36 +115,34 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens, err := c.authService.Login(req.Email, req.Password)
+	tokens, user, err := c.authService.Login(req.Email, req.Password)
 	if err != nil {
 		logger.AuthFail("login", requestIP(r))
 		jsonError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	logger.Auth("login", 0, requestIP(r))
-	jsonResponse(w, http.StatusOK, tokens)
+	setAuthCookies(w, tokens)
+	logger.Auth("login", user.ID, requestIP(r))
+	jsonResponse(w, http.StatusOK, map[string]string{"role": user.Role})
 }
 
 func (c *AuthController) Refresh(w http.ResponseWriter, r *http.Request) {
-	var req RefreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid request body")
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil || cookie.Value == "" {
+		jsonError(w, http.StatusUnauthorized, "missing refresh token")
 		return
 	}
 
-	if req.RefreshToken == "" {
-		jsonError(w, http.StatusBadRequest, "refresh_token is required")
-		return
-	}
-
-	tokens, err := c.authService.RefreshToken(req.RefreshToken)
+	tokens, err := c.authService.RefreshToken(cookie.Value)
 	if err != nil {
+		clearAuthCookies(w)
 		jsonError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	jsonResponse(w, http.StatusOK, tokens)
+	setAuthCookies(w, tokens)
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "refreshed"})
 }
 
 func (c *AuthController) Me(w http.ResponseWriter, r *http.Request) {
@@ -181,12 +222,10 @@ func (c *AuthController) DeleteAppUser(w http.ResponseWriter, r *http.Request) {
 
 // Logout revokes the caller's refresh token so it can no longer be used.
 func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
-	var req RefreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
-		jsonError(w, http.StatusBadRequest, "refresh_token is required")
-		return
+	if cookie, err := r.Cookie("refresh_token"); err == nil && cookie.Value != "" {
+		c.authService.RevokeRefreshToken(cookie.Value)
 	}
-	c.authService.RevokeRefreshToken(req.RefreshToken)
+	clearAuthCookies(w)
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "logged out"})
 }
 

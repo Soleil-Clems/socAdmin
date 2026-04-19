@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 )
 
 type contextKey string
@@ -13,19 +12,13 @@ const ClaimsKey contextKey = "claims"
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		header := r.Header.Get("Authorization")
-		if header == "" {
-			jsonErr(w, http.StatusUnauthorized, "missing authorization header")
+		cookie, err := r.Cookie("access_token")
+		if err != nil || cookie.Value == "" {
+			jsonErr(w, http.StatusUnauthorized, "missing authentication")
 			return
 		}
 
-		parts := strings.SplitN(header, " ", 2)
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			jsonErr(w, http.StatusUnauthorized, "invalid authorization header")
-			return
-		}
-
-		claims, err := ValidateAccessToken(parts[1])
+		claims, err := ValidateAccessToken(cookie.Value)
 		if err != nil {
 			jsonErr(w, http.StatusUnauthorized, "invalid or expired token")
 			return
@@ -36,19 +29,18 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// AuthFromQueryParam wraps a handler to authenticate via "token" query
-// parameter instead of the Authorization header. This is required for SSE
-// endpoints because the EventSource API does not support custom headers.
-// Admin-only.
-func AuthFromQueryParam(handler http.HandlerFunc) http.HandlerFunc {
+// AuthFromCookie wraps a handler to authenticate via the access_token cookie.
+// Used for SSE endpoints where the EventSource API cannot set custom headers
+// but the browser sends cookies automatically. Admin-only.
+func AuthFromCookie(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.URL.Query().Get("token")
-		if token == "" {
-			jsonErr(w, http.StatusUnauthorized, "missing token parameter")
+		cookie, err := r.Cookie("access_token")
+		if err != nil || cookie.Value == "" {
+			jsonErr(w, http.StatusUnauthorized, "missing authentication")
 			return
 		}
 
-		claims, err := ValidateAccessToken(token)
+		claims, err := ValidateAccessToken(cookie.Value)
 		if err != nil {
 			jsonErr(w, http.StatusUnauthorized, "invalid or expired token")
 			return

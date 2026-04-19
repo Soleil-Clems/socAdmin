@@ -11,33 +11,29 @@ import AdminSettingsPage from "@/pages/admin-settings";
 function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isAdmin = useAuthStore((s) => s.isAdmin);
-  const setRole = useAuthStore((s) => s.setRole);
-  const logout = useAuthStore((s) => s.logout);
+  const setAuthenticated = useAuthStore((s) => s.setAuthenticated);
   const isConnected = useConnectionStore((s) => s.isConnected);
   const [authPage, setAuthPage] = useState<"login" | "register">("login");
   const [showAdminSettings, setShowAdminSettings] = useState(false);
-  const [verifying, setVerifying] = useState(isAuthenticated);
+  const [verifying, setVerifying] = useState(true);
 
-  // On mount, if tokens exist, verify them with the backend.
-  // If valid → stay authenticated and sync role.
-  // If invalid → clear stale tokens and show login.
+  // On mount, call /auth/me to check if HttpOnly cookies contain a valid session.
+  // If valid → set authenticated with role. If not → show login.
   useEffect(() => {
-    if (!isAuthenticated) return;
     let cancelled = false;
     authRequest
       .me()
       .then((res) => {
-        if (!cancelled && res?.role) setRole(res.role);
+        if (!cancelled && res?.role) setAuthenticated(res.role);
       })
       .catch(() => {
-        if (!cancelled) logout();
+        // No valid session — stay on login page
       })
       .finally(() => {
         if (!cancelled) setVerifying(false);
       });
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
 
   if (verifying) {
     return (

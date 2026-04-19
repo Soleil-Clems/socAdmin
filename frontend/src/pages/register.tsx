@@ -31,7 +31,7 @@ export default function RegisterPage({ onSwitchToLogin }: Props) {
     registerMutation.mutate(
       { email: data.email, password: data.password },
       {
-        onSuccess: (res: Record<string, unknown>) => {
+        onSuccess: (res) => {
           if (res?.role === "admin") setIsFirstUser(true);
           setSuccess(true);
         },

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { securityRequest, type WhitelistResponse } from "@/requests/security.request";
+import customfetch from "@/lib/custom-fetch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/stores/auth.store";
@@ -68,19 +69,7 @@ export default function SecurityView() {
   };
 
   const handleExport = () => {
-    const url = securityRequest.exportURL();
-    const token = localStorage.getItem("access_token");
-    fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then((res) => res.blob())
-      .then((blob) => {
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = "whitelist.txt";
-        a.click();
-        URL.revokeObjectURL(a.href);
-      });
+    customfetch.download("/security/whitelist/export", "whitelist.txt");
   };
 
   const handleAddIP = () => {

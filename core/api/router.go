@@ -185,8 +185,8 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	protected.HandleFunc("POST "+p+"/security/whitelist/bulk", auth.RequireAdmin(secController.BulkAddIPs))
 	protected.HandleFunc("GET "+p+"/security/whitelist/export", auth.RequireAdmin(secController.ExportWhitelist))
 
-	// SSE endpoint — auth via query param "token" (EventSource can't set headers)
-	mux.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/watch", auth.AuthFromQueryParam(dbController.MongoWatchSSE))
+	// SSE endpoint — auth via HttpOnly cookie (browser sends it automatically with EventSource)
+	mux.HandleFunc("GET "+p+"/databases/{db}/tables/{table}/watch", auth.AuthFromCookie(dbController.MongoWatchSSE))
 
 	mux.Handle(p+"/", auth.AuthMiddleware(protected))
 

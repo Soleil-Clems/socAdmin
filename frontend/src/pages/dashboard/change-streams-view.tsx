@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigationStore } from "@/stores/navigation.store";
-import { useAuthStore } from "@/stores/auth.store";
 import { API_URL } from "@/lib/custom-fetch";
 import type { ChangeEvent } from "@/requests/database.request";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -26,7 +25,6 @@ function formatTime(iso: string): string {
 
 export default function ChangeStreamsView() {
   const { selectedDb, selectedTable } = useNavigationStore();
-  const accessToken = useAuthStore((s) => s.accessToken);
 
   const [watching, setWatching] = useState(false);
   const [events, setEvents] = useState<ChangeEvent[]>([]);
@@ -44,13 +42,13 @@ export default function ChangeStreamsView() {
   }, []);
 
   const startWatching = useCallback(() => {
-    if (!selectedDb || !selectedTable || !accessToken) return;
+    if (!selectedDb || !selectedTable) return;
     setError(null);
     setEvents([]);
     setExpandedIdx(null);
 
-    const url = `${API_URL}/databases/${encodeURIComponent(selectedDb)}/tables/${encodeURIComponent(selectedTable)}/watch?token=${encodeURIComponent(accessToken)}`;
-    const es = new EventSource(url);
+    const url = `${API_URL}/databases/${encodeURIComponent(selectedDb)}/tables/${encodeURIComponent(selectedTable)}/watch`;
+    const es = new EventSource(url, { withCredentials: true });
     esRef.current = es;
     setWatching(true);
 
@@ -80,7 +78,7 @@ export default function ChangeStreamsView() {
         }
       }
     });
-  }, [selectedDb, selectedTable, accessToken, stopWatching]);
+  }, [selectedDb, selectedTable, stopWatching]);
 
   // Cleanup on unmount or collection change
   useEffect(() => {

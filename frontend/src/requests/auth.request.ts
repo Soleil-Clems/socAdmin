@@ -10,13 +10,14 @@ type RegisterPayload = {
   password: string;
 };
 
-type RefreshPayload = {
-  refresh_token: string;
+type LoginResponse = {
+  role: string;
 };
 
-type AuthTokens = {
-  access_token: string;
-  refresh_token: string;
+type RegisterResponse = {
+  id: number;
+  email: string;
+  role: string;
 };
 
 type MeResponse = {
@@ -24,16 +25,13 @@ type MeResponse = {
 };
 
 export const authRequest = {
-  login: (data: LoginPayload) => customfetch.post<AuthTokens>("/auth/login", data),
+  login: (data: LoginPayload) => customfetch.post<LoginResponse>("/auth/login", data),
 
-  register: (data: RegisterPayload) => customfetch.post<AuthTokens>("/auth/register", data),
-
-  refresh: (data: RefreshPayload) => customfetch.post<AuthTokens>("/auth/refresh", data),
+  register: (data: RegisterPayload) => customfetch.post<RegisterResponse>("/auth/register", data),
 
   me: () => customfetch.get<MeResponse>("/auth/me"),
 
-  logout: (refreshToken: string) =>
-    customfetch.post("/auth/logout", { refresh_token: refreshToken }),
+  logout: () => customfetch.post("/auth/logout"),
 
   changePassword: (currentPassword: string, newPassword: string) =>
     customfetch.post<{ status: string }>("/auth/password", {

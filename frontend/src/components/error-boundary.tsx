@@ -19,8 +19,8 @@ export default class ErrorBoundary extends Component<Props, State> {
 
   handleDisconnect = () => {
     sessionStorage.removeItem("socadmin_conn");
-    document.cookie = "access_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Strict";
-    document.cookie = "refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Strict";
+    // HttpOnly cookies are cleared server-side via /auth/logout
+    fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
     window.location.reload();
   };
 

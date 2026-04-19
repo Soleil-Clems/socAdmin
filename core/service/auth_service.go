@@ -19,7 +19,12 @@ func NewAuthService(repo *auth.Repository) *AuthService {
 	return &AuthService{repo: repo}
 }
 
-func (s *AuthService) Register(email, password string) (*auth.User, error) {
+type RegisterResult struct {
+	User   *auth.User
+	Tokens *auth.TokenPair
+}
+
+func (s *AuthService) Register(email, password string) (*RegisterResult, error) {
 	existing, err := s.repo.FindByEmail(email)
 	if err != nil {
 		return nil, err
@@ -40,17 +45,27 @@ func (s *AuthService) Register(email, password string) (*auth.User, error) {
 		role = auth.RoleAdmin
 	}
 
-	return s.repo.CreateUser(email, string(hashed), role)
-}
-
-func (s *AuthService) Login(email, password string) (*auth.TokenPair, error) {
-	// Rate limiting
-	count, err := s.repo.CountRecentAttempts(email, time.Now().Add(-rateLimitWindow))
+	user, err := s.repo.CreateUser(email, string(hashed), role)
 	if err != nil {
 		return nil, err
 	}
+
+	tokens, err := s.generateTokenPair(user)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RegisterResult{User: user, Tokens: tokens}, nil
+}
+
+func (s *AuthService) Login(email, password string) (*auth.TokenPair, *auth.User, error) {
+	// Rate limiting
+	count, err := s.repo.CountRecentAttempts(email, time.Now().Add(-rateLimitWindow))
+	if err != nil {
+		return nil, nil, err
+	}
 	if count >= maxLoginAttempts {
-		return nil, fmt.Errorf("too many login attempts, try again later")
+		return nil, nil, fmt.Errorf("too many login attempts, try again later")
 	}
 
 	s.repo.RecordLoginAttempt(email)
@@ -62,21 +77,25 @@ func (s *AuthService) Login(email, password string) (*auth.TokenPair, error) {
 
 	user, err := s.repo.FindByEmail(email)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if user == nil {
 		bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
-		return nil, fmt.Errorf("invalid email or password")
+		return nil, nil, fmt.Errorf("invalid email or password")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-		return nil, fmt.Errorf("invalid email or password")
+		return nil, nil, fmt.Errorf("invalid email or password")
 	}
 
 	// Login réussi, on clear les tentatives
 	s.repo.ClearLoginAttempts(email)
 
-	return s.generateTokenPair(user)
+	tokens, err := s.generateTokenPair(user)
+	if err != nil {
+		return nil, nil, err
+	}
+	return tokens, user, nil
 }
 
 func (s *AuthService) RefreshToken(refreshToken string) (*auth.TokenPair, error) {

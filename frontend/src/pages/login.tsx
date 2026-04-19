@@ -4,7 +4,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema, type LoginFormData } from "@/schemas/auth.schema";
 import { useLogin } from "@/hooks/mutations/use-login";
 import { useAuthStore } from "@/stores/auth.store";
-import { authRequest } from "@/requests/auth.request";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,8 +15,7 @@ type Props = {
 
 export default function LoginPage({ onSwitchToRegister }: Props) {
   const loginMutation = useLogin();
-  const setTokens = useAuthStore((s) => s.setTokens);
-  const setRole = useAuthStore((s) => s.setRole);
+  const setAuthenticated = useAuthStore((s) => s.setAuthenticated);
   const [serverError, setServerError] = useState("");
 
   const {
@@ -31,14 +29,8 @@ export default function LoginPage({ onSwitchToRegister }: Props) {
   const onSubmit = (data: LoginFormData) => {
     setServerError("");
     loginMutation.mutate(data, {
-      onSuccess: async (res) => {
-        setTokens(res.access_token, res.refresh_token);
-        try {
-          const me = await authRequest.me();
-          if (me?.role) setRole(me.role);
-        } catch {
-          // non-blocking: role stays unknown, UI will default to readonly
-        }
+      onSuccess: (res) => {
+        setAuthenticated(res.role);
       },
       onError: (err) => {
         setServerError(err.message);
