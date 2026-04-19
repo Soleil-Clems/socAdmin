@@ -131,6 +131,18 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
     }
   }, [availableTypes, handleTypeChange, selectedType, setValue]);
 
+  // Auto-select first preconfigured connection when data loads
+  useEffect(() => {
+    if (preconfigured && preconfigured.length > 0) {
+      const first = preconfigured[0];
+      setValue("type", first.type as ConnectFormData["type"]);
+      setValue("host", first.host);
+      setValue("port", first.port);
+      setValue("user", "");
+      setValue("password", "");
+    }
+  }, [preconfigured, setValue]);
+
   const onSubmit = (data: ConnectFormData) => {
     connectMutation.mutate(data, {
       onSuccess: () => {
