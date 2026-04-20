@@ -28,6 +28,10 @@ func NewRepository(dbPath string) (*Repository, error) {
 	db.Exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'readonly'")
 	// First user ever created should be admin
 	db.Exec("UPDATE users SET role = 'admin' WHERE id = (SELECT MIN(id) FROM users) AND role = 'readonly'")
+	// Add ip column to login_attempts (migration for existing DBs)
+	db.Exec("ALTER TABLE login_attempts ADD COLUMN ip TEXT NOT NULL DEFAULT ''")
+	// Add revoked_at column to refresh_tokens (migration for existing DBs)
+	db.Exec("ALTER TABLE refresh_tokens ADD COLUMN revoked_at DATETIME")
 
 	return &Repository{db: db}, nil
 }
@@ -46,6 +50,7 @@ func migrate(db *sql.DB) error {
 			user_id INTEGER NOT NULL,
 			token TEXT UNIQUE NOT NULL,
 			expires_at DATETIME NOT NULL,
+			revoked_at DATETIME,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id)
 		);
@@ -53,6 +58,7 @@ func migrate(db *sql.DB) error {
 		CREATE TABLE IF NOT EXISTS login_attempts (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			email TEXT NOT NULL,
+			ip TEXT NOT NULL DEFAULT '',
 			attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 
@@ -156,7 +162,8 @@ func (r *Repository) GetOrCreateAPIPrefix() (string, error) {
 
 // CleanExpiredTokens removes expired refresh tokens
 func (r *Repository) CleanExpiredTokens() error {
-	_, err := r.db.Exec("DELETE FROM refresh_tokens WHERE expires_at <= CURRENT_TIMESTAMP")
+	// Delete expired tokens and tokens revoked more than 7 days ago
+	_, err := r.db.Exec("DELETE FROM refresh_tokens WHERE expires_at <= CURRENT_TIMESTAMP OR (revoked_at IS NOT NULL AND revoked_at <= datetime('now', '-7 days'))")
 	return err
 }
 
@@ -267,40 +274,65 @@ func (r *Repository) SaveRefreshToken(userID int64, token string, expiresAt time
 	return err
 }
 
+// FindRefreshToken returns the user ID for a valid, non-revoked token.
+// If the token was already revoked (reuse detected), it revokes ALL tokens
+// for that user and returns an error — this is a sign of token theft.
 func (r *Repository) FindRefreshToken(token string) (int64, error) {
 	var userID int64
+	var revokedAt sql.NullTime
 	err := r.db.QueryRow(
-		"SELECT user_id FROM refresh_tokens WHERE token = ? AND expires_at > CURRENT_TIMESTAMP",
+		"SELECT user_id, revoked_at FROM refresh_tokens WHERE token = ? AND expires_at > CURRENT_TIMESTAMP",
 		token,
-	).Scan(&userID)
+	).Scan(&userID, &revokedAt)
 
 	if err == sql.ErrNoRows {
 		return 0, fmt.Errorf("invalid or expired refresh token")
 	}
-	return userID, err
+	if err != nil {
+		return 0, err
+	}
+
+	// Reuse detection: if token was already revoked, someone stole it.
+	// Revoke ALL tokens for this user as a precaution.
+	if revokedAt.Valid {
+		r.RevokeAllRefreshTokens(userID)
+		return 0, fmt.Errorf("refresh token reuse detected — all sessions revoked")
+	}
+
+	return userID, nil
 }
 
+// RevokeRefreshToken marks a token as revoked (soft-delete) instead of deleting it,
+// so reuse can be detected later.
+func (r *Repository) RevokeRefreshToken(token string) error {
+	_, err := r.db.Exec("UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE token = ?", token)
+	return err
+}
+
+// DeleteRefreshToken hard-deletes a token (used for cleanup).
 func (r *Repository) DeleteRefreshToken(token string) error {
 	_, err := r.db.Exec("DELETE FROM refresh_tokens WHERE token = ?", token)
 	return err
 }
 
-func (r *Repository) RecordLoginAttempt(email string) error {
-	_, err := r.db.Exec("INSERT INTO login_attempts (email) VALUES (?)", email)
+func (r *Repository) RecordLoginAttempt(email, ip string) error {
+	_, err := r.db.Exec("INSERT INTO login_attempts (email, ip) VALUES (?, ?)", email, ip)
 	return err
 }
 
-func (r *Repository) CountRecentAttempts(email string, since time.Time) (int, error) {
+// CountRecentAttempts counts by (email, IP) pair — prevents an attacker from
+// locking out a victim by spamming login from a different IP.
+func (r *Repository) CountRecentAttempts(email, ip string, since time.Time) (int, error) {
 	var count int
 	err := r.db.QueryRow(
-		"SELECT COUNT(*) FROM login_attempts WHERE email = ? AND attempted_at > ?",
-		email, since,
+		"SELECT COUNT(*) FROM login_attempts WHERE email = ? AND ip = ? AND attempted_at > ?",
+		email, ip, since,
 	).Scan(&count)
 	return count, err
 }
 
-func (r *Repository) ClearLoginAttempts(email string) error {
-	_, err := r.db.Exec("DELETE FROM login_attempts WHERE email = ?", email)
+func (r *Repository) ClearLoginAttempts(email, ip string) error {
+	_, err := r.db.Exec("DELETE FROM login_attempts WHERE email = ? AND ip = ?", email, ip)
 	return err
 }
 

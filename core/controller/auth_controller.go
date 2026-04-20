@@ -115,7 +115,7 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens, user, err := c.authService.Login(req.Email, req.Password)
+	tokens, user, err := c.authService.Login(req.Email, req.Password, requestIP(r))
 	if err != nil {
 		logger.AuthFail("login", requestIP(r))
 		jsonError(w, http.StatusUnauthorized, err.Error())

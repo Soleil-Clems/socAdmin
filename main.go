@@ -45,10 +45,19 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Initialize JWT secret from DB (generated once, persisted)
-	secret, err := authRepo.GetOrCreateJWTSecret()
-	if err != nil {
-		log.Fatalf("Failed to initialize JWT secret: %v", err)
+	// Initialize JWT secret: prefer JWT_SECRET env var (recommended in prod),
+	// fallback to auto-generated secret in SQLite (zero-config for dev).
+	var secret []byte
+	if envSecret := os.Getenv("JWT_SECRET"); envSecret != "" {
+		if len(envSecret) < 32 {
+			log.Fatalf("JWT_SECRET must be at least 32 characters")
+		}
+		secret = []byte(envSecret)
+	} else {
+		secret, err = authRepo.GetOrCreateJWTSecret()
+		if err != nil {
+			log.Fatalf("Failed to initialize JWT secret: %v", err)
+		}
 	}
 	auth.InitJWTSecret(secret)
 

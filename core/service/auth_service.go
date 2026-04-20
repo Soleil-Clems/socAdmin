@@ -58,9 +58,9 @@ func (s *AuthService) Register(email, password string) (*RegisterResult, error) 
 	return &RegisterResult{User: user, Tokens: tokens}, nil
 }
 
-func (s *AuthService) Login(email, password string) (*auth.TokenPair, *auth.User, error) {
-	// Rate limiting
-	count, err := s.repo.CountRecentAttempts(email, time.Now().Add(-rateLimitWindow))
+func (s *AuthService) Login(email, password, clientIP string) (*auth.TokenPair, *auth.User, error) {
+	// Rate limiting by (email, IP) — prevents targeted lockout from a different IP
+	count, err := s.repo.CountRecentAttempts(email, clientIP, time.Now().Add(-rateLimitWindow))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -68,7 +68,7 @@ func (s *AuthService) Login(email, password string) (*auth.TokenPair, *auth.User
 		return nil, nil, fmt.Errorf("too many login attempts, try again later")
 	}
 
-	s.repo.RecordLoginAttempt(email)
+	s.repo.RecordLoginAttempt(email, clientIP)
 
 	// Constant-time: always run bcrypt even if user doesn't exist,
 	// so an attacker can't distinguish "unknown email" from "wrong password"
@@ -89,7 +89,7 @@ func (s *AuthService) Login(email, password string) (*auth.TokenPair, *auth.User
 	}
 
 	// Login réussi, on clear les tentatives
-	s.repo.ClearLoginAttempts(email)
+	s.repo.ClearLoginAttempts(email, clientIP)
 
 	tokens, err := s.generateTokenPair(user)
 	if err != nil {
@@ -104,8 +104,8 @@ func (s *AuthService) RefreshToken(refreshToken string) (*auth.TokenPair, error)
 		return nil, err
 	}
 
-	// Supprimer l'ancien refresh token (rotation)
-	s.repo.DeleteRefreshToken(refreshToken)
+	// Revoke (soft-delete) the old token so reuse can be detected
+	s.repo.RevokeRefreshToken(refreshToken)
 
 	user, err := s.repo.FindByID(userID)
 	if err != nil || user == nil {
@@ -116,7 +116,7 @@ func (s *AuthService) RefreshToken(refreshToken string) (*auth.TokenPair, error)
 }
 
 func (s *AuthService) RevokeRefreshToken(token string) {
-	s.repo.DeleteRefreshToken(token)
+	s.repo.RevokeRefreshToken(token)
 }
 
 func (s *AuthService) ListUsers() ([]auth.User, error) {
