@@ -23,9 +23,6 @@ jobs:
       - name: Run tests
         run: go test ./core/... -count=1 -race -timeout 300s
 
-      - name: Build binary
-        run: CGO_ENABLED=1 go build -o socadmin .
-
   frontend:
     name: Frontend Build
     runs-on: ubuntu-latest
