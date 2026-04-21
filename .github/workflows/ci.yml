@@ -8,6 +8,7 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  MIN_COVERAGE: 10
 
 jobs:
   backend:
@@ -23,8 +24,17 @@ jobs:
       - name: Go mod download
         run: go mod download
 
-      - name: Run tests
-        run: go test ./core/... -count=1 -race -timeout 300s
+      - name: Run tests with coverage
+        run: go test ./core/... -count=1 -race -timeout 300s -coverprofile=coverage.out
+
+      - name: Check coverage threshold
+        run: |
+          TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
+          echo "Coverage: ${TOTAL}%"
+          if [ "$(echo "$TOTAL < $MIN_COVERAGE" | bc)" -eq 1 ]; then
+            echo "::error::Coverage ${TOTAL}% is below minimum ${MIN_COVERAGE}%"
+            exit 1
+          fi
 
   frontend:
     name: Frontend Build
