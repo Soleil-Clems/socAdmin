@@ -2017,8 +2017,7 @@ func (c *DatabaseController) BackupBinariesStatus(w http.ResponseWriter, r *http
 // BackupDatabase streams a full database dump as a file download.
 func (c *DatabaseController) BackupDatabase(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
-	if db == "" {
-		jsonError(w, http.StatusBadRequest, "missing db path param")
+	if !validatePathIdent(w, db, "database name") {
 		return
 	}
 
@@ -2047,8 +2046,7 @@ func (c *DatabaseController) BackupDatabase(w http.ResponseWriter, r *http.Reque
 // Expects multipart/form-data with field "file".
 func (c *DatabaseController) RestoreDatabase(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
-	if db == "" {
-		jsonError(w, http.StatusBadRequest, "missing db path param")
+	if !validatePathIdent(w, db, "database name") {
 		return
 	}
 
