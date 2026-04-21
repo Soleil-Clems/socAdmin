@@ -119,12 +119,15 @@ export default function SchemaView() {
   const [zoom, setZoom] = useState(1);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // Auto-layout when schema loads
+  // Auto-layout when schema loads — batched via requestAnimationFrame to avoid cascading renders
   useEffect(() => {
     if (schema && schema.length > 0) {
-      setPositions(autoLayout(schema));
-      setPan({ x: 0, y: 0 });
-      setZoom(1);
+      const id = requestAnimationFrame(() => {
+        setPositions(autoLayout(schema));
+        setPan({ x: 0, y: 0 });
+        setZoom(1);
+      });
+      return () => cancelAnimationFrame(id);
     }
   }, [schema]);
 

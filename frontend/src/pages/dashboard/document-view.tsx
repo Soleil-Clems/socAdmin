@@ -112,9 +112,13 @@ function JsonValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
       );
     }
     if ((value.startsWith("{") || value.startsWith("[")) && value.length < 2000) {
+      let parsed: unknown;
       try {
-        return <JsonValue value={JSON.parse(value)} depth={depth} />;
+        parsed = JSON.parse(value);
       } catch { /* not JSON */ }
+      if (parsed !== undefined) {
+        return <JsonValue value={parsed} depth={depth} />;
+      }
     }
     return <span className="text-emerald-600 dark:text-emerald-400">&quot;{value}&quot;</span>;
   }

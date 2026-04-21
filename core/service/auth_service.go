@@ -11,6 +11,8 @@ import (
 const maxLoginAttempts = 5
 const rateLimitWindow = 15 * time.Minute
 
+var bcryptCost = 12
+
 type AuthService struct {
 	repo *auth.Repository
 }
@@ -33,7 +35,7 @@ func (s *AuthService) Register(email, password string) (*RegisterResult, error) 
 		return nil, fmt.Errorf("email already registered")
 	}
 
-	hashed, err := bcrypt.GenerateFromPassword([]byte(password), 12)
+	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -194,7 +196,7 @@ func (s *AuthService) ChangePassword(userID int64, currentPassword, newPassword 
 		return fmt.Errorf("new password must be different from current password")
 	}
 
-	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), 12)
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcryptCost)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}

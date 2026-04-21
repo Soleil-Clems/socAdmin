@@ -5,7 +5,13 @@ import (
 	"testing"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
+	"golang.org/x/crypto/bcrypt"
 )
+
+func TestMain(m *testing.M) {
+	bcryptCost = bcrypt.MinCost
+	os.Exit(m.Run())
+}
 
 func tempAuthRepo(t *testing.T) *auth.Repository {
 	t.Helper()

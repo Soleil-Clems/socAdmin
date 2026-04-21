@@ -70,8 +70,8 @@ function MaintenanceDropdown({ db, table, dbType }: { db: string; table: string;
     try {
       const res = await databaseRequest.maintenanceTable(db, table, op);
       toast(res.result || `${labels[op] || op} completed`, "success");
-    } catch (e: any) {
-      toast(e.message || "Maintenance failed", "error");
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : "Maintenance failed", "error");
     } finally {
       setRunning(null);
       setOpen(false);
