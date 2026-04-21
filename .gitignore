@@ -8,5 +8,10 @@ CLAUDE.md
 node_module
 .impeccable.md
 socadmin.db
+socadmin.db-shm
+socadmin.db-wal
+socadmin.db-journal
+bin/
+manager/manager
 frontend/node_modules
 frontend/dist

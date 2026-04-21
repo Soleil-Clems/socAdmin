@@ -59,7 +59,7 @@ func TestValidateAccessToken_Expired(t *testing.T) {
 }
 
 func TestValidateAccessToken_InvalidSignature(t *testing.T) {
-	_, err := ValidateAccessToken("eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoxfQ.invalidsignature")
+	_, err := ValidateAccessToken("header.payload.badsignature")
 	if err == nil {
 		t.Error("ValidateAccessToken() should reject token with bad signature")
 	}
