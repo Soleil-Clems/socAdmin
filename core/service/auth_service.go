@@ -60,7 +60,7 @@ func (s *AuthService) Register(email, password string) (*RegisterResult, error) 
 
 func (s *AuthService) Login(email, password, clientIP string) (*auth.TokenPair, *auth.User, error) {
 	// Rate limiting by (email, IP) — prevents targeted lockout from a different IP
-	count, err := s.repo.CountRecentAttempts(email, clientIP, time.Now().Add(-rateLimitWindow))
+	count, err := s.repo.CountRecentAttempts(email, clientIP, time.Now().UTC().Add(-rateLimitWindow))
 	if err != nil {
 		return nil, nil, err
 	}
