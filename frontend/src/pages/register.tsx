@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { AuthBrandPanel } from "@/components/auth-brand-panel";
 
 type Props = {
   onSwitchToLogin: () => void;
@@ -95,22 +96,7 @@ export default function RegisterPage({ onSwitchToLogin }: Props) {
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Left panel — branding */}
-      <div className="hidden lg:flex lg:w-[480px] bg-primary text-primary-foreground flex-col justify-between p-10">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">socAdmin</h1>
-          <p className="text-sm opacity-80 mt-1">Database administration</p>
-        </div>
-        <div className="space-y-4">
-          <p className="text-lg font-medium leading-snug">
-            Manage MySQL, PostgreSQL &amp; MongoDB from a single interface.
-          </p>
-          <p className="text-sm opacity-70 leading-relaxed">
-            Browse tables, run queries, import &amp; export data — no terminal required.
-          </p>
-        </div>
-        <p className="text-xs opacity-50">v1.0</p>
-      </div>
+      <AuthBrandPanel />
 
       {/* Right panel — form */}
       <div className="flex-1 flex items-center justify-center p-6 relative">
