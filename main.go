@@ -50,7 +50,9 @@ func main() {
 	var secret []byte
 	if envSecret := os.Getenv("JWT_SECRET"); envSecret != "" {
 		if len(envSecret) < 32 {
-			log.Fatalf("JWT_SECRET must be at least 32 characters")
+			log.Fatalf("Configuration error: JWT_SECRET must be at least 32 characters (got %d).\n"+
+				"  Generate one with: openssl rand -base64 32\n"+
+				"  Then set it in your environment or docker-compose.yml.", len(envSecret))
 		}
 		secret = []byte(envSecret)
 	} else {
@@ -94,7 +96,9 @@ func main() {
 			existing, _ := authRepo.FindByEmail(adminEmail)
 			if existing == nil {
 				if err := auth.ValidatePassword(adminPass); err != nil {
-					log.Fatalf("ADMIN_PASSWORD is invalid: %v", err)
+					log.Fatalf("Configuration error: ADMIN_PASSWORD is invalid — %v.\n"+
+						"  Requirements: at least 10 characters, with uppercase, lowercase, digit, and special character.\n"+
+						"  Example: Test1234!@", err)
 				}
 				hashed, err := bcrypt.GenerateFromPassword([]byte(adminPass), bcrypt.DefaultCost)
 				if err != nil {
