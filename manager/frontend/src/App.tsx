@@ -106,7 +106,8 @@ function App() {
   const handleStart = async () => {
     setError("");
     setLoading(true);
-    await StartServer();
+    const s = await StartServer();
+    setStatus(s);
   };
 
   const handleStop = async () => {

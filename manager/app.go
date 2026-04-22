@@ -174,23 +174,23 @@ func (a *App) StartServer() ServerStatus {
 
 func (a *App) StopServer() ServerStatus {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 
-	pid := findPIDOnPort(a.port)
-	if pid > 0 {
-		if proc, err := os.FindProcess(pid); err == nil {
-			proc.Kill()
+	proc := a.serverProc
+	a.serverProc = nil
+	a.startedAt = time.Time{}
+
+	a.mu.Unlock()
+
+	if proc != nil {
+		proc.Kill()
+		proc.Wait()
+	}
+
+	if pid := findPIDOnPort(a.port); pid > 0 {
+		if p, err := os.FindProcess(pid); err == nil {
+			p.Kill()
 		}
 	}
-
-	if a.serverProc != nil {
-		a.serverProc.Kill()
-		go a.serverProc.Wait()
-		a.serverProc = nil
-		a.startedAt = time.Time{}
-	}
-
-	a.waitForPortClosed(a.port)
 
 	wailsRuntime.EventsEmit(a.ctx, "server:stopped", nil)
 	return ServerStatus{Running: false, Port: a.port}
@@ -203,21 +203,15 @@ func (a *App) GetServerStatus() ServerStatus {
 }
 
 func (a *App) serverStatusLocked() ServerStatus {
-	running := isPortOpen(a.port)
 	s := ServerStatus{
-		Running: running,
-		Port:    a.port,
-		URL:     fmt.Sprintf("http://localhost:%d", a.port),
+		Port: a.port,
+		URL:  fmt.Sprintf("http://localhost:%d", a.port),
 	}
-	if running {
+	if a.serverProc != nil {
+		s.Running = true
 		s.PID = findPIDOnPort(a.port)
-		if a.serverProc != nil && !a.startedAt.IsZero() {
+		if !a.startedAt.IsZero() {
 			s.Uptime = formatDuration(time.Since(a.startedAt))
-		}
-	} else {
-		if a.serverProc != nil {
-			a.serverProc = nil
-			a.startedAt = time.Time{}
 		}
 	}
 	return s

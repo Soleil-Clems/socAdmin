@@ -22,6 +22,16 @@ func main() {
 
 	appMenu := menu.NewMenu()
 
+	quitHandler := func(_ *menu.CallbackData) {
+		go app.StopServer()
+		wailsRuntime.Quit(app.ctx)
+	}
+
+	appNameMenu := appMenu.AddSubmenu("socAdmin Manager")
+	appNameMenu.AddText("About socAdmin Manager", nil, nil)
+	appNameMenu.AddSeparator()
+	appNameMenu.AddText("Quit socAdmin Manager", keys.CmdOrCtrl("q"), quitHandler)
+
 	fileMenu := appMenu.AddSubmenu("File")
 	fileMenu.AddText("Start Server", keys.CmdOrCtrl("s"), func(_ *menu.CallbackData) {
 		app.StartServer()
@@ -32,11 +42,6 @@ func main() {
 	fileMenu.AddSeparator()
 	fileMenu.AddText("Open in Browser", keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
 		app.OpenBrowser()
-	})
-	fileMenu.AddSeparator()
-	fileMenu.AddText("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
-		app.StopServer()
-		wailsRuntime.Quit(app.ctx)
 	})
 
 	err := wails.Run(&options.App{
