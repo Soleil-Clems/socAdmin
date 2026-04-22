@@ -15,3 +15,4 @@ bin/
 manager/manager
 frontend/node_modules
 frontend/dist
+build/*/dist/

@@ -63,11 +63,30 @@ manager-dev:
 	@echo "Starting socAdmin Manager (dev mode)..."
 	cd manager && wails dev
 
+# --- Package : build les installateurs par plateforme ---
+# Usage : make package-macos VERSION=1.0.0
+VERSION ?= 1.0.0
+
+package-macos:
+	chmod +x build/macos/package.sh
+	./build/macos/package.sh $(VERSION)
+
+package-windows:
+	chmod +x build/windows/package.sh
+	./build/windows/package.sh $(VERSION)
+
+package-linux:
+	chmod +x build/linux/package.sh
+	./build/linux/package.sh $(VERSION)
+
+package-all: package-macos package-windows package-linux
+
 # --- Clean ---
 clean:
 	rm -rf bin/
 	rm -rf frontend/dist/
 	rm -rf manager/build/bin/
+	rm -rf build/*/dist/
 
 # --- Status ---
 status:
@@ -82,4 +101,4 @@ push:
 	git commit -m "$(m)"
 	git push
 
-.PHONY: all start stop reload build install check clean status push manager manager-dev
+.PHONY: all start stop reload build install check clean status push manager manager-dev package-macos package-windows package-linux package-all

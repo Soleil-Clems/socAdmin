@@ -10,6 +10,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
@@ -35,6 +36,7 @@ func main() {
 	fileMenu.AddSeparator()
 	fileMenu.AddText("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
 		app.StopServer()
+		wailsRuntime.Quit(app.ctx)
 	})
 
 	err := wails.Run(&options.App{
