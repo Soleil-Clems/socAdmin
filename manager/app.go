@@ -53,6 +53,7 @@ type AppConfig struct {
 type App struct {
 	ctx         context.Context
 	mu          sync.Mutex
+	installMu   sync.Mutex
 	serverProc  *os.Process
 	port        int
 	autoStart   bool
@@ -323,7 +324,8 @@ func (a *App) StartService(name string) {
 	go func() {
 		err := startServiceOS(a, name)
 		if err != nil {
-			a.emitError(fmt.Sprintf("Failed to start %s: %v", name, err))
+			log.Printf("[service] Failed to start %s: %v", name, err)
+			a.emitEvent("service:error", fmt.Sprintf("Failed to start %s: %v", name, err))
 			return
 		}
 		port := a.servicePort(name)
@@ -335,7 +337,8 @@ func (a *App) StopService(name string) {
 	go func() {
 		err := stopServiceOS(a, name)
 		if err != nil {
-			a.emitError(fmt.Sprintf("Failed to stop %s: %v", name, err))
+			log.Printf("[service] Failed to stop %s: %v", name, err)
+			a.emitEvent("service:error", fmt.Sprintf("Failed to stop %s: %v", name, err))
 			return
 		}
 		port := a.servicePort(name)
@@ -378,6 +381,10 @@ func (a *App) SetServicePort(name string, port int) error {
 
 func (a *App) InstallService(name string) {
 	go func() {
+		a.installMu.Lock()
+		defer a.installMu.Unlock()
+
+		a.emitEvent("install:progress", fmt.Sprintf("Installing %s...", name))
 		err := installServiceOS(a, name)
 		if err != nil {
 			a.emitError(fmt.Sprintf("Failed to install %s: %v", name, err))
@@ -389,13 +396,16 @@ func (a *App) InstallService(name string) {
 
 func (a *App) UninstallService(name string) {
 	go func() {
-		// Stop the service first if running
+		a.installMu.Lock()
+		defer a.installMu.Unlock()
+
 		port := a.servicePort(name)
 		if isPortOpen(port) {
 			stopServiceOS(a, name)
 			a.waitForPortClosed(port)
 		}
 
+		a.emitEvent("uninstall:progress", fmt.Sprintf("Uninstalling %s...", name))
 		err := uninstallServiceOS(a, name)
 		if err != nil {
 			a.emitError(fmt.Sprintf("Failed to uninstall %s: %v", name, err))

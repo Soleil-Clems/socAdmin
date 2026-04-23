@@ -543,34 +543,44 @@ function DatabasesTab({
   services: main.ServiceStatus[];
   onRefresh: () => void;
 }) {
-  const [loadingService, setLoadingService] = useState<string | null>(null);
-  const [installingService, setInstallingService] = useState<string | null>(null);
-  const [uninstallingService, setUninstallingService] = useState<string | null>(null);
+  const [loadingServices, setLoadingServices] = useState<Set<string>>(new Set());
+  const [installingServices, setInstallingServices] = useState<Set<string>>(new Set());
+  const [uninstallingServices, setUninstallingServices] = useState<Set<string>>(new Set());
   const [confirmUninstall, setConfirmUninstall] = useState<string | null>(null);
   const [serviceError, setServiceError] = useState("");
   const [editingPort, setEditingPort] = useState<string | null>(null);
   const [portInput, setPortInput] = useState("");
   const [canInstall, setCanInstall] = useState(false);
 
+  const addLoading = (name: string) => setLoadingServices((s) => new Set(s).add(name));
+  const removeLoading = (name: string) => setLoadingServices((s) => { const n = new Set(s); n.delete(name); return n; });
+  const addInstalling = (name: string) => setInstallingServices((s) => new Set(s).add(name));
+  const removeInstalling = (name: string) => setInstallingServices((s) => { const n = new Set(s); n.delete(name); return n; });
+  const addUninstalling = (name: string) => setUninstallingServices((s) => new Set(s).add(name));
+  const removeUninstalling = (name: string) => setUninstallingServices((s) => { const n = new Set(s); n.delete(name); return n; });
+
   useEffect(() => {
     CanInstallServices().then(setCanInstall);
   }, []);
 
-  // Listen for install/uninstall events
   useEffect(() => {
-    const off1 = EventsOn("install:done", () => {
-      setInstallingService(null);
+    const off1 = EventsOn("install:done", (name: string) => {
+      removeInstalling(name);
       onRefresh();
     });
-    const off2 = EventsOn("uninstall:done", () => {
-      setUninstallingService(null);
+    const off2 = EventsOn("uninstall:done", (name: string) => {
+      removeUninstalling(name);
       onRefresh();
     });
     const off3 = EventsOn("app:error", () => {
-      setInstallingService(null);
-      setUninstallingService(null);
+      setInstallingServices(new Set());
+      setUninstallingServices(new Set());
     });
-    return () => { off1(); off2(); off3(); };
+    const off4 = EventsOn("service:error", (msg: string) => {
+      setLoadingServices(new Set());
+      setServiceError(msg);
+    });
+    return () => { off1(); off2(); off3(); off4(); };
   }, [onRefresh]);
 
   const installed = services.filter((svc) => svc.installed);
@@ -578,7 +588,7 @@ function DatabasesTab({
 
   const handleToggle = async (svc: main.ServiceStatus) => {
     setServiceError("");
-    setLoadingService(svc.name);
+    addLoading(svc.name);
     if (svc.running) {
       await StopService(svc.name);
     } else {
@@ -591,11 +601,11 @@ function DatabasesTab({
       const updated = svcs.find((s) => s.name === svc.name);
       if (updated && updated.running !== svc.running) {
         clearInterval(poll);
-        setLoadingService(null);
+        removeLoading(svc.name);
         onRefresh();
       } else if (attempts >= 15) {
         clearInterval(poll);
-        setLoadingService(null);
+        removeLoading(svc.name);
         onRefresh();
       }
     }, 1000);
@@ -603,45 +613,41 @@ function DatabasesTab({
 
   const handleInstall = (name: string) => {
     setServiceError("");
-    setInstallingService(name);
+    addInstalling(name);
     InstallService(name);
-    // Poll for install completion (service becomes detected)
     const poll = setInterval(async () => {
       const svcs = await GetAllServices();
       const svc = svcs.find((s) => s.name === name);
       if (svc && svc.installed) {
         clearInterval(poll);
-        setInstallingService(null);
+        removeInstalling(name);
         onRefresh();
       }
     }, 3000);
-    // Timeout after 5 minutes
     setTimeout(() => {
       clearInterval(poll);
-      if (installingService === name) {
-        setInstallingService(null);
-        onRefresh();
-      }
+      removeInstalling(name);
+      onRefresh();
     }, 300000);
   };
 
   const handleUninstallConfirm = (name: string) => {
     setConfirmUninstall(null);
     setServiceError("");
-    setUninstallingService(name);
+    addUninstalling(name);
     UninstallService(name);
     const poll = setInterval(async () => {
       const svcs = await GetAllServices();
       const svc = svcs.find((s) => s.name === name);
       if (svc && !svc.installed) {
         clearInterval(poll);
-        setUninstallingService(null);
+        removeUninstalling(name);
         onRefresh();
       }
     }, 3000);
     setTimeout(() => {
       clearInterval(poll);
-      setUninstallingService(null);
+      removeUninstalling(name);
       onRefresh();
     }, 300000);
   };
@@ -696,7 +702,7 @@ function DatabasesTab({
               letter: "?",
             };
             const isEditing = editingPort === svc.name;
-            const isLoading = loadingService === svc.name;
+            const isLoading = loadingServices.has(svc.name);
 
             return (
               <div
@@ -781,7 +787,7 @@ function DatabasesTab({
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={() => handleToggle(svc)}
-                      disabled={isLoading || uninstallingService === svc.name}
+                      disabled={isLoading || uninstallingServices.has(svc.name)}
                       className={`rounded-lg px-4 py-2 text-[12px] font-medium min-w-15 flex items-center justify-center transition-colors ${
                         svc.running
                           ? "bg-red-subtle text-red hover:bg-red-subtle/70"
@@ -793,11 +799,11 @@ function DatabasesTab({
                     {svc.source && svc.source !== "system" && svc.source !== "mamp" && !svc.running && (
                       <button
                         onClick={() => setConfirmUninstall(svc.name)}
-                        disabled={uninstallingService === svc.name}
+                        disabled={uninstallingServices.has(svc.name)}
                         className="rounded-lg px-2.5 py-2 text-[12px] text-text-muted hover:text-red hover:bg-red-subtle/50 transition-colors disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center"
                         title={`Uninstall ${svc.name}`}
                       >
-                        {uninstallingService === svc.name ? (
+                        {uninstallingServices.has(svc.name) ? (
                           <Spinner />
                         ) : (
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -830,7 +836,8 @@ function DatabasesTab({
                 text: "text-text-muted",
                 letter: "?",
               };
-              const isInstalling = installingService === svc.name;
+              const isInstalling = installingServices.has(svc.name);
+              const anotherInstalling = installingServices.size > 0 && !isInstalling;
 
               return (
                 <div
@@ -849,13 +856,13 @@ function DatabasesTab({
                         {svc.name}
                       </h3>
                       <p className="mt-0.5 text-[11px] text-text-muted">
-                        Not installed
+                        {anotherInstalling ? "Waiting..." : "Not installed"}
                       </p>
                     </div>
 
                     <button
                       onClick={() => handleInstall(svc.name)}
-                      disabled={isInstalling}
+                      disabled={isInstalling || anotherInstalling}
                       className="shrink-0 rounded-lg border border-border px-4 py-2 text-[12px] font-medium text-text-secondary hover:bg-surface-hover hover:text-text transition-colors disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
                     >
                       {isInstalling ? (
