@@ -223,13 +223,16 @@ func (a *App) startMySQLLinux() error {
 
 func (a *App) stopMySQLLinux() error {
 	for _, svc := range []string{"mysql", "mysqld", "mariadb"} {
-		if err := exec.Command("systemctl", "stop", svc).Run(); err == nil {
+		exec.Command("systemctl", "stop", svc).Run()
+		if !isPortOpen(a.mysqlPort) {
 			return nil
 		}
 	}
 	if path := findBin("mysqladmin"); path != "" {
 		exec.Command(path, "-u", "root", fmt.Sprintf("--port=%d", a.mysqlPort), "shutdown").CombinedOutput()
-		return nil
+		if !isPortOpen(a.mysqlPort) {
+			return nil
+		}
 	}
 	if pid := findPIDOnPort(a.mysqlPort); pid > 0 {
 		if proc, err := os.FindProcess(pid); err == nil {
@@ -261,15 +264,24 @@ func (a *App) startPostgresLinux() error {
 }
 
 func (a *App) stopPostgresLinux() error {
-	if err := exec.Command("systemctl", "stop", "postgresql").Run(); err == nil {
+	exec.Command("systemctl", "stop", "postgresql").Run()
+	if !isPortOpen(a.pgPort) {
 		return nil
 	}
 	if path := findBin("pg_ctl"); path != "" {
 		dataDir := a.findPgDataDirLinux()
 		if dataDir != "" {
-			exec.Command(path, "stop", "-D", dataDir).CombinedOutput()
-			return nil
+			exec.Command(path, "stop", "-D", dataDir, "-m", "fast").CombinedOutput()
+			if !isPortOpen(a.pgPort) {
+				return nil
+			}
 		}
+	}
+	if pid := findPIDOnPort(a.pgPort); pid > 0 {
+		if proc, err := os.FindProcess(pid); err == nil {
+			proc.Kill()
+		}
+		return nil
 	}
 	return fmt.Errorf("could not stop PostgreSQL")
 }
@@ -310,12 +322,27 @@ func (a *App) startMongoLinux() error {
 }
 
 func (a *App) stopMongoLinux() error {
-	if err := exec.Command("systemctl", "stop", "mongod").Run(); err == nil {
+	exec.Command("systemctl", "stop", "mongod").Run()
+	if !isPortOpen(a.mongoPort) {
 		return nil
 	}
 	if path := findBin("mongod"); path != "" {
 		dbPath := filepath.Join(a.configDir, "mongo-data")
 		exec.Command(path, "--shutdown", "--dbpath", dbPath).CombinedOutput()
+		if !isPortOpen(a.mongoPort) {
+			return nil
+		}
+	}
+	if path := findBin("mongosh"); path != "" {
+		exec.Command(path, "--eval", "db.adminCommand({shutdown: 1})", "--quiet").CombinedOutput()
+		if !isPortOpen(a.mongoPort) {
+			return nil
+		}
+	}
+	if pid := findPIDOnPort(a.mongoPort); pid > 0 {
+		if proc, err := os.FindProcess(pid); err == nil {
+			proc.Kill()
+		}
 		return nil
 	}
 	return fmt.Errorf("could not stop MongoDB")

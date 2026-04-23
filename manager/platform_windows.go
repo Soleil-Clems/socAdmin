@@ -215,18 +215,22 @@ func (a *App) startMySQLWindows() error {
 
 func (a *App) stopMySQLWindows() error {
 	for _, svc := range []string{"MySQL80", "MySQL84", "MySQL57", "MySQL"} {
-		if err := exec.Command("net", "stop", svc).Run(); err == nil {
+		exec.Command("net", "stop", svc).Run()
+		if !isPortOpen(a.mysqlPort) {
 			return nil
 		}
 	}
 	if svc := findWindowsService("MySQL"); svc != "" {
-		if err := exec.Command("net", "stop", svc).Run(); err == nil {
+		exec.Command("net", "stop", svc).Run()
+		if !isPortOpen(a.mysqlPort) {
 			return nil
 		}
 	}
 	if path := findBin("mysqladmin"); path != "" {
 		exec.Command(path, "-u", "root", fmt.Sprintf("--port=%d", a.mysqlPort), "shutdown").CombinedOutput()
-		return nil
+		if !isPortOpen(a.mysqlPort) {
+			return nil
+		}
 	}
 	if pid := findPIDOnPort(a.mysqlPort); pid > 0 {
 		exec.Command("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F").Run()
@@ -259,16 +263,23 @@ func (a *App) startPostgresWindows() error {
 
 func (a *App) stopPostgresWindows() error {
 	if svc := findWindowsService("postgresql"); svc != "" {
-		if err := exec.Command("net", "stop", svc).Run(); err == nil {
+		exec.Command("net", "stop", svc).Run()
+		if !isPortOpen(a.pgPort) {
 			return nil
 		}
 	}
 	if path := findBin("pg_ctl"); path != "" {
 		dataDir := a.findPgDataDirWindows()
 		if dataDir != "" {
-			exec.Command(path, "stop", "-D", dataDir).CombinedOutput()
-			return nil
+			exec.Command(path, "stop", "-D", dataDir, "-m", "fast").CombinedOutput()
+			if !isPortOpen(a.pgPort) {
+				return nil
+			}
 		}
+	}
+	if pid := findPIDOnPort(a.pgPort); pid > 0 {
+		exec.Command("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F").Run()
+		return nil
 	}
 	return fmt.Errorf("could not stop PostgreSQL")
 }
@@ -306,13 +317,16 @@ func (a *App) startMongoWindows() error {
 }
 
 func (a *App) stopMongoWindows() error {
-	if err := exec.Command("net", "stop", "MongoDB").Run(); err == nil {
+	exec.Command("net", "stop", "MongoDB").Run()
+	if !isPortOpen(a.mongoPort) {
 		return nil
 	}
 	if path := findBin("mongod"); path != "" {
 		dbPath := filepath.Join(a.configDir, "mongo-data")
 		exec.Command(path, "--shutdown", "--dbpath", dbPath).CombinedOutput()
-		return nil
+		if !isPortOpen(a.mongoPort) {
+			return nil
+		}
 	}
 	if pid := findPIDOnPort(a.mongoPort); pid > 0 {
 		exec.Command("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F").Run()

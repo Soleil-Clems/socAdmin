@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -63,6 +64,76 @@ type App struct {
 	mysqlPort int
 	pgPort    int
 	mongoPort int
+}
+
+func init() {
+	ensurePATH()
+	initDebugLog()
+}
+
+func initDebugLog() {
+	home, _ := os.UserHomeDir()
+	logPath := filepath.Join(home, ".socadmin", "manager-debug.log")
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return
+	}
+	log.SetOutput(f)
+	log.SetFlags(log.Ltime | log.Lshortfile)
+	log.Printf("=== socAdmin Manager started ===")
+	log.Printf("PATH = %s", os.Getenv("PATH"))
+	log.Printf("brew = %s", findBrew())
+	log.Printf("mongod = %s", findBin("mongod"))
+	log.Printf("pg_ctl = %s", findBin("pg_ctl"))
+	log.Printf("mongosh = %s", findBin("mongosh"))
+	log.Printf("mysqld = %s", findBin("mysqld"))
+}
+
+func ensurePATH() {
+	current := os.Getenv("PATH")
+
+	var dirs []string
+	switch runtime.GOOS {
+	case "darwin":
+		home, _ := os.UserHomeDir()
+		dirs = []string{
+			"/opt/homebrew/bin",
+			"/opt/homebrew/sbin",
+			"/usr/local/bin",
+			"/usr/local/sbin",
+			filepath.Join(home, ".local/bin"),
+		}
+	case "linux":
+		home, _ := os.UserHomeDir()
+		dirs = []string{
+			"/usr/local/bin",
+			"/usr/local/sbin",
+			"/usr/bin",
+			"/usr/sbin",
+			"/snap/bin",
+			filepath.Join(home, ".local/bin"),
+			"/home/linuxbrew/.linuxbrew/bin",
+		}
+	case "windows":
+		dirs = []string{
+			`C:\Program Files\PostgreSQL\17\bin`,
+			`C:\Program Files\PostgreSQL\16\bin`,
+			`C:\Program Files\MySQL\MySQL Server 8.4\bin`,
+			`C:\Program Files\MySQL\MySQL Server 8.0\bin`,
+			`C:\Program Files\MongoDB\Server\8.0\bin`,
+			`C:\Program Files\MongoDB\Server\7.0\bin`,
+			`C:\ProgramData\chocolatey\bin`,
+		}
+	}
+
+	for _, d := range dirs {
+		if !strings.Contains(current, d) {
+			if _, err := os.Stat(d); err == nil {
+				current = current + string(os.PathListSeparator) + d
+			}
+		}
+	}
+	os.Setenv("PATH", current)
 }
 
 func NewApp() *App {
