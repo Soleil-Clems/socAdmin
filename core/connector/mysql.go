@@ -1,3 +1,4 @@
+// @soleil-clems: Connector - MySQL/MariaDB driver
 package connector
 
 import (

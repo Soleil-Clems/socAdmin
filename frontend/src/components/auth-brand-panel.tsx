@@ -1,3 +1,4 @@
+// @soleil-clems: Component - Auth brand panel
 import { Database, Terminal, Table, ChevronRight, Search, MoreHorizontal, Download, Filter, X, Zap, ChevronLeft } from "lucide-react";
 
 function MockAppPreview() {

@@ -1,3 +1,4 @@
+// @soleil-clems: Auth - Role-based access control (admin/readonly)
 package auth
 
 import (

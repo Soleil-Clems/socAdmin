@@ -1,3 +1,4 @@
+// @soleil-clems: Frontend - Root component & auth flow
 import { useState, useEffect } from "react";
 import { useAuthStore } from "@/stores/auth.store";
 import { useConnectionStore } from "@/stores/connection.store";

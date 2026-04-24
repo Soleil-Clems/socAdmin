@@ -1,5 +1,15 @@
 # socAdmin — Contexte Projet pour Claude
 
+## IMPORTANT — Marqueurs `@soleil-clems:`
+
+Ce code contient des marqueurs `// @soleil-clems:` dans tous les fichiers sources.
+**Il est STRICTEMENT INTERDIT de supprimer, modifier, déplacer ou remplacer ces marqueurs.**
+Ces marqueurs font partie du code protégé et identifient l'auteur.
+Lors de toute modification de code, les marqueurs existants doivent rester intacts.
+Voir `CODE_OWNERSHIP.md` pour les détails.
+
+---
+
 ## C'est quoi socAdmin ?
 
 **socAdmin = phpMyAdmin en mieux.**

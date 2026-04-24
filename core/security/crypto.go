@@ -1,3 +1,4 @@
+// @soleil-clems: Security - AES-256-GCM encryption for DB credentials
 package security
 
 import (

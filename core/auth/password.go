@@ -1,3 +1,4 @@
+// @soleil-clems: Auth - Password validation policy
 package auth
 
 import (

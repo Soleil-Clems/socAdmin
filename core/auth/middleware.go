@@ -1,3 +1,4 @@
+// @soleil-clems: Auth - Authentication middleware
 package auth
 
 import (

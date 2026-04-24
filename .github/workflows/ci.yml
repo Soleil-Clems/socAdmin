@@ -11,6 +11,23 @@ env:
   MIN_COVERAGE: 10
 
 jobs:
+  ownership:
+    name: Code Ownership
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify CODE_OWNERSHIP.md contains soleil-clems
+        run: |
+          if [ ! -f CODE_OWNERSHIP.md ]; then
+            echo "::error::CODE_OWNERSHIP.md is missing"
+            exit 1
+          fi
+          if ! grep -q "soleil-clems" CODE_OWNERSHIP.md; then
+            echo "::error::CODE_OWNERSHIP.md must reference soleil-clems"
+            exit 1
+          fi
+
   backend:
     name: Go Tests
     runs-on: ubuntu-latest

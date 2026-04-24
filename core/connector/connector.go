@@ -1,3 +1,4 @@
+// @soleil-clems: Connector - Common SGBD interface (MySQL, PostgreSQL, MongoDB)
 package connector
 
 // Connector est l'interface commune pour tous les SGBD.

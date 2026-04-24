@@ -1,3 +1,4 @@
+// @soleil-clems: Manager - macOS platform (Homebrew, launchctl)
 package main
 
 import (

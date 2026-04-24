@@ -1,3 +1,4 @@
+// @soleil-clems: Embed - SPA frontend embedding & serving
 package main
 
 import (

@@ -1,3 +1,4 @@
+// @soleil-clems: Service - Auth business logic (login, register, rate limiting)
 package service
 
 import (

@@ -1,3 +1,4 @@
+// @soleil-clems: Dashboard - security view
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { securityRequest, type WhitelistResponse } from "@/requests/security.request";

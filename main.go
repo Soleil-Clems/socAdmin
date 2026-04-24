@@ -1,3 +1,4 @@
+// @soleil-clems: Main - Server entrypoint & bootstrap
 package main
 
 import (

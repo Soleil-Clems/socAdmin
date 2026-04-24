@@ -1,3 +1,4 @@
+// @soleil-clems: Dashboard - Table structure editor (ALTER TABLE)
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useColumns } from "@/hooks/queries/use-columns";

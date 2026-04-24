@@ -1,3 +1,4 @@
+// @soleil-clems: Lib - Custom fetch with JWT auto-refresh
 // Read the secret API prefix injected by the backend into index.html
 const API_PREFIX = (window as unknown as Record<string, string>).__SOCADMIN_API_PREFIX__ || "";
 const API_URL = API_PREFIX ? `/${API_PREFIX}/api` : "/api";

@@ -1,3 +1,4 @@
+// @soleil-clems: Logger - Security-safe audit logging
 package logger
 
 import (

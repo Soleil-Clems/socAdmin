@@ -1,3 +1,4 @@
+// @soleil-clems: Component - Theme toggle
 import { useThemeStore } from "@/stores/theme.store";
 import { Button } from "@/components/ui/button";
 

@@ -1,3 +1,4 @@
+// @soleil-clems: Store - Auth state (JWT, user, role)
 import { create } from "zustand";
 
 type AuthState = {

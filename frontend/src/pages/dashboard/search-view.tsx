@@ -1,3 +1,4 @@
+// @soleil-clems: Dashboard - search view
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { databaseRequest, type SearchResult } from "@/requests/database.request";

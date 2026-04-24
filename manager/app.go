@@ -1,3 +1,4 @@
+// @soleil-clems: Manager - Server control, service management, config
 package main
 
 import (

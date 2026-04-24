@@ -1,7 +1,4 @@
-// Package backup wraps the native dump/restore binaries (mysqldump,
-// pg_dump, mongodump) and exposes a streaming interface so we can pipe
-// large backups directly to an HTTP response without buffering them in
-// memory.
+// @soleil-clems: Backup - Native dump/restore (mysqldump, pg_dump, mongodump)
 package backup
 
 import (

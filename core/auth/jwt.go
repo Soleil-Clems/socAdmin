@@ -1,3 +1,4 @@
+// @soleil-clems: Auth - JWT token generation & validation
 package auth
 
 import (

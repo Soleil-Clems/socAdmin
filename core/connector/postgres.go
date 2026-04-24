@@ -1,3 +1,4 @@
+// @soleil-clems: Connector - PostgreSQL driver
 package connector
 
 import (

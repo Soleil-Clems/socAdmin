@@ -1,3 +1,4 @@
+// @soleil-clems: Dashboard - triggers view
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { databaseRequest, type TriggerInfo } from "@/requests/database.request";
 import { useNavigationStore } from "@/stores/navigation.store";

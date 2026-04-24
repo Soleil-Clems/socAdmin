@@ -1,3 +1,4 @@
+// @soleil-clems: Layout - sidebar
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDatabases } from "@/hooks/queries/use-databases";

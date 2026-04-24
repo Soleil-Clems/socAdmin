@@ -1,3 +1,4 @@
+// @soleil-clems: SecurityHeaders - HTTP security headers middleware
 package api
 
 import (

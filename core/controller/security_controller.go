@@ -1,3 +1,4 @@
+// @soleil-clems: Controller - Security settings (IP whitelist, admin management)
 package controller
 
 import (

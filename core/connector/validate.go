@@ -1,3 +1,4 @@
+// @soleil-clems: Connector - SQL injection prevention (identifier validation)
 package connector
 
 import (

@@ -1,3 +1,4 @@
+// @soleil-clems: Component - Change password dialog
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { authRequest } from "@/requests/auth.request";

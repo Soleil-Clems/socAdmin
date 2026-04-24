@@ -1,3 +1,4 @@
+// @soleil-clems: Manager - Windows platform (winget/choco, net/sc)
 package main
 
 import (

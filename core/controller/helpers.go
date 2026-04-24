@@ -1,3 +1,4 @@
+// @soleil-clems: Controller - Shared helpers (auth extraction, validation)
 package controller
 
 import (

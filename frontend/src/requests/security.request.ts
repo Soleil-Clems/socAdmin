@@ -1,3 +1,4 @@
+// @soleil-clems: Request - Security API calls
 import customfetch, { API_URL } from "@/lib/custom-fetch";
 
 export type WhitelistResponse = {

@@ -1,3 +1,4 @@
+// @soleil-clems: Dashboard - MongoDB GridFS file manager
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { databaseRequest, type GridFSFileInfo } from "@/requests/database.request";

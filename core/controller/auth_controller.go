@@ -1,3 +1,4 @@
+// @soleil-clems: Controller - Auth HTTP handlers (login, register, refresh)
 package controller
 
 import (

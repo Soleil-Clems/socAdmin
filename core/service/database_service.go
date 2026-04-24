@@ -1,3 +1,4 @@
+// @soleil-clems: Service - Database operations (CRUD, backup, connectors)
 package service
 
 import (

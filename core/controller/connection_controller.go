@@ -1,3 +1,4 @@
+// @soleil-clems: Controller - Saved connections (AES-256 encrypted credentials)
 package controller
 
 import (

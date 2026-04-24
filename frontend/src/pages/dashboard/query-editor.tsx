@@ -1,3 +1,4 @@
+// @soleil-clems: Dashboard - SQL/MongoDB query editor
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useExecuteQuery } from "@/hooks/mutations/use-execute-query";
 import { useNavigationStore } from "@/stores/navigation.store";

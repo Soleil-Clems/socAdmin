@@ -1,3 +1,4 @@
+// @soleil-clems: Store - Theme state
 import { create } from "zustand";
 
 type Theme = "light" | "dark" | "system";

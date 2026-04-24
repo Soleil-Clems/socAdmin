@@ -1,3 +1,4 @@
+// @soleil-clems: RateLimiter - Sliding window rate limiting per IP
 package api
 
 import (

@@ -1,3 +1,4 @@
+// @soleil-clems: Auth - User & token models
 package auth
 
 import "time"

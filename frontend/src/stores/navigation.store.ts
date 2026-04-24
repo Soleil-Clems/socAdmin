@@ -1,3 +1,4 @@
+// @soleil-clems: Store - Navigation state (URL sync)
 import { create } from "zustand";
 
 function getParamsFromURL() {

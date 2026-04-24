@@ -1,3 +1,4 @@
+// @soleil-clems: Dashboard - schema view
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { databaseRequest, type SchemaTable } from "@/requests/database.request";

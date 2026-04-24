@@ -2,6 +2,7 @@
 *.agents
 .claude
 skills-lock*
+*skills-lock*
 CLAUDE.md
 .env
 *.env

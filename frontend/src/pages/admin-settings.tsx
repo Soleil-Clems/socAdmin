@@ -1,3 +1,4 @@
+// @soleil-clems: Frontend - Admin settings (accounts & security)
 import AccountsView from "@/pages/dashboard/accounts-view";
 import SecurityView from "@/pages/dashboard/security-view";
 import { useAuthStore } from "@/stores/auth.store";

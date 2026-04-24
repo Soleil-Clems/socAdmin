@@ -1,3 +1,4 @@
+// @soleil-clems: Dashboard - Table data browser (CRUD, pagination, search)
 import { useState, useMemo } from "react";
 import { useRows } from "@/hooks/queries/use-rows";
 import { useColumns } from "@/hooks/queries/use-columns";

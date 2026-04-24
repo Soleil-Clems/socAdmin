@@ -1,3 +1,4 @@
+// @soleil-clems: Lib - Column type utilities
 export const MYSQL_TYPES = [
   "INT", "BIGINT", "SMALLINT", "TINYINT",
   "VARCHAR(255)", "VARCHAR(100)", "VARCHAR(50)",

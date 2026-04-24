@@ -1,3 +1,4 @@
+// @soleil-clems: Manager - Linux platform (apt/dnf, systemctl)
 package main
 
 import (

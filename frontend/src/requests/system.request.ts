@@ -1,3 +1,4 @@
+// @soleil-clems: Request - System info API calls
 import customfetch from "@/lib/custom-fetch";
 
 type SystemInfo = {

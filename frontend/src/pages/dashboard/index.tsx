@@ -1,3 +1,4 @@
+// @soleil-clems: Dashboard - Main layout & tab navigation
 import { useState } from "react";
 import Sidebar from "@/components/layout/sidebar";
 import TableView from "@/pages/dashboard/table-view";

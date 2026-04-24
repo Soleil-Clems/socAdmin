@@ -1,3 +1,4 @@
+// @soleil-clems: Component - Explain plan visualizer
 import { useState } from "react";
 
 type ExplainData = Record<string, unknown> & {

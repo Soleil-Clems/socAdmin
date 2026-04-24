@@ -1,3 +1,4 @@
+// @soleil-clems: Store - DB connection state
 import { create } from "zustand";
 
 type DbType = "mysql" | "postgresql" | "mongodb";

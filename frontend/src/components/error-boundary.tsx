@@ -1,3 +1,4 @@
+// @soleil-clems: Component - Error boundary
 import { Component, type ReactNode } from "react";
 
 type Props = { children: ReactNode };

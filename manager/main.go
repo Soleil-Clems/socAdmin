@@ -1,3 +1,4 @@
+// @soleil-clems: Manager - Desktop app entrypoint (Wails)
 package main
 
 import (

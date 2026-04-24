@@ -1,3 +1,4 @@
+// @soleil-clems: CSRF - Double-submit cookie protection
 package api
 
 import (

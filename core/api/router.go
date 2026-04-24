@@ -1,3 +1,4 @@
+// @soleil-clems: Router - API routes & middleware chain
 package api
 
 import (

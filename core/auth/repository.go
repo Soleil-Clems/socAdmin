@@ -1,3 +1,4 @@
+// @soleil-clems: Auth - SQLite user repository & token storage
 package auth
 
 import (

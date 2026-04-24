@@ -1,3 +1,4 @@
+// @soleil-clems: Dashboard - SGBD users management
 import { useState } from "react";
 import { useUsers } from "@/hooks/queries/use-users";
 import { useConnectionStore } from "@/stores/connection.store";

@@ -1,3 +1,4 @@
+// @soleil-clems: Manager UI - Desktop app interface
 import { useEffect, useState, useCallback } from "react";
 import {
   StartServer,
