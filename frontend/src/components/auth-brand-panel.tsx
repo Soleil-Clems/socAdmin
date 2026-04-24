@@ -251,10 +251,15 @@ export function AuthBrandPanel() {
       />
 
       <div className="relative z-10">
-        <h1 className="text-2xl font-bold tracking-tight">
-          soc<span className="text-primary">Admin</span>
-        </h1>
-        <p className="text-sm text-white/40 mt-1">Database administration</p>
+        <div className="flex items-center gap-3">
+          <img src="/logo-dark.png" alt="socAdmin" className="h-10 w-10 object-contain" />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              soc<span className="text-primary">Admin</span>
+            </h1>
+            <p className="text-sm text-white/40 mt-1">Database administration</p>
+          </div>
+        </div>
       </div>
 
       <div className="relative z-10 space-y-5">

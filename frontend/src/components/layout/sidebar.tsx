@@ -1,5 +1,6 @@
 // @soleil-clems: Layout - sidebar
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useThemeStore } from "@/stores/theme.store";
 import { useQuery } from "@tanstack/react-query";
 import { useDatabases } from "@/hooks/queries/use-databases";
 import { useTables } from "@/hooks/queries/use-tables";
@@ -92,6 +93,11 @@ export default function Sidebar() {
   const logout = useAuthStore((s) => s.logout);
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const role = useAuthStore((s) => s.role);
+  const theme = useThemeStore((s) => s.theme);
+  const isDark = useMemo(() => {
+    if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return theme === "dark";
+  }, [theme]);
   const {
     selectedDb,
     selectedTable,
@@ -132,9 +138,11 @@ export default function Sidebar() {
       {/* Header */}
       <div className="px-3 py-2.5 border-b border-sidebar-border shrink-0">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground text-[10px] font-bold shrink-0">
-            sA
-          </div>
+          <img
+            src={isDark ? "/logo-dark.png" : "/logo-light.png"}
+            alt="socAdmin"
+            className="w-6 h-6 object-contain shrink-0"
+          />
           <div className="min-w-0">
             <p className="text-sm font-semibold truncate">socAdmin</p>
             <p className="text-[10px] text-sidebar-foreground/50 truncate">

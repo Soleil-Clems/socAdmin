@@ -1,4 +1,6 @@
 // @soleil-clems: Manager UI - Desktop app interface
+import logoDark from "./assets/images/logo-dark.png";
+import logoLight from "./assets/images/logo-light.png";
 import { useEffect, useState, useCallback } from "react";
 import {
   StartServer,
@@ -143,7 +145,11 @@ function App() {
 
         {/* Centered title — absolute so it ignores left/right cluster widths */}
         <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
-          <div className="h-3.5 w-3.5 rounded-sm bg-brand" />
+          <img
+            src={theme === "dark" ? logoDark : logoLight}
+            alt="socAdmin"
+            className="h-5 w-5 object-contain"
+          />
           <span className="text-[13px] font-semibold text-text-secondary tracking-[-0.01em]">
             socAdmin
           </span>
