@@ -148,7 +148,7 @@ function App() {
           <img
             src={theme === "dark" ? logoDark : logoLight}
             alt="socAdmin"
-            className="h-5 w-5 object-contain"
+            className="h-9 w-9 object-contain"
           />
           <span className="text-[13px] font-semibold text-text-secondary tracking-[-0.01em]">
             socAdmin
