@@ -95,8 +95,8 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
     resolver: zodResolver(connectSchema),
     defaultValues: {
       host: "127.0.0.1",
-      port: 8889,
-      user: "root",
+      port: 3306,
+      user: "",
       password: "",
       type: "mysql",
     },
@@ -113,16 +113,8 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
     onChange(value);
     setValue("port", defaultPorts[value] || 3306);
     connectMutation.reset();
-    if (value === "mongodb") {
-      setValue("user", "");
-      setValue("password", "");
-    } else if (value === "postgresql") {
-      setValue("user", "postgres");
-      setValue("password", "");
-    } else {
-      setValue("user", "root");
-      setValue("password", "");
-    }
+    setValue("user", "");
+    setValue("password", "");
   }, [setValue, connectMutation]);
 
   // Switch to first available type if current selection isn't installed
