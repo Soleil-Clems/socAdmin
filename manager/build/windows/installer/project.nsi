@@ -88,6 +88,9 @@ Section
 
     !insertmacro wails.files
 
+    # Include socAdmin server binary alongside the Manager
+    File /nonfatal /oname=socadmin.exe "..\..\bin\socadmin.exe"
+
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
 
