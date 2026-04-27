@@ -50,6 +50,8 @@ func findBrew() string {
 	return ""
 }
 
+func findPackageManager() string { return findBrew() }
+
 func findPIDOnPortOS(port int) int {
 	out, err := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port)).CombinedOutput()
 	if err != nil {
