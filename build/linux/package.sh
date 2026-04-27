@@ -6,6 +6,11 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 APP_NAME="socAdmin Manager"
 VERSION="${1:-1.0.0}"
 
+echo "==> Building socAdmin server binary..."
+cd "$ROOT_DIR"
+cd frontend && npm ci && npm run build && cd ..
+CGO_ENABLED=1 go build -ldflags="-s -w" -o bin/socadmin .
+
 echo "==> Building socAdmin Manager for Linux..."
 cd "$ROOT_DIR/manager"
 wails build -clean
@@ -25,7 +30,9 @@ mkdir -p "$APPDIR/usr/bin"
 mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 
 cp "$BINARY" "$APPDIR/usr/bin/socadmin-manager"
+cp "$ROOT_DIR/bin/socadmin" "$APPDIR/usr/bin/socadmin"
 chmod +x "$APPDIR/usr/bin/socadmin-manager"
+chmod +x "$APPDIR/usr/bin/socadmin"
 
 if [ -f "$ROOT_DIR/manager/build/appicon.png" ]; then
     cp "$ROOT_DIR/manager/build/appicon.png" "$APPDIR/socadmin-manager.png"
