@@ -1,0 +1,29 @@
+services:
+  socadmin:
+    image: socadmin:latest
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    volumes:
+      - socadmin-data:/data
+    environment:
+      - PORT=${PORT:-8080}
+      - DATA_DIR=/data
+      - JWT_SECRET=${JWT_SECRET:?Set a random string of at least 32 characters}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-ChangeMe123!@}
+      - MYSQL_HOST=${MYSQL_HOST:-}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_USER=${MYSQL_USER:-}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-}
+      - POSTGRES_HOST=${POSTGRES_HOST:-}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_USER=${POSTGRES_USER:-}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
+      - MONGO_HOST=${MONGO_HOST:-}
+      - MONGO_PORT=${MONGO_PORT:-27017}
+      - TLS_CERT=${TLS_CERT:-}
+      - TLS_KEY=${TLS_KEY:-}
+    restart: unless-stopped
+
+volumes:
+  socadmin-data:
