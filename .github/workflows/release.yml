@@ -77,10 +77,12 @@ jobs:
         run: |
           export PATH="/c/Program Files (x86)/NSIS:$PATH"
           VERSION=${GITHUB_REF_NAME#v}
-          cd manager && wails build -clean -nsis
+          cd manager && wails build -clean
+          # Place server binary next to manager exe for NSIS to include
+          cp ../bin/socadmin.exe build/bin/socadmin.exe
+          wails build -nsis
           mkdir -p ../build/windows/dist
           cp build/bin/*installer.exe "../build/windows/dist/socAdmin-Manager-${VERSION}-windows-setup.exe"
-          cp ../bin/socadmin.exe "../build/windows/dist/"
 
       - uses: actions/upload-artifact@v4
         with:

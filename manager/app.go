@@ -225,8 +225,15 @@ func (a *App) StartServer() ServerStatus {
 	}
 
 	cmd := exec.Command(binPath)
-	cmd.Dir = a.projectDir
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PORT=%d", a.port))
+	if a.projectDir != "" {
+		cmd.Dir = a.projectDir
+	} else {
+		cmd.Dir = a.configDir
+	}
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("PORT=%d", a.port),
+		fmt.Sprintf("DATA_DIR=%s", a.configDir),
+	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
