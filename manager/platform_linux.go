@@ -25,6 +25,8 @@ var extraSearchPaths = []string{
 
 func binaryName() string { return "socadmin" }
 
+func findPackageManager() string { return linuxPackageManager() }
+
 func findPIDOnPortOS(port int) int {
 	// Try ss first (available on modern Linux)
 	out, err := exec.Command("ss", "-tlnp", fmt.Sprintf("sport = :%d", port)).CombinedOutput()
