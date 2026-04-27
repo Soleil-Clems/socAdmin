@@ -547,6 +547,7 @@ func (a *App) findBinary() string {
 	cwd, _ := os.Getwd()
 
 	candidates = append(candidates,
+		filepath.Join(execDir, "..", "Resources", bin),
 		filepath.Join(execDir, "..", "..", "..", "..", "..", "bin", bin),
 		filepath.Join(execDir, "..", "bin", bin),
 		filepath.Join(execDir, bin),
