@@ -63,6 +63,12 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
+      - name: Build socAdmin server binary
+        shell: bash
+        run: |
+          cd frontend && npm ci && npm run build && cd ..
+          CGO_ENABLED=1 go build -ldflags="-s -w" -o bin/socadmin.exe .
+
       - name: Install frontend deps
         run: cd manager/frontend && npm ci
 
@@ -74,6 +80,7 @@ jobs:
           cd manager && wails build -clean -nsis
           mkdir -p ../build/windows/dist
           cp build/bin/*installer.exe "../build/windows/dist/socAdmin-Manager-${VERSION}-windows-setup.exe"
+          cp ../bin/socadmin.exe "../build/windows/dist/"
 
       - uses: actions/upload-artifact@v4
         with:
