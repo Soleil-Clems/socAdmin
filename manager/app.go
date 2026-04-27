@@ -84,7 +84,9 @@ func initDebugLog() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 	log.Printf("=== socAdmin Manager started ===")
 	log.Printf("PATH = %s", os.Getenv("PATH"))
-	log.Printf("brew = %s", findBrew())
+	if b := findPackageManager(); b != "" {
+		log.Printf("package manager = %s", b)
+	}
 	log.Printf("mongod = %s", findBin("mongod"))
 	log.Printf("pg_ctl = %s", findBin("pg_ctl"))
 	log.Printf("mongosh = %s", findBin("mongosh"))

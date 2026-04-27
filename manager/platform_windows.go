@@ -26,6 +26,8 @@ var extraSearchPaths = []string{
 
 func binaryName() string { return "socadmin.exe" }
 
+func findPackageManager() string { return windowsPackageManager() }
+
 func findPIDOnPortOS(port int) int {
 	out, err := exec.Command("cmd", "/c", "netstat", "-ano", "-p", "tcp").CombinedOutput()
 	if err != nil {
