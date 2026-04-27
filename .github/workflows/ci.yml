@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  MIN_COVERAGE: 10
+
+jobs:
+  ownership:
+    name: Code Ownership
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify CODE_OWNERSHIP.md contains soleil-clems
+        run: |
+          if [ ! -f CODE_OWNERSHIP.md ]; then
+            echo "::error::CODE_OWNERSHIP.md is missing"
+            exit 1
+          fi
+          if ! grep -q "soleil-clems" CODE_OWNERSHIP.md; then
+            echo "::error::CODE_OWNERSHIP.md must reference soleil-clems"
+            exit 1
+          fi
+
+  backend:
+    name: Go Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Go mod download
+        run: go mod download
+
+      - name: Run tests with coverage
+        run: go test ./core/... -count=1 -race -timeout 300s -coverprofile=coverage.out
+
+      - name: Check coverage threshold
+        run: |
+          TOTAL=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
+          echo "Coverage: ${TOTAL}%"
+          if [ "$(echo "$TOTAL < $MIN_COVERAGE" | bc)" -eq 1 ]; then
+            echo "::error::Coverage ${TOTAL}% is below minimum ${MIN_COVERAGE}%"
+            exit 1
+          fi
+
+  frontend:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc -b --noEmit
+
+      - name: Lint
+        run: npx eslint . --max-warnings 50
+
+      - name: Build
+        run: npm run build
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t socadmin:ci .

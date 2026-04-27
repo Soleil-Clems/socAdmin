@@ -1,0 +1,722 @@
+// @soleil-clems: Connector - PostgreSQL driver
+package connector
+
+import (
+	"context"
+	"database/sql"
+	"encoding/hex"
+	"fmt"
+	"strings"
+	"time"
+
+	_ "github.com/lib/pq"
+)
+
+const queryTimeout = 30 * time.Second
+const maxResultRows = 10000
+
+type PostgresConfig struct {
+	Host     string
+	Port     int
+	User     string
+	Password string
+}
+
+type PostgresConnector struct {
+	db     *sql.DB
+	config PostgresConfig
+}
+
+func NewPostgresConnector(config PostgresConfig) *PostgresConnector {
+	return &PostgresConnector{config: config}
+}
+
+func (c *PostgresConnector) Connect() error {
+	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=postgres sslmode=prefer connect_timeout=5",
+		pgDSNEscape(c.config.Host), c.config.Port, pgDSNEscape(c.config.User))
+	if c.config.Password != "" {
+		dsn += fmt.Sprintf(" password=%s", pgDSNEscape(c.config.Password))
+	}
+
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return fmt.Errorf("failed to open connection: %w", err)
+	}
+
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return fmt.Errorf("failed to ping PostgreSQL: %w", err)
+	}
+
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+
+	c.db = db
+	return nil
+}
+
+func (c *PostgresConnector) ListDatabases() ([]string, error) {
+	rows, err := c.db.Query("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list databases: %w", err)
+	}
+	defer rows.Close()
+
+	var databases []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		databases = append(databases, name)
+	}
+	return databases, nil
+}
+
+func (c *PostgresConnector) CreateDatabase(name string) error {
+	_, err := c.db.Exec("CREATE DATABASE " + pgQuoteIdent(name))
+	return err
+}
+
+func (c *PostgresConnector) DropDatabase(name string) error {
+	_, err := c.db.Exec("DROP DATABASE " + pgQuoteIdent(name))
+	return err
+}
+
+func (c *PostgresConnector) CreateTable(database string, table string, columns []TableColumnDef) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	var colDefs []string
+	for _, col := range columns {
+		colType := col.Type
+		if col.AutoIncrement {
+			colType = "SERIAL"
+		}
+		def := pgQuoteIdent(col.Name) + " " + colType
+		if !col.Nullable && !col.AutoIncrement {
+			def += " NOT NULL"
+		}
+		if col.PrimaryKey {
+			def += " PRIMARY KEY"
+		}
+		if col.DefaultValue != "" && !col.AutoIncrement {
+			def += " DEFAULT " + col.DefaultValue
+		}
+		colDefs = append(colDefs, def)
+	}
+	query := fmt.Sprintf("CREATE TABLE %s (%s)", pgQuoteIdent(table), strings.Join(colDefs, ", "))
+	_, err = db.Exec(query)
+	return err
+}
+
+func (c *PostgresConnector) ListTables(database string) ([]string, error) {
+	// PostgreSQL nécessite une connexion à la DB spécifique
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT table_name FROM information_schema.tables
+		WHERE table_schema = 'public'
+		ORDER BY table_name
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tables: %w", err)
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		tables = append(tables, name)
+	}
+	return tables, nil
+}
+
+func (c *PostgresConnector) DescribeTable(database, table string) ([]Column, error) {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT
+			c.column_name,
+			c.data_type,
+			c.is_nullable,
+			COALESCE(
+				(SELECT 'PRI' FROM information_schema.table_constraints tc
+				 JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+				 WHERE tc.table_name = c.table_name AND kcu.column_name = c.column_name
+				 AND tc.constraint_type = 'PRIMARY KEY' LIMIT 1),
+				''
+			) as key,
+			c.column_default,
+			CASE WHEN c.is_identity = 'YES' THEN 'auto_increment' ELSE '' END as extra
+		FROM information_schema.columns c
+		WHERE c.table_schema = 'public' AND c.table_name = $1
+		ORDER BY c.ordinal_position
+	`, table)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe table: %w", err)
+	}
+	defer rows.Close()
+
+	var columns []Column
+	for rows.Next() {
+		var col Column
+		if err := rows.Scan(&col.Name, &col.Type, &col.Null, &col.Key, &col.Default, &col.Extra); err != nil {
+			return nil, err
+		}
+		columns = append(columns, col)
+	}
+	return columns, nil
+}
+
+func (c *PostgresConnector) GetRows(database, table string, limit, offset int) (*QueryResult, error) {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	query := fmt.Sprintf("SELECT * FROM %s LIMIT %d OFFSET %d", pgQuoteIdent(table), limit, offset)
+	return scanQuery(db, query)
+}
+
+func (c *PostgresConnector) InsertRow(database, table string, data map[string]interface{}) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	cols, vals := pgBuildColsVals(data)
+	placeholders := pgPlaceholders(len(vals))
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", pgQuoteIdent(table), cols, placeholders)
+	_, err = db.Exec(query, vals...)
+	return err
+}
+
+func (c *PostgresConnector) UpdateRow(database, table string, primaryKey map[string]interface{}, data map[string]interface{}) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	var setClauses []string
+	var vals []interface{}
+	i := 1
+	for k, v := range data {
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", pgQuoteIdent(k), i))
+		vals = append(vals, v)
+		i++
+	}
+	var whereClauses []string
+	for k, v := range primaryKey {
+		whereClauses = append(whereClauses, fmt.Sprintf("%s = $%d", pgQuoteIdent(k), i))
+		vals = append(vals, v)
+		i++
+	}
+	query := fmt.Sprintf("UPDATE %s SET %s WHERE %s", pgQuoteIdent(table),
+		strings.Join(setClauses, ", "), strings.Join(whereClauses, " AND "))
+	_, err = db.Exec(query, vals...)
+	return err
+}
+
+func (c *PostgresConnector) DeleteRow(database, table string, primaryKey map[string]interface{}) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	var whereClauses []string
+	var vals []interface{}
+	i := 1
+	for k, v := range primaryKey {
+		whereClauses = append(whereClauses, fmt.Sprintf("%s = $%d", pgQuoteIdent(k), i))
+		vals = append(vals, v)
+		i++
+	}
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s", pgQuoteIdent(table), strings.Join(whereClauses, " AND "))
+	_, err = db.Exec(query, vals...)
+	return err
+}
+
+func (c *PostgresConnector) ExecuteQuery(database, query string) (*QueryResult, error) {
+	if database != "" {
+		db, err := c.connectToDb(database)
+		if err != nil {
+			return nil, err
+		}
+		defer db.Close()
+		return scanQuery(db, query)
+	}
+	return scanQuery(c.db, query)
+}
+
+// ExecuteScript runs a multi-statement script (typically a pg_dump output)
+// in a single Exec call. lib/pq's simple-query protocol supports
+// `;`-separated statements out of the box.
+func (c *PostgresConnector) ExecuteScript(database, script string) (int, error) {
+	if database == "" {
+		return 0, fmt.Errorf("database is required")
+	}
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(script); err != nil {
+		return 0, err
+	}
+	return 1, nil
+}
+
+func (c *PostgresConnector) DropTable(database, table string) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec("DROP TABLE " + pgQuoteIdent(table))
+	return err
+}
+
+func (c *PostgresConnector) AlterColumn(database, table string, op AlterColumnOp) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	qTable := pgQuoteIdent(table)
+	switch op.Op {
+	case "add":
+		if op.Name == "" || op.Type == "" {
+			return fmt.Errorf("name and type are required")
+		}
+		if err := validateSQLType(op.Type); err != nil {
+			return err
+		}
+		def := pgQuoteIdent(op.Name) + " " + op.Type
+		if !op.Nullable {
+			def += " NOT NULL"
+		}
+		if op.DefaultValue != "" {
+			def += " DEFAULT " + sanitizeDefault(op.DefaultValue)
+		}
+		_, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", qTable, def))
+		return err
+	case "drop":
+		if op.Name == "" {
+			return fmt.Errorf("name is required")
+		}
+		_, err := db.Exec(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", qTable, pgQuoteIdent(op.Name)))
+		return err
+	case "rename":
+		if op.Name == "" || op.NewName == "" {
+			return fmt.Errorf("name and new_name are required")
+		}
+		_, err := db.Exec(fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s",
+			qTable, pgQuoteIdent(op.Name), pgQuoteIdent(op.NewName)))
+		return err
+	case "modify":
+		if op.Name == "" {
+			return fmt.Errorf("name is required")
+		}
+		qCol := pgQuoteIdent(op.Name)
+		if op.Type != "" {
+			if err := validateSQLType(op.Type); err != nil {
+				return err
+			}
+			if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s USING %s::%s",
+				qTable, qCol, op.Type, qCol, op.Type)); err != nil {
+				return err
+			}
+		}
+		if op.Nullable {
+			if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP NOT NULL", qTable, qCol)); err != nil {
+				return err
+			}
+		} else {
+			if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET NOT NULL", qTable, qCol)); err != nil {
+				return err
+			}
+		}
+		if op.DefaultValue != "" {
+			if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s",
+				qTable, qCol, sanitizeDefault(op.DefaultValue))); err != nil {
+				return err
+			}
+		} else {
+			if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP DEFAULT", qTable, qCol)); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown operation: %s", op.Op)
+	}
+}
+
+func (c *PostgresConnector) TruncateTable(database, table string) error {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec("TRUNCATE TABLE " + pgQuoteIdent(table))
+	return err
+}
+
+func pgBuildColsVals(data map[string]interface{}) (string, []interface{}) {
+	var cols []string
+	var vals []interface{}
+	for k, v := range data {
+		cols = append(cols, pgQuoteIdent(k))
+		vals = append(vals, v)
+	}
+	return strings.Join(cols, ", "), vals
+}
+
+func pgPlaceholders(n int) string {
+	var p []string
+	for i := 1; i <= n; i++ {
+		p = append(p, fmt.Sprintf("$%d", i))
+	}
+	return strings.Join(p, ", ")
+}
+
+func pgQuoteIdent(name string) string {
+	escaped := strings.ReplaceAll(name, `"`, `""`)
+	return `"` + escaped + `"`
+}
+
+func (c *PostgresConnector) Close() error {
+	if c.db != nil {
+		return c.db.Close()
+	}
+	return nil
+}
+
+// GetConfig returns the raw connection info. Used by external tools (pg_dump).
+func (c *PostgresConnector) GetConfig() ConnectionConfig {
+	return ConnectionConfig{
+		Host:     c.config.Host,
+		Port:     c.config.Port,
+		User:     c.config.User,
+		Password: c.config.Password,
+	}
+}
+
+// QuoteIdentifier wraps a Postgres identifier in double quotes.
+func (c *PostgresConnector) QuoteIdentifier(name string) string {
+	return pgQuoteIdent(name)
+}
+
+func (c *PostgresConnector) connectToDb(database string) (*sql.DB, error) {
+	if err := ValidateIdentifier(database); err != nil {
+		return nil, fmt.Errorf("invalid database name: %w", err)
+	}
+	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=prefer connect_timeout=5",
+		pgDSNEscape(c.config.Host), c.config.Port, pgDSNEscape(c.config.User), pgDSNEscape(database))
+	if c.config.Password != "" {
+		dsn += fmt.Sprintf(" password=%s", pgDSNEscape(c.config.Password))
+	}
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("cannot reach database %q: %w", database, err)
+	}
+	return db, nil
+}
+
+// pgDSNEscape wraps a value in single quotes and escapes embedded quotes/backslashes
+// to prevent DSN parameter injection (e.g. "x sslmode=disable").
+func pgDSNEscape(val string) string {
+	val = strings.ReplaceAll(val, `\`, `\\`)
+	val = strings.ReplaceAll(val, `'`, `\'`)
+	return "'" + val + "'"
+}
+
+// scanQuery est partagé entre MySQL et PostgreSQL (même interface database/sql)
+func scanQuery(db *sql.DB, query string) (*QueryResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get column types to handle UUIDs and binary data properly
+	colTypes, _ := rows.ColumnTypes()
+
+	var results []map[string]interface{}
+	for rows.Next() {
+		if len(results) >= maxResultRows {
+			break
+		}
+		values := make([]interface{}, len(columns))
+		valuePtrs := make([]interface{}, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return nil, err
+		}
+
+		row := make(map[string]interface{})
+		for i, col := range columns {
+			val := values[i]
+			if b, ok := val.([]byte); ok {
+				// Check if this is a UUID (16 bytes) based on column type
+				if colTypes != nil && i < len(colTypes) {
+					dbType := strings.ToLower(colTypes[i].DatabaseTypeName())
+					if dbType == "uuid" && len(b) == 16 {
+						row[col] = formatUUID(b)
+						continue
+					}
+					// Binary types: show as hex
+					if dbType == "bytea" || dbType == "blob" || dbType == "binary" || dbType == "varbinary" {
+						row[col] = "0x" + hex.EncodeToString(b)
+						continue
+					}
+				}
+				row[col] = string(b)
+			} else {
+				row[col] = val
+			}
+		}
+		results = append(results, row)
+	}
+
+	return &QueryResult{Columns: columns, Rows: results}, nil
+}
+
+// formatUUID converts 16 raw bytes into a standard UUID string (8-4-4-4-12)
+func formatUUID(b []byte) string {
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// ── Triggers ─────────────────────────────────────────────────────────────
+
+func (c *PostgresConnector) ListTriggers(database string) ([]TriggerInfo, error) {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT t.trigger_name, t.event_object_table, t.event_manipulation,
+		       t.action_timing, pg_get_triggerdef(pg.oid) AS definition
+		FROM information_schema.triggers t
+		JOIN pg_trigger pg ON pg.tgname = t.trigger_name
+		JOIN pg_class c ON c.oid = pg.tgrelid AND c.relname = t.event_object_table
+		WHERE t.trigger_schema = 'public'
+		  AND NOT pg.tgisinternal
+		ORDER BY t.event_object_table, t.action_timing, t.event_manipulation`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var triggers []TriggerInfo
+	for rows.Next() {
+		var t TriggerInfo
+		if err := rows.Scan(&t.Name, &t.Table, &t.Event, &t.Timing, &t.Statement); err != nil {
+			return nil, err
+		}
+		triggers = append(triggers, t)
+	}
+	return triggers, nil
+}
+
+func (c *PostgresConnector) DropTrigger(database, name, table string) error {
+	if err := ValidateIdentifier(name); err != nil {
+		return err
+	}
+	if err := ValidateIdentifier(table); err != nil {
+		return err
+	}
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.Exec("DROP TRIGGER " + pgQuoteIdent(name) + " ON " + pgQuoteIdent(table))
+	return err
+}
+
+// ── Routines (stored procedures & functions) ─────────────────────────────
+
+func (c *PostgresConnector) ListRoutines(database string) ([]RoutineInfo, error) {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT p.proname,
+		       CASE p.prokind WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END,
+		       COALESCE(pg_get_function_result(p.oid), ''),
+		       pg_get_functiondef(p.oid),
+		       pg_get_function_arguments(p.oid)
+		FROM pg_proc p
+		JOIN pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = 'public'
+		  AND p.prokind IN ('f', 'p')
+		ORDER BY p.prokind, p.proname`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var routines []RoutineInfo
+	for rows.Next() {
+		var r RoutineInfo
+		if err := rows.Scan(&r.Name, &r.Type, &r.ReturnType, &r.Body, &r.ParamList); err != nil {
+			return nil, err
+		}
+		routines = append(routines, r)
+	}
+	return routines, nil
+}
+
+func (c *PostgresConnector) DropRoutine(database, name, routineType string) error {
+	if err := ValidateIdentifier(name); err != nil {
+		return err
+	}
+	keyword := "FUNCTION"
+	if strings.ToUpper(routineType) == "PROCEDURE" {
+		keyword = "PROCEDURE"
+	}
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	// CASCADE drops dependent objects; IF EXISTS avoids errors
+	_, err = db.Exec("DROP " + keyword + " IF EXISTS " + pgQuoteIdent(name) + " CASCADE")
+	return err
+}
+
+// ── Schemas ──────────────────────────────────────────────────────────────
+
+func (c *PostgresConnector) ListSchemas(database string) ([]string, error) {
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT schema_name FROM information_schema.schemata
+		WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+		ORDER BY schema_name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schemas []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		schemas = append(schemas, s)
+	}
+	return schemas, nil
+}
+
+func (c *PostgresConnector) ListTablesInSchema(database, schema string) ([]string, error) {
+	if err := ValidateIdentifier(schema); err != nil {
+		return nil, err
+	}
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT table_name FROM information_schema.tables
+		WHERE table_schema = $1 AND table_type IN ('BASE TABLE', 'VIEW')
+		ORDER BY table_name`, schema)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		tables = append(tables, t)
+	}
+	return tables, nil
+}
+
+// ── Table Maintenance ────────────────────────────────────────────────────
+
+func (c *PostgresConnector) MaintenanceTable(database, table, operation string) (string, error) {
+	if err := ValidateIdentifier(table); err != nil {
+		return "", err
+	}
+	op := strings.ToUpper(operation)
+	var stmt string
+	switch op {
+	case "VACUUM":
+		stmt = "VACUUM " + pgQuoteIdent(table)
+	case "VACUUM_FULL":
+		stmt = "VACUUM FULL " + pgQuoteIdent(table)
+	case "ANALYZE":
+		stmt = "ANALYZE " + pgQuoteIdent(table)
+	case "REINDEX":
+		stmt = "REINDEX TABLE " + pgQuoteIdent(table)
+	default:
+		return "", fmt.Errorf("invalid operation: %s", operation)
+	}
+
+	db, err := c.connectToDb(database)
+	if err != nil {
+		return "", err
+	}
+	defer db.Close()
+
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return "", err
+	}
+	return op + " completed successfully", nil
+}
