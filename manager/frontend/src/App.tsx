@@ -242,7 +242,7 @@ function App() {
               />
             )}
             {tab === "databases" && (
-              <DatabasesTab services={services} onRefresh={refresh} />
+              <DatabasesTab services={services} onRefresh={refresh} sysInfo={sysInfo} />
             )}
             {tab === "settings" && (
               <SettingsTab config={config} onRefresh={refresh} running={running} />
@@ -546,9 +546,11 @@ function StatCard({
 function DatabasesTab({
   services,
   onRefresh,
+  sysInfo,
 }: {
   services: main.ServiceStatus[];
   onRefresh: () => void;
+  sysInfo: Record<string, string>;
 }) {
   const [loadingServices, setLoadingServices] = useState<Set<string>>(new Set());
   const [installingServices, setInstallingServices] = useState<Set<string>>(new Set());
@@ -697,6 +699,34 @@ function DatabasesTab({
           message={serviceError}
           onDismiss={() => setServiceError("")}
         />
+      )}
+
+      {!canInstall && sysInfo.os === "darwin" && (
+        <div className="rounded-xl border border-amber-subtle bg-amber-subtle/30 px-5 py-4">
+          <div className="flex items-start gap-3">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="mt-0.5 shrink-0 text-amber">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <div>
+              <p className="text-[13px] font-medium text-text">Homebrew not detected</p>
+              <p className="mt-1 text-[12px] text-text-secondary leading-relaxed">
+                Homebrew is required to install and manage database engines on macOS.
+                Visit{" "}
+                <a
+                  href="https://brew.sh"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand underline underline-offset-2 hover:text-brand-hover"
+                >
+                  brew.sh
+                </a>{" "}
+                to install it, then restart socAdmin Manager.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Installed services */}
