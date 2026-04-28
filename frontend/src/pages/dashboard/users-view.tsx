@@ -44,6 +44,28 @@ export default function UsersView() {
   const [creating, setCreating] = useState(false);
   const [dropError, setDropError] = useState("");
 
+  // Change Password dialog (MySQL/PostgreSQL)
+  const [passwordUser, setPasswordUser] = useState<{ username: string; host: string } | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
+  const isSQL = !isMongo;
+
+  const handleChangePassword = async () => {
+    if (!passwordUser || !newPassword) return;
+    setSavingPassword(true);
+    setPasswordError("");
+    try {
+      await databaseRequest.changeDBUserPassword(passwordUser.username, passwordUser.host, newPassword);
+      setPasswordUser(null);
+      setNewPassword("");
+    } catch (e) {
+      setPasswordError((e as Error).message);
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
   // Edit Roles dialog
   const [editingUser, setEditingUser] = useState<{ username: string; database: string } | null>(null);
   const [editRoles, setEditRoles] = useState<{ role: string; db: string }[]>([]);
@@ -162,7 +184,7 @@ export default function UsersView() {
                     {col}
                   </th>
                 ))}
-                {isMongo && isAdmin && (
+                {isAdmin && (
                   <th className="px-3 py-1.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-28">
                     Actions
                   </th>
@@ -184,20 +206,38 @@ export default function UsersView() {
                       )}
                     </td>
                   ))}
-                  {isMongo && isAdmin && (
+                  {isAdmin && (
                     <td className="px-3 py-1.5 text-right whitespace-nowrap">
-                      <button
-                        onClick={() => openEditRoles(String(row["User"]), String(row["Database"]), row["Roles"])}
-                        className="px-1.5 py-0.5 text-[11px] text-foreground hover:bg-accent rounded transition-colors mr-1"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDrop(String(row["User"]), String(row["Database"]))}
-                        className="px-1.5 py-0.5 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors"
-                      >
-                        Drop
-                      </button>
+                      {isMongo ? (
+                        <>
+                          <button
+                            onClick={() => openEditRoles(String(row["User"]), String(row["Database"]), row["Roles"])}
+                            className="px-1.5 py-0.5 text-[11px] text-foreground hover:bg-accent rounded transition-colors mr-1"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDrop(String(row["User"]), String(row["Database"]))}
+                            className="px-1.5 py-0.5 text-[11px] text-destructive hover:bg-destructive/10 rounded transition-colors"
+                          >
+                            Drop
+                          </button>
+                        </>
+                      ) : isSQL && (
+                        <button
+                          onClick={() => {
+                            setPasswordError("");
+                            setNewPassword("");
+                            setPasswordUser({
+                              username: String(row["User"]),
+                              host: String(row["Host"] ?? "%"),
+                            });
+                          }}
+                          className="px-1.5 py-0.5 text-[11px] text-foreground hover:bg-accent rounded transition-colors"
+                        >
+                          Password
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -205,7 +245,7 @@ export default function UsersView() {
               {(!result?.Rows || result.Rows.length === 0) && (
                 <tr>
                   <td
-                    colSpan={(result?.Columns?.length ?? 1) + (isMongo && isAdmin ? 1 : 0)}
+                    colSpan={(result?.Columns?.length ?? 1) + (isAdmin ? 1 : 0)}
                     className="text-center text-muted-foreground py-12 text-sm"
                   >
                     No users found
@@ -301,6 +341,40 @@ export default function UsersView() {
             <Button className="w-full h-8" onClick={handleCreate} disabled={creating}>
               {creating ? "Creating..." : "Create User"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change password dialog (MySQL/PostgreSQL) */}
+      <Dialog open={!!passwordUser} onOpenChange={(o) => !o && setPasswordUser(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              Change Password · {passwordUser?.username}@{passwordUser?.host}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">New Password</label>
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter new password"
+                className="h-8 text-xs"
+                autoFocus
+                onKeyDown={(e) => e.key === "Enter" && handleChangePassword()}
+              />
+            </div>
+            {passwordError && <p className="text-xs text-destructive">{passwordError}</p>}
+            <div className="flex items-center gap-2">
+              <Button variant="outline" className="flex-1 h-8" onClick={() => setPasswordUser(null)}>
+                Cancel
+              </Button>
+              <Button className="flex-1 h-8" onClick={handleChangePassword} disabled={savingPassword || !newPassword}>
+                {savingPassword ? "Saving..." : "Change Password"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

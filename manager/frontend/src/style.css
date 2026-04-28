@@ -97,7 +97,6 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
-  user-select: none;
   overflow: hidden;
   font-size: 14px;
   line-height: 1.5;
@@ -113,6 +112,7 @@ body {
 /* macOS title bar drag region — make it draggable */
 .drag-region {
   --wails-draggable: drag;
+  user-select: none;
 }
 
 /* Buttons within drag region need to opt out of drag */

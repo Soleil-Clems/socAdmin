@@ -150,7 +150,7 @@ func NewApp() *App {
 		autoStart:   false,
 		openOnStart: true,
 		configDir:   configDir,
-		mysqlPort:   8889,
+		mysqlPort:   3306,
 		pgPort:      5432,
 		mongoPort:   27017,
 	}
