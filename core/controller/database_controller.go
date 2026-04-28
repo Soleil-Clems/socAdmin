@@ -594,6 +594,33 @@ func (c *DatabaseController) ListUsers(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, result)
 }
 
+func (c *DatabaseController) ChangeDBUserPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username    string `json:"username"`
+		Host        string `json:"host"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if req.Username == "" || req.NewPassword == "" {
+		jsonError(w, http.StatusBadRequest, "username and new_password are required")
+		return
+	}
+	if req.Host == "" {
+		req.Host = "%"
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "CHANGE_DB_PASSWORD", req.Username+"@"+req.Host)
+
+	if err := c.dbService.ChangeDBUserPassword(req.Username, req.Host, req.NewPassword); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (c *DatabaseController) ServerStatus(w http.ResponseWriter, r *http.Request) {
 	result, err := c.dbService.ServerStatus()
 	if err != nil {
