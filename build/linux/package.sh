@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-APP_NAME="socAdmin Manager"
+APP_NAME="Soca Manager"
 VERSION="${1:-1.0.0}"
 
 echo "==> Building socAdmin server binary..."
@@ -11,11 +11,11 @@ cd "$ROOT_DIR"
 cd frontend && npm ci && npm run build && cd ..
 CGO_ENABLED=1 go build -ldflags="-s -w" -o bin/socadmin .
 
-echo "==> Building socAdmin Manager for Linux..."
+echo "==> Building Soca Manager for Linux..."
 cd "$ROOT_DIR/manager"
 wails build -clean
 
-BINARY="$ROOT_DIR/manager/build/bin/socadmin-manager"
+BINARY="$ROOT_DIR/manager/build/bin/soca-manager"
 if [ ! -f "$BINARY" ]; then
     echo "ERROR: ${BINARY} not found. Wails build failed?"
     exit 1
@@ -24,27 +24,27 @@ fi
 OUTPUT_DIR="$ROOT_DIR/build/linux/dist"
 mkdir -p "$OUTPUT_DIR"
 
-APPDIR="$OUTPUT_DIR/socAdmin-Manager.AppDir"
+APPDIR="$OUTPUT_DIR/Soca-Manager.AppDir"
 rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin"
 mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 
-cp "$BINARY" "$APPDIR/usr/bin/socadmin-manager"
+cp "$BINARY" "$APPDIR/usr/bin/soca-manager"
 cp "$ROOT_DIR/bin/socadmin" "$APPDIR/usr/bin/socadmin"
-chmod +x "$APPDIR/usr/bin/socadmin-manager"
+chmod +x "$APPDIR/usr/bin/soca-manager"
 chmod +x "$APPDIR/usr/bin/socadmin"
 
 if [ -f "$ROOT_DIR/manager/build/appicon.png" ]; then
-    cp "$ROOT_DIR/manager/build/appicon.png" "$APPDIR/socadmin-manager.png"
-    cp "$ROOT_DIR/manager/build/appicon.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/socadmin-manager.png"
+    cp "$ROOT_DIR/manager/build/appicon.png" "$APPDIR/soca-manager.png"
+    cp "$ROOT_DIR/manager/build/appicon.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/soca-manager.png"
 fi
 
-cat > "$APPDIR/socadmin-manager.desktop" <<DESKTOP
+cat > "$APPDIR/soca-manager.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=${APP_NAME}
-Exec=socadmin-manager
-Icon=socadmin-manager
+Exec=soca-manager
+Icon=soca-manager
 Categories=Development;Database;
 Comment=Database administration made simple
 DESKTOP
@@ -52,7 +52,7 @@ DESKTOP
 cat > "$APPDIR/AppRun" <<'APPRUN'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "$0")")"
-exec "$HERE/usr/bin/socadmin-manager" "$@"
+exec "$HERE/usr/bin/soca-manager" "$@"
 APPRUN
 chmod +x "$APPDIR/AppRun"
 
@@ -64,7 +64,7 @@ if [ ! -f "$APPIMAGETOOL" ]; then
     chmod +x "$APPIMAGETOOL"
 fi
 
-APPIMAGE_PATH="$OUTPUT_DIR/socAdmin-Manager-${VERSION}-linux.AppImage"
+APPIMAGE_PATH="$OUTPUT_DIR/Soca-Manager-${VERSION}-linux.AppImage"
 ARCH=$(uname -m) "$APPIMAGETOOL" "$APPDIR" "$APPIMAGE_PATH"
 
 rm -rf "$APPDIR"

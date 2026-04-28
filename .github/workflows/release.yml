@@ -82,7 +82,7 @@ jobs:
           cp ../bin/socadmin.exe build/bin/socadmin.exe
           wails build -nsis
           mkdir -p ../build/windows/dist
-          cp build/bin/*installer.exe "../build/windows/dist/socAdmin-Manager-${VERSION}-windows-setup.exe"
+          cp build/bin/*installer.exe "../build/windows/dist/Soca-Manager-${VERSION}-windows-setup.exe"
 
       - uses: actions/upload-artifact@v4
         with:

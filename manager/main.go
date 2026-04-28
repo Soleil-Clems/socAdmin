@@ -28,10 +28,10 @@ func main() {
 		wailsRuntime.Quit(app.ctx)
 	}
 
-	appNameMenu := appMenu.AddSubmenu("socAdmin Manager")
-	appNameMenu.AddText("About socAdmin Manager", nil, nil)
+	appNameMenu := appMenu.AddSubmenu("Soca Manager")
+	appNameMenu.AddText("About Soca Manager", nil, nil)
 	appNameMenu.AddSeparator()
-	appNameMenu.AddText("Quit socAdmin Manager", keys.CmdOrCtrl("q"), quitHandler)
+	appNameMenu.AddText("Quit Soca Manager", keys.CmdOrCtrl("q"), quitHandler)
 
 	fileMenu := appMenu.AddSubmenu("File")
 	fileMenu.AddText("Start Server", keys.CmdOrCtrl("s"), func(_ *menu.CallbackData) {
@@ -46,7 +46,7 @@ func main() {
 	})
 
 	err := wails.Run(&options.App{
-		Title:     "socAdmin Manager",
+		Title:     "Soca Manager",
 		Width:     820,
 		Height:    580,
 		MinWidth:  700,
@@ -68,7 +68,7 @@ func main() {
 				FullSizeContent:           true,
 			},
 			About: &mac.AboutInfo{
-				Title:   "socAdmin Manager",
+				Title:   "Soca Manager",
 				Message: "Database administration made simple.\nVersion 1.0.0",
 			},
 			WebviewIsTransparent: true,
@@ -79,7 +79,7 @@ func main() {
 			WindowIsTranslucent:  false,
 		},
 		Linux: &linux.Options{
-			ProgramName: "socAdmin Manager",
+			ProgramName: "Soca Manager",
 		},
 	})
 

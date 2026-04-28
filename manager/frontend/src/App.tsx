@@ -147,11 +147,11 @@ function App() {
         <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
           <img
             src={theme === "dark" ? logoDark : logoLight}
-            alt="socAdmin"
+            alt="soca-manager"
             className="h-9 w-9 object-contain"
           />
           <span className="text-[13px] font-semibold text-text-secondary tracking-[-0.01em]">
-            socAdmin
+            Soca Manager
           </span>
         </div>
 
@@ -722,7 +722,7 @@ function DatabasesTab({
                 >
                   brew.sh
                 </a>{" "}
-                to install it, then restart socAdmin Manager.
+                to install it, then restart Soca Manager.
               </p>
             </div>
           </div>
@@ -1014,7 +1014,7 @@ function SettingsTab({
       <div>
         <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Settings</h2>
         <p className="mt-1 text-[13px] text-text-muted">
-          Configure socAdmin Manager
+          Configure Soca Manager
         </p>
       </div>
 
