@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: oklch(0.105 0.014 260);
-  --color-surface: oklch(0.14 0.016 260);
-  --color-surface-hover: oklch(0.17 0.018 260);
-  --color-surface-active: oklch(0.195 0.02 260);
-  --color-border: oklch(0.215 0.018 260);
-  --color-border-subtle: oklch(0.17 0.013 260);
+  --color-bg: oklch(0.155 0.014 260);
+  --color-surface: oklch(0.185 0.016 260);
+  --color-surface-hover: oklch(0.215 0.018 260);
+  --color-surface-active: oklch(0.24 0.02 260);
+  --color-border: oklch(0.26 0.018 260);
+  --color-border-subtle: oklch(0.215 0.013 260);
 
   --color-text: oklch(0.935 0.007 260);
   --color-text-secondary: oklch(0.62 0.012 260);
