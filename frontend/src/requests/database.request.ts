@@ -434,6 +434,9 @@ export const databaseRequest = {
 
   listUsers: () => customfetch.get<Record<string, unknown>[]>("/users"),
 
+  changeDBUserPassword: (username: string, host: string, newPassword: string) =>
+    customfetch.put("/users/password", { username, host, new_password: newPassword }),
+
   serverStatus: () => customfetch.get<Record<string, unknown>>("/status"),
 
   // Export — triggers a file download with the SGBD-native dump format

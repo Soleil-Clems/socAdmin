@@ -1265,6 +1265,42 @@ func (s *DatabaseService) ListUsers() (*connector.QueryResult, error) {
 	}
 }
 
+// ChangeDBUserPassword changes the password of a database user
+func (s *DatabaseService) ChangeDBUserPassword(username, host, newPassword string) error {
+	s.mu.RLock()
+	c := s.conn
+	dt := s.dbType
+	s.mu.RUnlock()
+	if c == nil {
+		return fmt.Errorf("not connected")
+	}
+	if newPassword == "" {
+		return fmt.Errorf("password cannot be empty")
+	}
+	escaped := strings.ReplaceAll(newPassword, "'", "''")
+	switch dt {
+	case "mysql":
+		query := fmt.Sprintf("ALTER USER %s@%s IDENTIFIED BY '%s'",
+			c.QuoteIdentifier(username),
+			c.QuoteIdentifier(host),
+			escaped)
+		_, err := c.ExecuteQuery("", query)
+		if err != nil {
+			return err
+		}
+		_, _ = c.ExecuteQuery("", "FLUSH PRIVILEGES")
+		return nil
+	case "postgresql":
+		query := fmt.Sprintf("ALTER USER %s WITH PASSWORD '%s'",
+			c.QuoteIdentifier(username),
+			escaped)
+		_, err := c.ExecuteQuery("", query)
+		return err
+	default:
+		return fmt.Errorf("password change not supported for %s", dt)
+	}
+}
+
 // ServerStatus returns key server status information
 func (s *DatabaseService) ServerStatus() (*connector.QueryResult, error) {
 	s.mu.RLock()
