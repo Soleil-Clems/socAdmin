@@ -82,7 +82,7 @@ func initDebugLog() {
 	}
 	log.SetOutput(f)
 	log.SetFlags(log.Ltime | log.Lshortfile)
-	log.Printf("=== socAdmin Manager started ===")
+	log.Printf("=== Soca Manager started ===")
 	log.Printf("PATH = %s", os.Getenv("PATH"))
 	if b := findPackageManager(); b != "" {
 		log.Printf("package manager = %s", b)
@@ -339,8 +339,54 @@ func (a *App) StartService(name string) {
 			return
 		}
 		port := a.servicePort(name)
-		a.waitForPort(port, "service:started", nil)
+		defaultPort := defaultServicePort(name)
+		if a.waitForPortQuiet(port) {
+			wailsRuntime.EventsEmit(a.ctx, "service:started", port)
+			return
+		}
+		if defaultPort != port && a.waitForPortQuiet(defaultPort) {
+			a.setServicePort(name, defaultPort)
+			wailsRuntime.EventsEmit(a.ctx, "service:started", defaultPort)
+			return
+		}
+		a.emitError(fmt.Sprintf("Port %d not reachable after 6s", port))
 	}()
+}
+
+func defaultServicePort(name string) int {
+	switch name {
+	case "MySQL":
+		return 3306
+	case "PostgreSQL":
+		return 5432
+	case "MongoDB":
+		return 27017
+	}
+	return 0
+}
+
+func (a *App) setServicePort(name string, port int) {
+	switch name {
+	case "MySQL":
+		a.mysqlPort = port
+	case "PostgreSQL":
+		a.pgPort = port
+	case "MongoDB":
+		a.mongoPort = port
+	}
+	a.saveConfig()
+}
+
+func (a *App) waitForPortQuiet(port int) bool {
+	for i := 0; i < 30; i++ {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 200*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return true
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return false
 }
 
 func (a *App) StopService(name string) {
