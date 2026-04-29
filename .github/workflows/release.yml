@@ -105,7 +105,7 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev nsis
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev fakeroot zstd
 
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -113,7 +113,7 @@ jobs:
       - name: Install frontend deps
         run: cd manager/frontend && npm ci
 
-      - name: Build & package AppImage
+      - name: Build & package .deb + Arch
         run: |
           chmod +x build/linux/package.sh
           VERSION=${GITHUB_REF_NAME#v}
@@ -121,8 +121,10 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-appimage
-          path: build/linux/dist/*.AppImage
+          name: linux-packages
+          path: |
+            build/linux/dist/*.deb
+            build/linux/dist/*.pkg.tar.zst
 
   release:
     needs: [build-macos, build-windows, build-linux]
@@ -140,4 +142,5 @@ jobs:
           files: |
             artifacts/*.dmg
             artifacts/*.exe
-            artifacts/*.AppImage
+            artifacts/*.deb
+            artifacts/*.pkg.tar.zst
