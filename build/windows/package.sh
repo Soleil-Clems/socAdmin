@@ -16,8 +16,8 @@ wails build -platform windows/arm64 -o soca-manager-arm64.exe -skipbindings
 
 echo "  -> Creating dual-arch NSIS installer..."
 makensis \
-  -DARG_WAILS_AMD64_BINARY=build/bin/soca-manager.exe \
-  -DARG_WAILS_ARM64_BINARY=build/bin/soca-manager-arm64.exe \
+  "-DARG_WAILS_AMD64_BINARY=..\..\bin\soca-manager.exe" \
+  "-DARG_WAILS_ARM64_BINARY=..\..\bin\soca-manager-arm64.exe" \
   build/windows/installer/project.nsi
 
 OUTPUT_DIR="$ROOT_DIR/build/windows/dist"
