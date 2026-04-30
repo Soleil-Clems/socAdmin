@@ -11,6 +11,9 @@ cd "$ROOT_DIR/manager"
 echo "  -> Building amd64 + generating NSIS templates..."
 wails build -clean -platform windows/amd64 -nsis
 
+echo "  -> Removing amd64-only installer..."
+rm -f build/bin/*amd64-installer.exe
+
 echo "  -> Building arm64..."
 wails build -platform windows/arm64 -o soca-manager-arm64.exe -skipbindings
 
