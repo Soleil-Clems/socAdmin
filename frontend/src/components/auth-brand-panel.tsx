@@ -234,7 +234,7 @@ function MockAppPreview() {
 
 export function AuthBrandPanel() {
   return (
-    <div className="hidden lg:flex lg:w-[580px] bg-[oklch(0.13_0.005_260)] text-white flex-col justify-between p-10 relative overflow-hidden">
+    <div className="hidden lg:flex lg:w-[580px] bg-sidebar text-white flex-col justify-between p-10 relative overflow-hidden">
       {/* Rose glows */}
       <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-primary/15 blur-3xl" />
       <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-primary/8 blur-3xl" />

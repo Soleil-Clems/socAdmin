@@ -12,18 +12,18 @@ all: build manager
 	@echo "✓ Manager built     → manager/build/bin/"
 	@echo ""
 	@echo "Launching socAdmin Manager..."
-	@open "manager/build/bin/socAdmin Manager.app" 2>/dev/null || manager/build/bin/socadmin-manager 2>/dev/null || echo "Run: open \"manager/build/bin/socAdmin Manager.app\""
+	@open "manager/build/bin/Soca Manager.app" 2>/dev/null || manager/build/bin/soca-manager 2>/dev/null || echo "Run: open \"manager/build/bin/Soca Manager.app\""
 
 # --- Start : lance le Manager (qui gère tout) ---
 start:
 	@echo "Launching socAdmin Manager..."
-	@open "manager/build/bin/socAdmin Manager.app" 2>/dev/null || manager/build/bin/socadmin-manager 2>/dev/null || echo "Manager not built. Run: make all"
+	@open "manager/build/bin/Soca Manager.app" 2>/dev/null || manager/build/bin/soca-manager 2>/dev/null || echo "Manager not built. Run: make all"
 
 # --- Stop : kill backend + ferme le Manager ---
 stop:
 	@echo "Stopping socAdmin..."
 	@lsof -ti :$(BACK_PORT) | xargs kill -9 2>/dev/null && echo "Backend stopped  (:$(BACK_PORT))" || echo "Backend not running"
-	@pkill -f "socadmin-manager" 2>/dev/null && echo "Manager stopped" || echo "Manager not running"
+	@pkill -f "soca-manager" 2>/dev/null && echo "Manager stopped" || echo "Manager not running"
 
 # --- Reload : stop tout + clean + rebuild + relance le Manager ---
 reload: stop

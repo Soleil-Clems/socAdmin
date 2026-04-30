@@ -229,16 +229,16 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
                   className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium transition-colors border ${
                     selectedType === pc.type
                       ? "bg-primary text-primary-foreground border-primary"
-                      : pc.type === "mysql" ? "border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 text-blue-600 dark:text-blue-400" :
-                        pc.type === "postgresql" ? "border-indigo-500/30 bg-indigo-500/5 hover:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400" :
-                        "border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : pc.type === "mysql" ? "border-db-mysql/30 bg-db-mysql/5 hover:bg-db-mysql/10 text-db-mysql" :
+                        pc.type === "postgresql" ? "border-db-postgresql/30 bg-db-postgresql/5 hover:bg-db-postgresql/10 text-db-postgresql" :
+                        "border-db-mongodb/30 bg-db-mongodb/5 hover:bg-db-mongodb/10 text-db-mongodb"
                   }`}
                 >
                   <span className={`w-6 h-6 rounded text-xs font-bold flex items-center justify-center ${
                     selectedType === pc.type ? "bg-primary-foreground/20 text-primary-foreground" :
-                    pc.type === "mysql" ? "bg-blue-500/10" :
-                    pc.type === "postgresql" ? "bg-indigo-500/10" :
-                    "bg-emerald-500/10"
+                    pc.type === "mysql" ? "bg-db-mysql/10" :
+                    pc.type === "postgresql" ? "bg-db-postgresql/10" :
+                    "bg-db-mongodb/10"
                   }`}>
                     {dbIcons[pc.type] || "?"}
                   </span>
@@ -268,9 +268,9 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
                     className="flex items-center gap-3 text-left flex-1 min-w-0"
                   >
                     <span className={`w-7 h-7 rounded text-[10px] font-bold flex items-center justify-center shrink-0 ${
-                      conn.type === "mysql" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" :
-                      conn.type === "postgresql" ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400" :
-                      "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      conn.type === "mysql" ? "bg-db-mysql/10 text-db-mysql" :
+                      conn.type === "postgresql" ? "bg-db-postgresql/10 text-db-postgresql" :
+                      "bg-db-mongodb/10 text-db-mongodb"
                     }`}>
                       {dbIcons[conn.type] || "?"}
                     </span>
@@ -329,13 +329,17 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
                   className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium transition-colors border ${
                     selectedType === t
                       ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-card text-muted-foreground border-border hover:border-primary/40 hover:text-foreground"
+                      : t === "mysql" ? "border-db-mysql/30 bg-db-mysql/5 hover:bg-db-mysql/10 text-db-mysql"
+                      : t === "postgresql" ? "border-db-postgresql/30 bg-db-postgresql/5 hover:bg-db-postgresql/10 text-db-postgresql"
+                      : "border-db-mongodb/30 bg-db-mongodb/5 hover:bg-db-mongodb/10 text-db-mongodb"
                   }`}
                 >
                   <span className={`w-6 h-6 rounded text-xs font-bold flex items-center justify-center ${
                     selectedType === t
                       ? "bg-primary-foreground/20 text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
+                      : t === "mysql" ? "bg-db-mysql/15"
+                      : t === "postgresql" ? "bg-db-postgresql/15"
+                      : "bg-db-mongodb/15"
                   }`}>
                     {dbIcons[t]}
                   </span>

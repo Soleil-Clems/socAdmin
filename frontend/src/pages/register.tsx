@@ -100,8 +100,11 @@ export default function RegisterPage({ onSwitchToLogin }: Props) {
       <AuthBrandPanel />
 
       {/* Right panel — form */}
-      <div className="flex-1 flex items-center justify-center p-6 relative">
-        <div className="absolute top-4 right-4">
+      <div className="flex-1 flex items-center justify-center p-6 relative overflow-hidden">
+        <div className="absolute top-0 -left-24 w-64 h-full bg-gradient-to-r from-sidebar/20 to-transparent pointer-events-none" />
+        <div className="absolute -top-40 right-0 w-[500px] h-[500px] rounded-full bg-primary/[0.06] blur-[100px] pointer-events-none" />
+        <div className="absolute bottom-0 left-1/3 w-[400px] h-[400px] rounded-full bg-primary/[0.04] blur-[100px] pointer-events-none" />
+        <div className="absolute top-4 right-4 z-10">
           <ThemeToggle />
         </div>
 

@@ -1,5 +1,5 @@
 // @soleil-clems: Dashboard - Table data browser (CRUD, pagination, search)
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useRows } from "@/hooks/queries/use-rows";
 import { useColumns } from "@/hooks/queries/use-columns";
 import { useNavigationStore } from "@/stores/navigation.store";
@@ -285,6 +285,93 @@ export default function TableView() {
 
   const isLoading = colLoading || rowsLoading;
 
+  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const tableRef = useRef<HTMLTableElement>(null);
+
+  const [inlineEdit, setInlineEdit] = useState<{ rowIdx: number; col: string; value: string } | null>(null);
+  const inlineInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (inlineEdit && inlineInputRef.current) {
+      inlineInputRef.current.focus();
+      inlineInputRef.current.select();
+    }
+  }, [inlineEdit]);
+
+  const handleInlineStart = (rowIdx: number, col: string, row: Record<string, unknown>) => {
+    if (!isAdmin) return;
+    const colDef = columnMap.get(col);
+    if (colDef && primaryKeys.includes(col)) return;
+    const meta = colDef ? getColumnMeta(colDef.Type) : null;
+    const val = meta?.kind === "boolean"
+      ? (row[col] ? "true" : "false")
+      : (row[col] === null ? "" : String(row[col]));
+    setInlineEdit({ rowIdx, col, value: val });
+  };
+
+  const handleInlineCancel = () => setInlineEdit(null);
+
+  const handleInlineSave = (row: Record<string, unknown>) => {
+    if (!inlineEdit) return;
+    const colDef = columnMap.get(inlineEdit.col);
+    const meta = colDef ? getColumnMeta(colDef.Type) : null;
+    const newVal = castValue(inlineEdit.value, meta?.kind || "string");
+    const oldVal = row[inlineEdit.col];
+    if (newVal === oldVal || (newVal === null && oldVal === null) || String(newVal) === String(oldVal)) {
+      setInlineEdit(null);
+      return;
+    }
+    updateRow.mutate(
+      {
+        db: selectedDb,
+        table: selectedTable,
+        primaryKey: getPrimaryKey(row),
+        data: { [inlineEdit.col]: newVal },
+      },
+      {
+        onSuccess: () => { setInlineEdit(null); toast("Cell updated", "success"); },
+        onError: (e) => { toast(e.message, "error"); },
+      }
+    );
+  };
+
+  const handleInlineKeyDown = (e: React.KeyboardEvent, row: Record<string, unknown>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleInlineSave(row);
+    } else if (e.key === "Escape") {
+      handleInlineCancel();
+    }
+  };
+
+  useEffect(() => {
+    setColWidths({});
+  }, [selectedTable]);
+
+  const onResizeStart = (col: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const th = (e.currentTarget as HTMLElement).closest("th");
+    if (!th) return;
+    const startX = e.clientX;
+    const startW = th.getBoundingClientRect().width;
+
+    const onMove = (ev: MouseEvent) => {
+      const w = Math.max(50, startW + ev.clientX - startX);
+      setColWidths((prev) => ({ ...prev, [col]: w }));
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Toolbar */}
@@ -323,20 +410,36 @@ export default function TableView() {
         </div>
       ) : (
         <ScrollArea className="flex-1 min-h-0">
-          <table className="w-full data-table">
+          <div className="min-w-full w-fit">
+          <table ref={tableRef} className="data-table w-full" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: 72 }} />
+              {rowsData?.Columns?.map((col) => (
+                <col key={col} style={{ width: colWidths[col] || 180 }} />
+              ))}
+            </colgroup>
             <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
               <tr className="border-b border-border">
-                <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-20">
+                <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Actions
                 </th>
                 {rowsData?.Columns?.map((col) => (
                   <th
                     key={col}
-                    className="px-3 py-1.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap cursor-pointer select-none hover:text-foreground transition-colors"
+                    className="px-3 py-1.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap cursor-pointer select-none hover:text-foreground transition-colors relative group"
                     onClick={() => handleSort(col)}
                   >
-                    {col}
-                    <span className="text-[10px] opacity-50">{getSortIndicator(col)}</span>
+                    <span className="truncate block pr-3">
+                      {col}
+                      <span className="text-[10px] opacity-50">{getSortIndicator(col)}</span>
+                    </span>
+                    <div
+                      className="absolute -right-px top-0 bottom-0 w-4 cursor-col-resize z-20 flex items-center justify-center"
+                      onMouseDown={(e) => onResizeStart(col, e)}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="w-px h-4 bg-border group-hover:bg-primary/50 transition-colors" />
+                    </div>
                   </th>
                 ))}
               </tr>
@@ -367,17 +470,39 @@ export default function TableView() {
                       <span className="text-[11px] text-muted-foreground/40">—</span>
                     )}
                   </td>
-                  {rowsData?.Columns?.map((col) => (
-                    <td key={col} className="px-3 py-1 max-w-xs truncate text-[13px]">
-                      {row[col] === null ? (
-                        <span className="text-muted-foreground/50 italic text-[11px]">
-                          NULL
-                        </span>
-                      ) : (
-                        String(row[col])
-                      )}
-                    </td>
-                  ))}
+                  {rowsData?.Columns?.map((col) => {
+                    const isEditing = inlineEdit?.rowIdx === i && inlineEdit?.col === col;
+                    const isPK = primaryKeys.includes(col);
+                    return (
+                      <td
+                        key={col}
+                        className={`px-3 py-1 text-[13px] ${isEditing ? "overflow-visible relative z-30" : "overflow-hidden"} ${isAdmin && !isPK ? "cursor-text" : ""}`}
+                        onDoubleClick={() => handleInlineStart(i, col, row)}
+                      >
+                        {isEditing ? (
+                          <textarea
+                            ref={inlineInputRef}
+                            className="w-full min-w-[60px] bg-background border border-primary/50 rounded px-1.5 py-0.5 text-[13px] outline-none focus:ring-1 focus:ring-primary/30 resize-both overflow-auto"
+                            value={inlineEdit.value}
+                            rows={1}
+                            onChange={(e) => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                            onKeyDown={(e) => handleInlineKeyDown(e, row)}
+                            onBlur={() => handleInlineSave(row)}
+                          />
+                        ) : (
+                          <span className="block truncate">
+                            {row[col] === null ? (
+                              <span className="text-muted-foreground/50 italic text-[11px]">
+                                NULL
+                              </span>
+                            ) : (
+                              String(row[col])
+                            )}
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
               {displayRows.length === 0 && (
@@ -392,6 +517,7 @@ export default function TableView() {
               )}
             </tbody>
           </table>
+          </div>
         </ScrollArea>
       )}
 
