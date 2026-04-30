@@ -81,16 +81,17 @@ jobs:
           # 1) Build amd64 with -nsis to generate wails_tools.nsh with resolved templates
           wails build -clean -platform windows/amd64 -nsis
           cp ../bin/socadmin.exe build/bin/socadmin.exe
-          # 2) Build arm64 binary (no -clean to preserve amd64 binary)
+          # 2) Remove the amd64-only installer (we'll create a dual-arch one)
+          rm -f build/bin/*amd64-installer.exe
+          # 3) Build arm64 binary (no -clean to preserve amd64 binary)
           wails build -platform windows/arm64 -o soca-manager-arm64.exe -skipbindings
-          # 3) Re-run NSIS with both binaries (paths relative to .nsi file)
+          # 4) Re-run NSIS with both binaries for dual-arch installer
           makensis \
             "-DARG_WAILS_AMD64_BINARY=..\..\bin\soca-manager.exe" \
             "-DARG_WAILS_ARM64_BINARY=..\..\bin\soca-manager-arm64.exe" \
             build/windows/installer/project.nsi
           mkdir -p ../build/windows/dist
-          INSTALLER=$(find build/bin -name "*amd64_arm64*installer.exe" -o -name "*installer.exe" | head -1)
-          cp "$INSTALLER" "../build/windows/dist/Soca-Manager-${VERSION}-windows-setup.exe"
+          cp build/bin/*installer.exe "../build/windows/dist/Soca-Manager-${VERSION}-windows-setup.exe"
 
       - uses: actions/upload-artifact@v4
         with:
