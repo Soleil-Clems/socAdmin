@@ -72,15 +72,19 @@ jobs:
       - name: Install frontend deps
         run: cd manager/frontend && npm ci
 
-      - name: Build & package EXE
+      - name: Build & package EXE (amd64 + arm64)
         shell: bash
         run: |
           export PATH="/c/Program Files (x86)/NSIS:$PATH"
           VERSION=${GITHUB_REF_NAME#v}
-          cd manager && wails build -clean
-          # Place server binary next to manager exe for NSIS to include
+          cd manager
+          wails build -clean -platform windows/amd64
           cp ../bin/socadmin.exe build/bin/socadmin.exe
-          wails build -nsis
+          wails build -clean -platform windows/arm64 -o soca-manager-arm64.exe -skipbindings
+          makensis \
+            -DARG_WAILS_AMD64_BINARY=build/bin/soca-manager.exe \
+            -DARG_WAILS_ARM64_BINARY=build/bin/soca-manager-arm64.exe \
+            build/windows/installer/project.nsi
           mkdir -p ../build/windows/dist
           cp build/bin/*installer.exe "../build/windows/dist/Soca-Manager-${VERSION}-windows-setup.exe"
 
