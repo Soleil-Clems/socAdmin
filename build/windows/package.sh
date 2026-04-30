@@ -8,16 +8,16 @@ VERSION="${1:-1.0.0}"
 echo "==> Building socAdmin Manager for Windows (amd64 + arm64)..."
 cd "$ROOT_DIR/manager"
 
-echo "  -> Building amd64..."
-wails build -clean -platform windows/amd64
+echo "  -> Building amd64 + generating NSIS templates..."
+wails build -clean -platform windows/amd64 -nsis
 
 echo "  -> Building arm64..."
-wails build -clean -platform windows/arm64 -o soca-manager-arm64.exe
+wails build -clean -platform windows/arm64 -o soca-manager-arm64.exe -skipbindings
 
-echo "  -> Creating NSIS installer (dual-arch)..."
+echo "  -> Creating dual-arch NSIS installer..."
 makensis \
-  -DARG_WAILS_AMD64_BINARY="build/bin/soca-manager.exe" \
-  -DARG_WAILS_ARM64_BINARY="build/bin/soca-manager-arm64.exe" \
+  -DARG_WAILS_AMD64_BINARY=build/bin/soca-manager.exe \
+  -DARG_WAILS_ARM64_BINARY=build/bin/soca-manager-arm64.exe \
   build/windows/installer/project.nsi
 
 OUTPUT_DIR="$ROOT_DIR/build/windows/dist"
