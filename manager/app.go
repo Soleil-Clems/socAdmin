@@ -234,8 +234,7 @@ func (a *App) StartServer() ServerStatus {
 		fmt.Sprintf("PORT=%d", a.port),
 		fmt.Sprintf("DATA_DIR=%s", a.configDir),
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	configureCmdOS(cmd)
 
 	if err := cmd.Start(); err != nil {
 		a.emitError("Failed to start socAdmin: " + err.Error())
@@ -576,7 +575,9 @@ func findBin(name string) string {
 }
 
 func getVersion(path string, args []string) string {
-	out, err := exec.Command(path, args...).CombinedOutput()
+	cmd := exec.Command(path, args...)
+	configureCmdOS(cmd)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return ""
 	}
