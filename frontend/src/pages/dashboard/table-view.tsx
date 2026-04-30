@@ -216,6 +216,7 @@ export default function TableView() {
     setPage(0);
     setSearch("");
     setSort(null);
+    setColWidths({});
   }
 
   const handleInsertOpen = () => {
@@ -344,9 +345,6 @@ export default function TableView() {
     }
   };
 
-  useEffect(() => {
-    setColWidths({});
-  }, [selectedTable]);
 
   const onResizeStart = (col: string, e: React.MouseEvent) => {
     e.preventDefault();
