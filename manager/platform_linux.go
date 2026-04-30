@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+func configureCmdOS(_ *exec.Cmd) {}
+
 var extraSearchPaths = []string{
 	"/usr/bin",
 	"/usr/sbin",
