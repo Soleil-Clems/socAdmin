@@ -348,7 +348,7 @@ func (a *App) StartService(name string) {
 			wailsRuntime.EventsEmit(a.ctx, "service:started", defaultPort)
 			return
 		}
-		a.emitError(fmt.Sprintf("Port %d not reachable after 6s", port))
+		a.emitError(fmt.Sprintf("Port %d not reachable after 36s", port))
 	}()
 }
 
@@ -377,13 +377,13 @@ func (a *App) setServicePort(name string, port int) {
 }
 
 func (a *App) waitForPortQuiet(port int) bool {
-	for i := 0; i < 30; i++ {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 200*time.Millisecond)
+	for i := 0; i < 60; i++ {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 300*time.Millisecond)
 		if err == nil {
 			conn.Close()
 			return true
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond)
 	}
 	return false
 }
@@ -445,6 +445,7 @@ func (a *App) InstallService(name string) {
 			a.emitError(fmt.Sprintf("Failed to install %s: %v", name, err))
 			return
 		}
+		ensurePATH()
 		a.emitEvent("install:done", name)
 	}()
 }
