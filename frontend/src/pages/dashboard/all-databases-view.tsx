@@ -136,8 +136,20 @@ export default function AllDatabasesView() {
       {/* Toolbar */}
       <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">Databases</span>
+        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+          dbType === "mysql" ? "bg-db-mysql/10 text-db-mysql" :
+          dbType === "postgresql" ? "bg-db-postgresql/10 text-db-postgresql" :
+          "bg-db-mongodb/10 text-db-mongodb"
+        }`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${
+            dbType === "mysql" ? "bg-db-mysql" :
+            dbType === "postgresql" ? "bg-db-postgresql" :
+            "bg-db-mongodb"
+          }`} />
+          {dbTypeLabels[dbType || ""] || dbType}
+        </span>
         <span className="text-muted-foreground">
-          {dbTypeLabels[dbType || ""] || dbType} · {databases?.length ?? 0} databases
+          {databases?.length ?? 0} databases
           {search && ` (${filtered.length} match)`}
         </span>
         <div className="ml-auto flex items-center gap-1.5">

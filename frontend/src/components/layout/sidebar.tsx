@@ -1,6 +1,5 @@
 // @soleil-clems: Layout - sidebar
-import { useState, useMemo } from "react";
-import { useThemeStore } from "@/stores/theme.store";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDatabases } from "@/hooks/queries/use-databases";
 import { useTables } from "@/hooks/queries/use-tables";
@@ -93,11 +92,6 @@ export default function Sidebar() {
   const logout = useAuthStore((s) => s.logout);
   const isAdmin = useAuthStore((s) => s.isAdmin);
   const role = useAuthStore((s) => s.role);
-  const theme = useThemeStore((s) => s.theme);
-  const isDark = useMemo(() => {
-    if (theme === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return theme === "dark";
-  }, [theme]);
   const {
     selectedDb,
     selectedTable,
@@ -139,15 +133,22 @@ export default function Sidebar() {
       <div className="px-3 py-2.5 border-b border-sidebar-border shrink-0">
         <div className="flex items-center gap-2">
           <img
-            src={isDark ? "/logo-dark.png" : "/logo-light.png"}
+            src="/logo-dark.png"
             alt="socAdmin"
             className="w-6 h-6 object-contain shrink-0"
           />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold truncate">socAdmin</p>
-            <p className="text-[10px] text-sidebar-foreground/50 truncate">
-              {dbTypeLabels[dbType || ""] || dbType} · {user}@{host}:{port}
-            </p>
+            <div className="flex items-center gap-1.5">
+              <span className={`inline-block w-1.5 h-1.5 rounded-full ${
+                dbType === "mysql" ? "bg-db-mysql" :
+                dbType === "postgresql" ? "bg-db-postgresql" :
+                "bg-db-mongodb"
+              }`} />
+              <p className="text-[10px] text-sidebar-foreground/50 truncate">
+                {dbTypeLabels[dbType || ""] || dbType} · {user}@{host}:{port}
+              </p>
+            </div>
           </div>
         </div>
       </div>

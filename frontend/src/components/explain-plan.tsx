@@ -40,7 +40,7 @@ const STAGE_INFO: Record<string, { icon: string; color: string; desc: string }> 
 };
 
 function getStageInfo(stage: string) {
-  return STAGE_INFO[stage] || { icon: "●", color: "text-slate-600 dark:text-slate-400 bg-slate-500/10", desc: stage };
+  return STAGE_INFO[stage] || { icon: "●", color: "text-muted-foreground bg-muted", desc: stage };
 }
 
 function StageNode({ stage, depth = 0 }: { stage: Stage; depth?: number }) {
@@ -175,7 +175,7 @@ export default function ExplainPlan({
   } else {
     verdict = {
       label: "OK",
-      tone: "text-slate-600 dark:text-slate-400 bg-slate-500/10 border-slate-500/30",
+      tone: "text-muted-foreground bg-muted border-border",
       msg: "Small dataset — scan is acceptable.",
     };
   }
