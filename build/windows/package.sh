@@ -12,7 +12,7 @@ echo "  -> Building amd64 + generating NSIS templates..."
 wails build -clean -platform windows/amd64 -nsis
 
 echo "  -> Building arm64..."
-wails build -clean -platform windows/arm64 -o soca-manager-arm64.exe -skipbindings
+wails build -platform windows/arm64 -o soca-manager-arm64.exe -skipbindings
 
 echo "  -> Creating dual-arch NSIS installer..."
 makensis \
