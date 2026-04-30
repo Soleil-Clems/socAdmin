@@ -23,6 +23,7 @@ func hideWindow(cmd *exec.Cmd) {
 func configureCmdOS(cmd *exec.Cmd) { hideWindow(cmd) }
 
 var extraSearchPaths = []string{
+	`C:\Program Files\MySQL\MySQL Server 9.0\bin`,
 	`C:\Program Files\MySQL\MySQL Server 8.4\bin`,
 	`C:\Program Files\MySQL\MySQL Server 8.0\bin`,
 	`C:\Program Files\MySQL\MySQL Server 5.7\bin`,
@@ -32,7 +33,21 @@ var extraSearchPaths = []string{
 	`C:\Program Files\PostgreSQL\14\bin`,
 	`C:\Program Files\MongoDB\Server\8.0\bin`,
 	`C:\Program Files\MongoDB\Server\7.0\bin`,
+	`C:\Program Files\MongoDB\Server\6.0\bin`,
 	`C:\ProgramData\chocolatey\bin`,
+}
+
+func init() {
+	home, _ := os.UserHomeDir()
+	localAppData := os.Getenv("LOCALAPPDATA")
+	if localAppData == "" {
+		localAppData = filepath.Join(home, "AppData", "Local")
+	}
+	wingetPaths := []string{
+		filepath.Join(localAppData, "Microsoft", "WinGet", "Links"),
+		filepath.Join(localAppData, "Programs", "mongosh"),
+	}
+	extraSearchPaths = append(extraSearchPaths, wingetPaths...)
 }
 
 func binaryName() string { return "socadmin.exe" }
@@ -158,7 +173,11 @@ func runCmd(args ...string) error {
 	hideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s", string(out))
+		outStr := string(out)
+		if strings.Contains(outStr, "already installed") || strings.Contains(outStr, "No available upgrade found") {
+			return nil
+		}
+		return fmt.Errorf("%s", outStr)
 	}
 	return nil
 }
@@ -328,6 +347,37 @@ func (a *App) findPgDataDirWindows() string {
 		p := filepath.Join(`C:\Program Files\PostgreSQL`, ver, "data")
 		if _, err := os.Stat(filepath.Join(p, "PG_VERSION")); err == nil {
 			return p
+		}
+	}
+	programData := os.Getenv("PROGRAMDATA")
+	if programData == "" {
+		programData = `C:\ProgramData`
+	}
+	for _, ver := range []string{"17", "16", "15", "14"} {
+		p := filepath.Join(programData, "PostgreSQL", ver, "data")
+		if _, err := os.Stat(filepath.Join(p, "PG_VERSION")); err == nil {
+			return p
+		}
+	}
+	// Check if pg_ctl can report the data dir via Windows service
+	if svc := findWindowsService("postgresql"); svc != "" {
+		c := exec.Command("sc", "qc", svc)
+		hideWindow(c)
+		out, err := c.CombinedOutput()
+		if err == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				if idx := strings.Index(line, "-D"); idx >= 0 {
+					rest := strings.TrimSpace(line[idx+2:])
+					rest = strings.Trim(rest, `"`)
+					if next := strings.Index(rest, `"`); next > 0 {
+						rest = rest[:next]
+					}
+					rest = strings.TrimSpace(rest)
+					if _, err := os.Stat(filepath.Join(rest, "PG_VERSION")); err == nil {
+						return rest
+					}
+				}
+			}
 		}
 	}
 	return ""
