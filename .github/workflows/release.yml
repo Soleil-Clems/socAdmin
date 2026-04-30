@@ -81,8 +81,8 @@ jobs:
           # 1) Build amd64 with -nsis to generate wails_tools.nsh with resolved templates
           wails build -clean -platform windows/amd64 -nsis
           cp ../bin/socadmin.exe build/bin/socadmin.exe
-          # 2) Build arm64 binary (skip frontend rebuild + bindings)
-          wails build -clean -platform windows/arm64 -o soca-manager-arm64.exe -skipbindings
+          # 2) Build arm64 binary (no -clean to preserve amd64 binary)
+          wails build -platform windows/arm64 -o soca-manager-arm64.exe -skipbindings
           # 3) Re-run NSIS with both binaries for a dual-arch installer
           makensis \
             -DARG_WAILS_AMD64_BINARY=build/bin/soca-manager.exe \
