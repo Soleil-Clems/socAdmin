@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+func configureCmdOS(_ *exec.Cmd) {}
+
 var extraSearchPaths = []string{
 	// MAMP MySQL
 	"/Applications/MAMP/Library/bin/mysql80/bin",

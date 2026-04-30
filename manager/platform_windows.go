@@ -9,7 +9,18 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 )
+
+const createNoWindow = 0x08000000
+
+func hideWindow(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: createNoWindow,
+	}
+}
+
+func configureCmdOS(cmd *exec.Cmd) { hideWindow(cmd) }
 
 var extraSearchPaths = []string{
 	`C:\Program Files\MySQL\MySQL Server 8.4\bin`,
@@ -29,7 +40,9 @@ func binaryName() string { return "socadmin.exe" }
 func findPackageManager() string { return windowsPackageManager() }
 
 func findPIDOnPortOS(port int) int {
-	out, err := exec.Command("cmd", "/c", "netstat", "-ano", "-p", "tcp").CombinedOutput()
+	cmd := exec.Command("cmd", "/c", "netstat", "-ano", "-p", "tcp")
+	hideWindow(cmd)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return 0
 	}
@@ -141,7 +154,9 @@ func uninstallServiceOS(a *App, name string) error {
 }
 
 func runCmd(args ...string) error {
-	out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+	cmd := exec.Command(args[0], args[1:]...)
+	hideWindow(cmd)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s", string(out))
 	}
@@ -176,7 +191,9 @@ func stopServiceOS(a *App, name string) error {
 
 // findWindowsService looks for a Windows service by pattern
 func findWindowsService(pattern string) string {
-	out, err := exec.Command("sc", "query", "type=", "service", "state=", "all").CombinedOutput()
+	cmd := exec.Command("sc", "query", "type=", "service", "state=", "all")
+	hideWindow(cmd)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return ""
 	}
@@ -192,21 +209,22 @@ func findWindowsService(pattern string) string {
 func (a *App) startMySQLWindows() error {
 	// Try common Windows service names
 	for _, svc := range []string{"MySQL80", "MySQL84", "MySQL57", "MySQL"} {
-		if err := exec.Command("net", "start", svc).Run(); err == nil {
+		c := exec.Command("net", "start", svc)
+		hideWindow(c)
+		if err := c.Run(); err == nil {
 			return nil
 		}
 	}
-	// Try to find the service name dynamically
 	if svc := findWindowsService("MySQL"); svc != "" {
-		if err := exec.Command("net", "start", svc).Run(); err == nil {
+		c := exec.Command("net", "start", svc)
+		hideWindow(c)
+		if err := c.Run(); err == nil {
 			return nil
 		}
 	}
-	// Direct execution
 	if path := findBin("mysqld"); path != "" {
 		cmd := exec.Command(path, fmt.Sprintf("--port=%d", a.mysqlPort), "--console")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		hideWindow(cmd)
 		if err := cmd.Start(); err != nil {
 			return fmt.Errorf("mysqld failed: %v", err)
 		}
@@ -218,25 +236,33 @@ func (a *App) startMySQLWindows() error {
 
 func (a *App) stopMySQLWindows() error {
 	for _, svc := range []string{"MySQL80", "MySQL84", "MySQL57", "MySQL"} {
-		exec.Command("net", "stop", svc).Run()
+		c := exec.Command("net", "stop", svc)
+		hideWindow(c)
+		c.Run()
 		if !isPortOpen(a.mysqlPort) {
 			return nil
 		}
 	}
 	if svc := findWindowsService("MySQL"); svc != "" {
-		exec.Command("net", "stop", svc).Run()
+		c := exec.Command("net", "stop", svc)
+		hideWindow(c)
+		c.Run()
 		if !isPortOpen(a.mysqlPort) {
 			return nil
 		}
 	}
 	if path := findBin("mysqladmin"); path != "" {
-		exec.Command(path, "-u", "root", fmt.Sprintf("--port=%d", a.mysqlPort), "shutdown").CombinedOutput()
+		c := exec.Command(path, "-u", "root", fmt.Sprintf("--port=%d", a.mysqlPort), "shutdown")
+		hideWindow(c)
+		c.CombinedOutput()
 		if !isPortOpen(a.mysqlPort) {
 			return nil
 		}
 	}
 	if pid := findPIDOnPort(a.mysqlPort); pid > 0 {
-		exec.Command("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F").Run()
+		c := exec.Command("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F")
+		hideWindow(c)
+		c.Run()
 		return nil
 	}
 	return fmt.Errorf("could not stop MySQL")
@@ -246,7 +272,9 @@ func (a *App) stopMySQLWindows() error {
 
 func (a *App) startPostgresWindows() error {
 	if svc := findWindowsService("postgresql"); svc != "" {
-		if err := exec.Command("net", "start", svc).Run(); err == nil {
+		c := exec.Command("net", "start", svc)
+		hideWindow(c)
+		if err := c.Run(); err == nil {
 			return nil
 		}
 	}
@@ -255,7 +283,9 @@ func (a *App) startPostgresWindows() error {
 		if dataDir == "" {
 			return fmt.Errorf("PostgreSQL data directory not found")
 		}
-		out, err := exec.Command(path, "start", "-D", dataDir, "-o", fmt.Sprintf("-p %d", a.pgPort), "-l", filepath.Join(a.configDir, "pg.log")).CombinedOutput()
+		c := exec.Command(path, "start", "-D", dataDir, "-o", fmt.Sprintf("-p %d", a.pgPort), "-l", filepath.Join(a.configDir, "pg.log"))
+		hideWindow(c)
+		out, err := c.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("pg_ctl failed: %s", string(out))
 		}
@@ -266,7 +296,9 @@ func (a *App) startPostgresWindows() error {
 
 func (a *App) stopPostgresWindows() error {
 	if svc := findWindowsService("postgresql"); svc != "" {
-		exec.Command("net", "stop", svc).Run()
+		c := exec.Command("net", "stop", svc)
+		hideWindow(c)
+		c.Run()
 		if !isPortOpen(a.pgPort) {
 			return nil
 		}
@@ -274,14 +306,18 @@ func (a *App) stopPostgresWindows() error {
 	if path := findBin("pg_ctl"); path != "" {
 		dataDir := a.findPgDataDirWindows()
 		if dataDir != "" {
-			exec.Command(path, "stop", "-D", dataDir, "-m", "fast").CombinedOutput()
+			c := exec.Command(path, "stop", "-D", dataDir, "-m", "fast")
+			hideWindow(c)
+			c.CombinedOutput()
 			if !isPortOpen(a.pgPort) {
 				return nil
 			}
 		}
 	}
 	if pid := findPIDOnPort(a.pgPort); pid > 0 {
-		exec.Command("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F").Run()
+		c := exec.Command("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F")
+		hideWindow(c)
+		c.Run()
 		return nil
 	}
 	return fmt.Errorf("could not stop PostgreSQL")
@@ -300,7 +336,9 @@ func (a *App) findPgDataDirWindows() string {
 // ─── MongoDB ─────────────────────────────────────────────────────
 
 func (a *App) startMongoWindows() error {
-	if err := exec.Command("net", "start", "MongoDB").Run(); err == nil {
+	c := exec.Command("net", "start", "MongoDB")
+	hideWindow(c)
+	if err := c.Run(); err == nil {
 		return nil
 	}
 	if path := findBin("mongod"); path != "" {
@@ -308,8 +346,7 @@ func (a *App) startMongoWindows() error {
 		os.MkdirAll(dbPath, 0755)
 		logPath := filepath.Join(a.configDir, "mongod.log")
 		cmd := exec.Command(path, "--port", fmt.Sprintf("%d", a.mongoPort), "--dbpath", dbPath, "--logpath", logPath)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		hideWindow(cmd)
 		if err := cmd.Start(); err != nil {
 			return fmt.Errorf("mongod failed: %v", err)
 		}
@@ -320,19 +357,25 @@ func (a *App) startMongoWindows() error {
 }
 
 func (a *App) stopMongoWindows() error {
-	exec.Command("net", "stop", "MongoDB").Run()
+	c := exec.Command("net", "stop", "MongoDB")
+	hideWindow(c)
+	c.Run()
 	if !isPortOpen(a.mongoPort) {
 		return nil
 	}
 	if path := findBin("mongod"); path != "" {
 		dbPath := filepath.Join(a.configDir, "mongo-data")
-		exec.Command(path, "--shutdown", "--dbpath", dbPath).CombinedOutput()
+		c2 := exec.Command(path, "--shutdown", "--dbpath", dbPath)
+		hideWindow(c2)
+		c2.CombinedOutput()
 		if !isPortOpen(a.mongoPort) {
 			return nil
 		}
 	}
 	if pid := findPIDOnPort(a.mongoPort); pid > 0 {
-		exec.Command("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F").Run()
+		c3 := exec.Command("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F")
+		hideWindow(c3)
+		c3.Run()
 		return nil
 	}
 	return fmt.Errorf("could not stop MongoDB")
