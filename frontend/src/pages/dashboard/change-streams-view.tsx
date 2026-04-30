@@ -13,7 +13,7 @@ const OP_COLORS: Record<string, { bg: string; text: string }> = {
   delete: { bg: "bg-red-500/10", text: "text-red-600 dark:text-red-400" },
   drop: { bg: "bg-orange-500/10", text: "text-orange-600 dark:text-orange-400" },
   rename: { bg: "bg-purple-500/10", text: "text-purple-600 dark:text-purple-400" },
-  invalidate: { bg: "bg-gray-500/10", text: "text-gray-600 dark:text-gray-400" },
+  invalidate: { bg: "bg-muted", text: "text-muted-foreground" },
 };
 
 function formatTime(iso: string): string {
