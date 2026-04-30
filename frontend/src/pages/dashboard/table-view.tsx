@@ -210,6 +210,12 @@ export default function TableView() {
     }
   };
 
+  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const tableRef = useRef<HTMLTableElement>(null);
+
+  const [inlineEdit, setInlineEdit] = useState<{ rowIdx: number; col: string; value: string } | null>(null);
+  const inlineInputRef = useRef<HTMLTextAreaElement>(null);
+
   const [prevTable, setPrevTable] = useState(selectedTable);
   if (selectedTable !== prevTable) {
     setPrevTable(selectedTable);
@@ -285,12 +291,6 @@ export default function TableView() {
   };
 
   const isLoading = colLoading || rowsLoading;
-
-  const [colWidths, setColWidths] = useState<Record<string, number>>({});
-  const tableRef = useRef<HTMLTableElement>(null);
-
-  const [inlineEdit, setInlineEdit] = useState<{ rowIdx: number; col: string; value: string } | null>(null);
-  const inlineInputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (inlineEdit && inlineInputRef.current) {
