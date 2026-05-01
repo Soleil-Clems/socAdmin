@@ -3,6 +3,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -123,7 +124,15 @@ func installServiceOS(a *App, name string) error {
 		case "PostgreSQL":
 			return runCmd("winget", "install", "--id", "PostgreSQL.PostgreSQL.17", "--accept-package-agreements", "--accept-source-agreements")
 		case "MongoDB":
-			return runCmd("winget", "install", "--id", "MongoDB.Server", "--accept-package-agreements", "--accept-source-agreements")
+			err := runCmd("winget", "install", "--id", "MongoDB.Server", "--accept-package-agreements", "--accept-source-agreements")
+			if err == nil {
+				return nil
+			}
+			if _, chocoErr := exec.LookPath("choco"); chocoErr == nil {
+				a.emitEvent("install:progress", "Retrying with Chocolatey...")
+				return runCmd("choco", "install", "mongodb", "-y")
+			}
+			return fmt.Errorf("MongoDB install failed. Install manually from mongodb.com/try/download/community")
 		}
 	} else {
 		switch name {
@@ -226,8 +235,7 @@ func findWindowsService(pattern string) string {
 // ─── MySQL ───────────────────────────────────────────────────────
 
 func (a *App) startMySQLWindows() error {
-	// Try common Windows service names
-	for _, svc := range []string{"MySQL80", "MySQL84", "MySQL57", "MySQL"} {
+	for _, svc := range []string{"MySQL90", "MySQL84", "MySQL80", "MySQL57", "MySQL"} {
 		c := exec.Command("net", "start", svc)
 		hideWindow(c)
 		if err := c.Run(); err == nil {
@@ -241,16 +249,59 @@ func (a *App) startMySQLWindows() error {
 			return nil
 		}
 	}
-	if path := findBin("mysqld"); path != "" {
-		cmd := exec.Command(path, fmt.Sprintf("--port=%d", a.mysqlPort), "--console")
-		hideWindow(cmd)
-		if err := cmd.Start(); err != nil {
-			return fmt.Errorf("mysqld failed: %v", err)
-		}
-		go cmd.Wait()
-		return nil
+	path := findBin("mysqld")
+	if path == "" {
+		return fmt.Errorf("MySQL not found")
 	}
-	return fmt.Errorf("MySQL not found")
+	dataDir := a.ensureMySQLDataDir(path)
+	if dataDir == "" {
+		return fmt.Errorf("MySQL data directory not found and initialization failed")
+	}
+	baseDir := filepath.Dir(filepath.Dir(path))
+	logPath := filepath.Join(a.configDir, "mysql-error.log")
+	cmd := exec.Command(path,
+		"--basedir="+baseDir,
+		"--datadir="+dataDir,
+		fmt.Sprintf("--port=%d", a.mysqlPort),
+		"--log-error="+logPath)
+	hideWindow(cmd)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("mysqld failed: %v", err)
+	}
+	go cmd.Wait()
+	return nil
+}
+
+func (a *App) ensureMySQLDataDir(mysqldPath string) string {
+	binDir := filepath.Dir(mysqldPath)
+	baseDir := filepath.Dir(binDir)
+	serverName := filepath.Base(baseDir)
+	programData := os.Getenv("PROGRAMDATA")
+	if programData == "" {
+		programData = `C:\ProgramData`
+	}
+	candidates := []string{
+		filepath.Join(baseDir, "data"),
+		filepath.Join(baseDir, "Data"),
+		filepath.Join(programData, "MySQL", serverName, "Data"),
+		filepath.Join(programData, "MySQL", serverName, "data"),
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(filepath.Join(c, "mysql")); err == nil {
+			return c
+		}
+	}
+	dataDir := filepath.Join(baseDir, "data")
+	log.Printf("[mysql] Initializing data directory at %s", dataDir)
+	cmd := exec.Command(mysqldPath, "--initialize-insecure", "--basedir="+baseDir, "--datadir="+dataDir)
+	hideWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("[mysql] init failed: %v: %s", err, string(out))
+		return ""
+	}
+	log.Printf("[mysql] init OK")
+	return dataDir
 }
 
 func (a *App) stopMySQLWindows() error {
@@ -386,10 +437,19 @@ func (a *App) findPgDataDirWindows() string {
 // ─── MongoDB ─────────────────────────────────────────────────────
 
 func (a *App) startMongoWindows() error {
-	c := exec.Command("net", "start", "MongoDB")
-	hideWindow(c)
-	if err := c.Run(); err == nil {
-		return nil
+	for _, svc := range []string{"MongoDB", "MongoDB Server"} {
+		c := exec.Command("net", "start", svc)
+		hideWindow(c)
+		if err := c.Run(); err == nil {
+			return nil
+		}
+	}
+	if svc := findWindowsService("MongoDB"); svc != "" {
+		c := exec.Command("net", "start", svc)
+		hideWindow(c)
+		if err := c.Run(); err == nil {
+			return nil
+		}
 	}
 	if path := findBin("mongod"); path != "" {
 		dbPath := filepath.Join(a.configDir, "mongo-data")
@@ -407,11 +467,21 @@ func (a *App) startMongoWindows() error {
 }
 
 func (a *App) stopMongoWindows() error {
-	c := exec.Command("net", "stop", "MongoDB")
-	hideWindow(c)
-	c.Run()
-	if !isPortOpen(a.mongoPort) {
-		return nil
+	for _, svc := range []string{"MongoDB", "MongoDB Server"} {
+		c := exec.Command("net", "stop", svc)
+		hideWindow(c)
+		c.Run()
+		if !isPortOpen(a.mongoPort) {
+			return nil
+		}
+	}
+	if svc := findWindowsService("MongoDB"); svc != "" {
+		c := exec.Command("net", "stop", svc)
+		hideWindow(c)
+		c.Run()
+		if !isPortOpen(a.mongoPort) {
+			return nil
+		}
 	}
 	if path := findBin("mongod"); path != "" {
 		dbPath := filepath.Join(a.configDir, "mongo-data")
@@ -429,4 +499,44 @@ func (a *App) stopMongoWindows() error {
 		return nil
 	}
 	return fmt.Errorf("could not stop MongoDB")
+}
+
+// ─── Post-install setup ─────────────────────────────────────────
+
+func postInstallOS(a *App, name string) string {
+	switch name {
+	case "PostgreSQL":
+		return a.setupPostgresAfterInstall()
+	}
+	return ""
+}
+
+func (a *App) setupPostgresAfterInstall() string {
+	dataDir := a.findPgDataDirWindows()
+	if dataDir == "" {
+		return "PostgreSQL installed. Default user: postgres"
+	}
+	hbaPath := filepath.Join(dataDir, "pg_hba.conf")
+	data, err := os.ReadFile(hbaPath)
+	if err != nil {
+		return "PostgreSQL installed. Default user: postgres"
+	}
+	content := string(data)
+	re := regexp.MustCompile(`(host\s+all\s+all\s+(?:127\.0\.0\.1/32|::1/128)\s+)(?:scram-sha-256|md5)`)
+	newContent := re.ReplaceAllString(content, "${1}trust")
+	if content == newContent {
+		return "PostgreSQL installed. user=postgres, no password (localhost)"
+	}
+	if err := os.WriteFile(hbaPath, []byte(newContent), 0644); err != nil {
+		return "PostgreSQL installed. Default user: postgres"
+	}
+	if svc := findWindowsService("postgresql"); svc != "" {
+		c := exec.Command("net", "stop", svc)
+		hideWindow(c)
+		c.Run()
+		c2 := exec.Command("net", "start", svc)
+		hideWindow(c2)
+		c2.Run()
+	}
+	return "PostgreSQL: user=postgres, no password (localhost trust)"
 }

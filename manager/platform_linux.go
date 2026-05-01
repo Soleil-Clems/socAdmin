@@ -13,6 +13,8 @@ import (
 
 func configureCmdOS(_ *exec.Cmd) {}
 
+func postInstallOS(_ *App, _ string) string { return "" }
+
 var extraSearchPaths = []string{
 	"/usr/bin",
 	"/usr/sbin",

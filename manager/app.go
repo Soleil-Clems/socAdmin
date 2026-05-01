@@ -446,6 +446,10 @@ func (a *App) InstallService(name string) {
 			return
 		}
 		ensurePATH()
+		if info := postInstallOS(a, name); info != "" {
+			log.Printf("[install] %s: %s", name, info)
+			a.emitEvent("install:info", info)
+		}
 		a.emitEvent("install:done", name)
 	}()
 }
