@@ -273,7 +273,7 @@ function ErrorBanner({
         stroke="currentColor"
         strokeWidth="2.5"
         strokeLinecap="round"
-        className="mt-[2px] shrink-0 opacity-70"
+        className="mt-0.5 shrink-0 opacity-70"
       >
         <circle cx="12" cy="12" r="10" />
         <line x1="12" y1="8" x2="12" y2="12" />
@@ -390,7 +390,7 @@ function SidebarItem({
       <span className={`shrink-0 ${active ? "opacity-100" : "opacity-50"}`}>{icon}</span>
       <span className="flex-1">{label}</span>
       {badge !== undefined && badge > 0 && (
-        <span className="min-w-[20px] rounded-full bg-green-subtle px-1.5 py-[1px] text-center text-[10px] font-medium text-green leading-tight">
+        <span className="min-w-5 rounded-full bg-green-subtle px-1.5 py-px text-center text-[10px] font-medium text-green leading-tight">
           {badge}
         </span>
       )}
@@ -457,7 +457,7 @@ function ServerTab({
                   {running ? "Running" : "Stopped"}
                 </h3>
                 {running && status?.pid && (
-                  <span className="rounded-full bg-green-subtle px-2 py-[1px] text-[10px] font-medium text-green">
+                  <span className="rounded-full bg-green-subtle px-2 py-px text-[10px] font-medium text-green">
                     PID {status.pid}
                   </span>
                 )}
@@ -744,7 +744,7 @@ function DatabasesTab({
             return (
               <div
                 key={svc.name}
-                className="rounded-xl border border-border bg-surface/60 px-5 py-[18px]"
+                className="rounded-xl border border-border bg-surface/60 px-5 py-4.5"
               >
                 <div className="flex items-center gap-4">
                   <div
@@ -1131,13 +1131,13 @@ function ToggleRow({
       </div>
       <button
         onClick={() => onChange(!checked)}
-        className={`relative h-[22px] w-[40px] rounded-full shrink-0 transition-colors ${
+        className={`relative h-5.5 w-10 rounded-full shrink-0 transition-colors ${
           checked ? "bg-brand" : "bg-border"
         }`}
       >
         <span
-          className={`absolute top-[3px] left-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-            checked ? "translate-x-[18px]" : ""
+          className={`absolute top-0.75 left-0.75 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+            checked ? "translate-x-4.5" : ""
           }`}
         />
       </button>

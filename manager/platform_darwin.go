@@ -14,6 +14,8 @@ import (
 
 func configureCmdOS(_ *exec.Cmd) {}
 
+func postInstallOS(_ *App, _ string) string { return "" }
+
 var extraSearchPaths = []string{
 	// MAMP MySQL
 	"/Applications/MAMP/Library/bin/mysql80/bin",
