@@ -125,21 +125,7 @@ func installServiceOS(a *App, name string) error {
 		case "PostgreSQL":
 			return runCmd("winget", "install", "--id", "PostgreSQL.PostgreSQL.17", "--accept-package-agreements", "--accept-source-agreements")
 		case "MongoDB":
-			err := runCmd("winget", "install", "--id", "MongoDB.Server", "--source", "winget", "--accept-package-agreements", "--accept-source-agreements")
-			if err == nil {
-				return nil
-			}
-			if _, chocoErr := exec.LookPath("choco"); chocoErr == nil {
-				a.emitEvent("install:progress", "Retrying with Chocolatey...")
-				if chocoErr := runCmd("choco", "install", "mongodb", "-y"); chocoErr == nil {
-					return nil
-				}
-			}
-			a.emitEvent("install:progress", "Downloading MongoDB from mongodb.com...")
-			if dlErr := installMongoMSI(); dlErr == nil {
-				return nil
-			}
-			return fmt.Errorf("MongoDB install failed. Install manually from mongodb.com/try/download/community")
+			return a.installMongoWindows()
 		}
 	} else {
 		switch name {
@@ -196,6 +182,52 @@ func runCmd(args ...string) error {
 		return fmt.Errorf("%s", outStr)
 	}
 	return nil
+}
+
+func (a *App) installMongoWindows() error {
+	// 1) winget
+	log.Printf("[mongodb] Trying winget...")
+	a.emitEvent("install:progress", "Installing MongoDB via winget...")
+	err := runCmd("winget", "install", "--id", "MongoDB.Server", "--source", "winget", "--accept-package-agreements", "--accept-source-agreements")
+	if err == nil {
+		ensurePATH()
+		if findBin("mongod") != "" {
+			return nil
+		}
+		log.Printf("[mongodb] winget OK but mongod not found in PATH")
+	} else {
+		log.Printf("[mongodb] winget failed: %v", err)
+	}
+
+	// 2) choco
+	if _, chocoErr := exec.LookPath("choco"); chocoErr == nil {
+		log.Printf("[mongodb] Trying choco...")
+		a.emitEvent("install:progress", "Installing MongoDB via Chocolatey...")
+		if chocoErr := runCmd("choco", "install", "mongodb", "-y"); chocoErr == nil {
+			ensurePATH()
+			if findBin("mongod") != "" {
+				return nil
+			}
+			log.Printf("[mongodb] choco OK but mongod not found in PATH")
+		} else {
+			log.Printf("[mongodb] choco failed: %v", chocoErr)
+		}
+	}
+
+	// 3) MSI direct download
+	log.Printf("[mongodb] Trying MSI download...")
+	a.emitEvent("install:progress", "Downloading MongoDB from mongodb.com...")
+	if dlErr := installMongoMSI(); dlErr == nil {
+		ensurePATH()
+		if findBin("mongod") != "" {
+			return nil
+		}
+		log.Printf("[mongodb] MSI OK but mongod not found in PATH")
+	} else {
+		log.Printf("[mongodb] MSI failed: %v", dlErr)
+	}
+
+	return fmt.Errorf("MongoDB install failed. Check logs at ~/.socadmin/manager-debug.log or install manually from mongodb.com/try/download/community")
 }
 
 func installMongoMSI() error {
