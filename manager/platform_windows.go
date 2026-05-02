@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const createNoWindow = 0x08000000
@@ -124,13 +125,19 @@ func installServiceOS(a *App, name string) error {
 		case "PostgreSQL":
 			return runCmd("winget", "install", "--id", "PostgreSQL.PostgreSQL.17", "--accept-package-agreements", "--accept-source-agreements")
 		case "MongoDB":
-			err := runCmd("winget", "install", "--id", "MongoDB.Server", "--accept-package-agreements", "--accept-source-agreements")
+			err := runCmd("winget", "install", "--id", "MongoDB.Server", "--source", "winget", "--accept-package-agreements", "--accept-source-agreements")
 			if err == nil {
 				return nil
 			}
 			if _, chocoErr := exec.LookPath("choco"); chocoErr == nil {
 				a.emitEvent("install:progress", "Retrying with Chocolatey...")
-				return runCmd("choco", "install", "mongodb", "-y")
+				if chocoErr := runCmd("choco", "install", "mongodb", "-y"); chocoErr == nil {
+					return nil
+				}
+			}
+			a.emitEvent("install:progress", "Downloading MongoDB from mongodb.com...")
+			if dlErr := installMongoMSI(); dlErr == nil {
+				return nil
 			}
 			return fmt.Errorf("MongoDB install failed. Install manually from mongodb.com/try/download/community")
 		}
@@ -187,6 +194,21 @@ func runCmd(args ...string) error {
 			return nil
 		}
 		return fmt.Errorf("%s", outStr)
+	}
+	return nil
+}
+
+func installMongoMSI() error {
+	cmd := exec.Command("powershell", "-NoProfile", "-Command",
+		`$ProgressPreference='SilentlyContinue'; `+
+			`$msi="$env:TEMP\mongodb-server.msi"; `+
+			`Invoke-WebRequest -Uri 'https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-8.0.4-signed.msi' -OutFile $msi; `+
+			`Start-Process msiexec -ArgumentList '/i',$msi,'/quiet','/qn' -Wait -NoNewWindow; `+
+			`Remove-Item $msi -Force`)
+	hideWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s", string(out))
 	}
 	return nil
 }
@@ -507,6 +529,8 @@ func postInstallOS(a *App, name string) string {
 	switch name {
 	case "PostgreSQL":
 		return a.setupPostgresAfterInstall()
+	case "MySQL":
+		return a.setupMySQLAfterInstall()
 	}
 	return ""
 }
@@ -514,23 +538,24 @@ func postInstallOS(a *App, name string) string {
 func (a *App) setupPostgresAfterInstall() string {
 	dataDir := a.findPgDataDirWindows()
 	if dataDir == "" {
-		return "PostgreSQL installed. Default user: postgres"
+		return "PostgreSQL installed. user=postgres, password=root"
 	}
 	hbaPath := filepath.Join(dataDir, "pg_hba.conf")
 	data, err := os.ReadFile(hbaPath)
 	if err != nil {
-		return "PostgreSQL installed. Default user: postgres"
+		return "PostgreSQL installed. user=postgres, password=root"
 	}
-	content := string(data)
+	original := string(data)
 	re := regexp.MustCompile(`(host\s+all\s+all\s+(?:127\.0\.0\.1/32|::1/128)\s+)(?:scram-sha-256|md5)`)
-	newContent := re.ReplaceAllString(content, "${1}trust")
-	if content == newContent {
-		return "PostgreSQL installed. user=postgres, no password (localhost)"
+	if !re.MatchString(original) {
+		return "PostgreSQL installed. user=postgres"
 	}
-	if err := os.WriteFile(hbaPath, []byte(newContent), 0644); err != nil {
-		return "PostgreSQL installed. Default user: postgres"
-	}
-	if svc := findWindowsService("postgresql"); svc != "" {
+
+	trustContent := re.ReplaceAllString(original, "${1}trust")
+	os.WriteFile(hbaPath, []byte(trustContent), 0644)
+
+	svc := findWindowsService("postgresql")
+	if svc != "" {
 		c := exec.Command("net", "stop", svc)
 		hideWindow(c)
 		c.Run()
@@ -538,5 +563,64 @@ func (a *App) setupPostgresAfterInstall() string {
 		hideWindow(c2)
 		c2.Run()
 	}
-	return "PostgreSQL: user=postgres, no password (localhost trust)"
+
+	for i := 0; i < 30; i++ {
+		if isPortOpen(a.pgPort) {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	if psql := findBin("psql"); psql != "" {
+		cmd := exec.Command(psql, "-U", "postgres", "-h", "127.0.0.1",
+			"-p", fmt.Sprintf("%d", a.pgPort),
+			"-c", "ALTER USER postgres PASSWORD 'root'")
+		hideWindow(cmd)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Printf("[postgres] set password failed: %s", string(out))
+		}
+	}
+
+	md5Content := re.ReplaceAllString(original, "${1}md5")
+	os.WriteFile(hbaPath, []byte(md5Content), 0644)
+
+	if svc != "" {
+		c := exec.Command("net", "stop", svc)
+		hideWindow(c)
+		c.Run()
+		c2 := exec.Command("net", "start", svc)
+		hideWindow(c2)
+		c2.Run()
+	}
+
+	return "PostgreSQL: user=postgres, password=root"
+}
+
+func (a *App) setupMySQLAfterInstall() string {
+	if !isPortOpen(a.mysqlPort) {
+		a.startMySQLWindows()
+		for i := 0; i < 30; i++ {
+			if isPortOpen(a.mysqlPort) {
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+	if !isPortOpen(a.mysqlPort) {
+		return "MySQL installed. user=root"
+	}
+	mysqladmin := findBin("mysqladmin")
+	if mysqladmin != "" {
+		cmd := exec.Command(mysqladmin, "-u", "root",
+			fmt.Sprintf("--port=%d", a.mysqlPort), "password", "root")
+		hideWindow(cmd)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Printf("[mysql] set password failed: %s", string(out))
+			return "MySQL installed. user=root"
+		}
+		return "MySQL: user=root, password=root"
+	}
+	return "MySQL installed. user=root"
 }
