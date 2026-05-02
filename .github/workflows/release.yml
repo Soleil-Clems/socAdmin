@@ -58,7 +58,9 @@ jobs:
 
       - name: Install NSIS
         shell: bash
-        run: choco install nsis -y
+        run: |
+          choco install nsis -y
+          echo "C:\\Program Files (x86)\\NSIS" >> $GITHUB_PATH
 
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
