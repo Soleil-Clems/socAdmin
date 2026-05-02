@@ -50,6 +50,10 @@ func init() {
 		filepath.Join(localAppData, "Programs", "mongosh"),
 	}
 	extraSearchPaths = append(extraSearchPaths, wingetPaths...)
+
+	configDir := filepath.Join(home, ".socadmin")
+	mongoMatches, _ := filepath.Glob(filepath.Join(configDir, "mongodb", "mongodb-*", "bin"))
+	extraSearchPaths = append(extraSearchPaths, mongoMatches...)
 }
 
 func binaryName() string { return "socadmin.exe" }
@@ -214,34 +218,54 @@ func (a *App) installMongoWindows() error {
 		}
 	}
 
-	// 3) MSI direct download
-	log.Printf("[mongodb] Trying MSI download...")
-	a.emitEvent("install:progress", "Downloading MongoDB from mongodb.com...")
-	if dlErr := installMongoMSI(); dlErr == nil {
-		ensurePATH()
+	// 3) Portable zip download (no admin needed)
+	log.Printf("[mongodb] Trying portable zip download...")
+	a.emitEvent("install:progress", "Downloading MongoDB portable...")
+	if dlErr := installMongoPortable(a.configDir); dlErr == nil {
 		if findBin("mongod") != "" {
 			return nil
 		}
-		log.Printf("[mongodb] MSI OK but mongod not found in PATH")
+		log.Printf("[mongodb] portable extracted but mongod not found")
 	} else {
-		log.Printf("[mongodb] MSI failed: %v", dlErr)
+		log.Printf("[mongodb] portable download failed: %v", dlErr)
 	}
 
 	return fmt.Errorf("MongoDB install failed. Check logs at ~/.socadmin/manager-debug.log or install manually from mongodb.com/try/download/community")
 }
 
-func installMongoMSI() error {
+func installMongoPortable(configDir string) error {
+	mongoDir := filepath.Join(configDir, "mongodb")
+	if matches, _ := filepath.Glob(filepath.Join(mongoDir, "mongodb-*", "bin", "mongod.exe")); len(matches) > 0 {
+		return nil
+	}
+
+	zipPath := filepath.Join(os.TempDir(), "mongodb.zip")
+	defer os.Remove(zipPath)
+
 	cmd := exec.Command("powershell", "-NoProfile", "-Command",
 		`$ProgressPreference='SilentlyContinue'; `+
-			`$msi="$env:TEMP\mongodb-server.msi"; `+
-			`Invoke-WebRequest -Uri 'https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-8.0.4-signed.msi' -OutFile $msi; `+
-			`Start-Process msiexec -ArgumentList '/i',$msi,'/quiet','/qn' -Wait -NoNewWindow; `+
-			`Remove-Item $msi -Force`)
+			`Invoke-WebRequest -Uri 'https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-8.0.4.zip' -OutFile '`+zipPath+`'`)
 	hideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s", string(out))
+		return fmt.Errorf("download failed: %s", string(out))
 	}
+
+	os.MkdirAll(mongoDir, 0755)
+	cmd2 := exec.Command("powershell", "-NoProfile", "-Command",
+		`Expand-Archive -Path '`+zipPath+`' -DestinationPath '`+mongoDir+`' -Force`)
+	hideWindow(cmd2)
+	out2, err2 := cmd2.CombinedOutput()
+	if err2 != nil {
+		return fmt.Errorf("extract failed: %s", string(out2))
+	}
+
+	if matches, _ := filepath.Glob(filepath.Join(mongoDir, "mongodb-*", "bin")); len(matches) > 0 {
+		extraSearchPaths = append(extraSearchPaths, matches[0])
+		current := os.Getenv("PATH")
+		os.Setenv("PATH", current+string(os.PathListSeparator)+matches[0])
+	}
+
 	return nil
 }
 
