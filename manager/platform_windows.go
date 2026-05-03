@@ -54,6 +54,11 @@ func init() {
 	configDir := filepath.Join(home, ".socadmin")
 	mongoMatches, _ := filepath.Glob(filepath.Join(configDir, "mongodb", "mongodb-*", "bin"))
 	extraSearchPaths = append(extraSearchPaths, mongoMatches...)
+
+	pgBin := filepath.Join(configDir, "postgresql", "pgsql", "bin")
+	if _, err := os.Stat(pgBin); err == nil {
+		extraSearchPaths = append(extraSearchPaths, pgBin)
+	}
 }
 
 func binaryName() string { return "socadmin.exe" }
@@ -235,7 +240,62 @@ func (a *App) installPostgresWindows() error {
 		}
 	}
 
+	// 3) Portable zip download (no admin needed)
+	log.Printf("[postgres] Trying portable zip download...")
+	a.emitEvent("install:progress", "Downloading PostgreSQL portable...")
+	if dlErr := a.installPostgresPortable(); dlErr == nil {
+		if findBin("psql") != "" {
+			return nil
+		}
+		log.Printf("[postgres] portable extracted but psql not found")
+	} else {
+		log.Printf("[postgres] portable download failed: %v", dlErr)
+	}
+
 	return fmt.Errorf("PostgreSQL install failed. Check logs at ~/.socadmin/manager-debug.log or install manually from postgresql.org/download/windows")
+}
+
+func (a *App) installPostgresPortable() error {
+	pgDir := filepath.Join(a.configDir, "postgresql")
+	binDir := filepath.Join(pgDir, "pgsql", "bin")
+	if _, err := os.Stat(filepath.Join(binDir, "psql.exe")); err == nil {
+		return nil
+	}
+
+	zipPath := filepath.Join(os.TempDir(), "postgresql.zip")
+	defer os.Remove(zipPath)
+
+	cmd := exec.Command("curl.exe", "-L", "-o", zipPath,
+		"https://get.enterprisedb.com/postgresql/postgresql-17.2-1-windows-x64-binaries.zip")
+	hideWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("download failed: %s", string(out))
+	}
+
+	os.MkdirAll(pgDir, 0755)
+	cmd2 := exec.Command("powershell", "-NoProfile", "-Command",
+		`Expand-Archive -Path '`+zipPath+`' -DestinationPath '`+pgDir+`' -Force`)
+	hideWindow(cmd2)
+	out2, err2 := cmd2.CombinedOutput()
+	if err2 != nil {
+		return fmt.Errorf("extract failed: %s", string(out2))
+	}
+
+	extraSearchPaths = append(extraSearchPaths, binDir)
+	current := os.Getenv("PATH")
+	os.Setenv("PATH", current+string(os.PathListSeparator)+binDir)
+
+	dataDir := filepath.Join(pgDir, "data")
+	initdb := filepath.Join(binDir, "initdb.exe")
+	cmd3 := exec.Command(initdb, "-D", dataDir, "-U", "postgres", "-A", "trust", "-E", "UTF8")
+	hideWindow(cmd3)
+	out3, err3 := cmd3.CombinedOutput()
+	if err3 != nil {
+		return fmt.Errorf("initdb failed: %s", string(out3))
+	}
+
+	return nil
 }
 
 func (a *App) installMongoWindows() error {
@@ -292,9 +352,8 @@ func installMongoPortable(configDir string) error {
 	zipPath := filepath.Join(os.TempDir(), "mongodb.zip")
 	defer os.Remove(zipPath)
 
-	cmd := exec.Command("powershell", "-NoProfile", "-Command",
-		`$ProgressPreference='SilentlyContinue'; `+
-			`Invoke-WebRequest -Uri 'https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-8.0.4.zip' -OutFile '`+zipPath+`'`)
+	cmd := exec.Command("curl.exe", "-L", "-o", zipPath,
+		"https://fastdl.mongodb.org/windows/mongodb-windows-x86_64-8.0.4.zip")
 	hideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -409,6 +468,7 @@ func (a *App) ensureMySQLDataDir(mysqldPath string) string {
 		programData = `C:\ProgramData`
 	}
 	candidates := []string{
+		filepath.Join(a.configDir, "mysql-data"),
 		filepath.Join(baseDir, "data"),
 		filepath.Join(baseDir, "Data"),
 		filepath.Join(programData, "MySQL", serverName, "Data"),
@@ -419,7 +479,7 @@ func (a *App) ensureMySQLDataDir(mysqldPath string) string {
 			return c
 		}
 	}
-	dataDir := filepath.Join(baseDir, "data")
+	dataDir := filepath.Join(a.configDir, "mysql-data")
 	log.Printf("[mysql] Initializing data directory at %s", dataDir)
 	cmd := exec.Command(mysqldPath, "--initialize-insecure", "--basedir="+baseDir, "--datadir="+dataDir)
 	hideWindow(cmd)
@@ -522,6 +582,10 @@ func (a *App) stopPostgresWindows() error {
 }
 
 func (a *App) findPgDataDirWindows() string {
+	portableData := filepath.Join(a.configDir, "postgresql", "data")
+	if _, err := os.Stat(filepath.Join(portableData, "PG_VERSION")); err == nil {
+		return portableData
+	}
 	for _, ver := range []string{"17", "16", "15", "14"} {
 		p := filepath.Join(`C:\Program Files\PostgreSQL`, ver, "data")
 		if _, err := os.Stat(filepath.Join(p, "PG_VERSION")); err == nil {
