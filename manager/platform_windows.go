@@ -159,7 +159,7 @@ func uninstallServiceOS(a *App, name string) error {
 		case "PostgreSQL":
 			return runCmd("winget", "uninstall", "--id", "PostgreSQL.PostgreSQL.17")
 		case "MongoDB":
-			return runCmd("winget", "uninstall", "--id", "MongoDB.Server")
+			return a.uninstallMongoWindows()
 		}
 	} else {
 		switch name {
@@ -168,10 +168,23 @@ func uninstallServiceOS(a *App, name string) error {
 		case "PostgreSQL":
 			return runCmd("choco", "uninstall", "postgresql17", "-y")
 		case "MongoDB":
-			return runCmd("choco", "uninstall", "mongodb", "-y")
+			return a.uninstallMongoWindows()
 		}
 	}
 	return fmt.Errorf("unknown service: %s", name)
+}
+
+func (a *App) uninstallMongoWindows() error {
+	// Uninstall winget/choco versions
+	runCmd("winget", "uninstall", "--id", "MongoDB.Server", "--all-versions")
+	runCmd("winget", "uninstall", "--id", "MongoDB.Compass", "--all-versions")
+	if _, err := exec.LookPath("choco"); err == nil {
+		runCmd("choco", "uninstall", "mongodb", "-y")
+	}
+	// Remove portable
+	portableDir := filepath.Join(a.configDir, "mongodb")
+	os.RemoveAll(portableDir)
+	return nil
 }
 
 func runCmd(args ...string) error {
