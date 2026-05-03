@@ -127,7 +127,7 @@ func installServiceOS(a *App, name string) error {
 		case "MySQL":
 			return runCmd("winget", "install", "--id", "Oracle.MySQL", "--accept-package-agreements", "--accept-source-agreements")
 		case "PostgreSQL":
-			return runCmd("winget", "install", "--id", "PostgreSQL.PostgreSQL.17", "--accept-package-agreements", "--accept-source-agreements")
+			return a.installPostgresWindows()
 		case "MongoDB":
 			return a.installMongoWindows()
 		}
@@ -136,7 +136,7 @@ func installServiceOS(a *App, name string) error {
 		case "MySQL":
 			return runCmd("choco", "install", "mysql", "-y")
 		case "PostgreSQL":
-			return runCmd("choco", "install", "postgresql17", "-y")
+			return a.installPostgresWindows()
 		case "MongoDB":
 			return runCmd("choco", "install", "mongodb", "-y")
 		}
@@ -199,6 +199,43 @@ func runCmd(args ...string) error {
 		return fmt.Errorf("%s", outStr)
 	}
 	return nil
+}
+
+func (a *App) installPostgresWindows() error {
+	port := fmt.Sprintf("%d", a.pgPort)
+
+	// 1) winget with unattended mode
+	log.Printf("[postgres] Trying winget with unattended mode...")
+	a.emitEvent("install:progress", "Installing PostgreSQL via winget...")
+	err := runCmd("winget", "install", "--id", "PostgreSQL.PostgreSQL.17",
+		"--accept-package-agreements", "--accept-source-agreements",
+		"--override", "--mode unattended --superpassword root --serverport "+port)
+	if err == nil {
+		ensurePATH()
+		if findBin("psql") != "" {
+			return nil
+		}
+		log.Printf("[postgres] winget OK but psql not found in PATH")
+	} else {
+		log.Printf("[postgres] winget failed: %v", err)
+	}
+
+	// 2) choco
+	if _, chocoErr := exec.LookPath("choco"); chocoErr == nil {
+		log.Printf("[postgres] Trying choco...")
+		a.emitEvent("install:progress", "Installing PostgreSQL via Chocolatey...")
+		if chocoErr := runCmd("choco", "install", "postgresql17", "-y", "--params", "/Password:root"); chocoErr == nil {
+			ensurePATH()
+			if findBin("psql") != "" {
+				return nil
+			}
+			log.Printf("[postgres] choco OK but psql not found in PATH")
+		} else {
+			log.Printf("[postgres] choco failed: %v", chocoErr)
+		}
+	}
+
+	return fmt.Errorf("PostgreSQL install failed. Check logs at ~/.socadmin/manager-debug.log or install manually from postgresql.org/download/windows")
 }
 
 func (a *App) installMongoWindows() error {
