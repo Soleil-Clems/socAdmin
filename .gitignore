@@ -5,6 +5,7 @@ skills-lock*
 *skills-lock*
 CLAUDE.md
 .env
+note.txt
 *.env
 node_module
 .impeccable.md

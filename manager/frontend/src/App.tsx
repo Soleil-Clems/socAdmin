@@ -560,6 +560,8 @@ function DatabasesTab({
   const [editingPort, setEditingPort] = useState<string | null>(null);
   const [portInput, setPortInput] = useState("");
   const [canInstall, setCanInstall] = useState(false);
+  const [installProgress, setInstallProgress] = useState<Record<string, string>>({});
+  const [confirmInstall, setConfirmInstall] = useState<string | null>(null);
 
   const addLoading = (name: string) => setLoadingServices((s) => new Set(s).add(name));
   const removeLoading = (name: string) => setLoadingServices((s) => { const n = new Set(s); n.delete(name); return n; });
@@ -575,21 +577,32 @@ function DatabasesTab({
   useEffect(() => {
     const off1 = EventsOn("install:done", (name: string) => {
       removeInstalling(name);
+      setInstallProgress((p) => { const n = { ...p }; delete n[name]; return n; });
       onRefresh();
     });
     const off2 = EventsOn("uninstall:done", (name: string) => {
       removeUninstalling(name);
+      setInstallProgress((p) => { const n = { ...p }; delete n[name]; return n; });
       onRefresh();
     });
     const off3 = EventsOn("app:error", () => {
       setInstallingServices(new Set());
       setUninstallingServices(new Set());
+      setInstallProgress({});
     });
     const off4 = EventsOn("service:error", (msg: string) => {
       setLoadingServices(new Set());
       setServiceError(msg);
     });
-    return () => { off1(); off2(); off3(); off4(); };
+    const off5 = EventsOn("install:progress", (msg: string) => {
+      const svc = ["MySQL", "PostgreSQL", "MongoDB"].find((n) => msg.includes(n)) || "";
+      if (svc) setInstallProgress((p) => ({ ...p, [svc]: msg }));
+    });
+    const off6 = EventsOn("uninstall:progress", (msg: string) => {
+      const svc = ["MySQL", "PostgreSQL", "MongoDB"].find((n) => msg.includes(n)) || "";
+      if (svc) setInstallProgress((p) => ({ ...p, [svc]: msg }));
+    });
+    return () => { off1(); off2(); off3(); off4(); off5(); off6(); };
   }, [onRefresh]);
 
   const installed = services.filter((svc) => svc.installed);
@@ -893,20 +906,31 @@ function DatabasesTab({
                         {svc.name}
                       </h3>
                       <p className="mt-0.5 text-[11px] text-text-muted">
-                        {anotherInstalling ? "Waiting..." : "Not installed"}
+                        {isInstalling && installProgress[svc.name]
+                          ? installProgress[svc.name]
+                          : anotherInstalling
+                            ? "Waiting..."
+                            : "Not installed"}
                       </p>
                     </div>
 
                     <button
-                      onClick={() => handleInstall(svc.name)}
+                      onClick={() => setConfirmInstall(svc.name)}
                       disabled={isInstalling || anotherInstalling}
                       className="shrink-0 rounded-lg border border-border px-4 py-2 text-[12px] font-medium text-text-secondary hover:bg-surface-hover hover:text-text transition-colors disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
                     >
                       {isInstalling ? (
-                        <>
-                          <Spinner />
-                          Installing...
-                        </>
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="flex items-center gap-2">
+                            <Spinner />
+                            <span>Installing...</span>
+                          </div>
+                          {installProgress[svc.name] && (
+                            <span className="text-[10px] text-text-muted max-w-[180px] truncate">
+                              {installProgress[svc.name]}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         "Install"
                       )}
@@ -954,6 +978,9 @@ function DatabasesTab({
                   This will remove {confirmUninstall} from your machine.
                   Your databases and data may be deleted. This action cannot be undone.
                 </p>
+                <p className="mt-1 text-[11px] text-text-muted/70 leading-relaxed">
+                  Commands will run in the background. This may take a moment.
+                </p>
               </div>
             </div>
             <div className="flex items-center justify-end gap-2">
@@ -968,6 +995,52 @@ function DatabasesTab({
                 className="rounded-lg bg-red-subtle px-4 py-2 text-[12px] font-medium text-red hover:bg-red-subtle/70 transition-colors"
               >
                 Uninstall
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Install confirmation dialog */}
+      {confirmInstall && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-[2px]"
+          style={{ padding: "var(--content-px)" }}
+        >
+          <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 space-y-5 shadow-2xl shadow-black/40">
+            <div className="flex items-start gap-3.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-subtle text-brand">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-[14px] font-semibold">
+                  Install {confirmInstall}?
+                </h3>
+                <p className="mt-1.5 text-[12px] text-text-muted leading-relaxed">
+                  Commands will be executed in the background to install {confirmInstall}.
+                  This may take a few minutes depending on your connection.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setConfirmInstall(null)}
+                className="rounded-lg px-4 py-2 text-[12px] font-medium text-text-secondary hover:bg-surface-hover transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleInstall(confirmInstall);
+                  setConfirmInstall(null);
+                }}
+                className="rounded-lg bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors"
+              >
+                Install
               </button>
             </div>
           </div>
