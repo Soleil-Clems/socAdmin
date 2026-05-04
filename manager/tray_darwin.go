@@ -37,8 +37,8 @@ void socaCreateTrayOnMain() {
 
 		NSData *data = [NSData dataWithBytes:_iconData length:_iconLen];
 		NSImage *image = [[NSImage alloc] initWithData:data];
-		[image setSize:NSMakeSize(18, 18)];
-		[image setTemplate:YES];
+		[image setSize:NSMakeSize(26, 26)];
+		[image setTemplate:NO];
 		_statusItem.button.image = image;
 		_statusItem.button.toolTip = @"Soca Manager";
 
