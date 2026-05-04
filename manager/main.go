@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 
 	"github.com/wailsapp/wails/v2"
@@ -20,6 +21,8 @@ var assets embed.FS
 
 func main() {
 	app := NewApp()
+
+	initTray(app)
 
 	appMenu := menu.NewMenu()
 
@@ -54,10 +57,17 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		Menu:             appMenu,
-		BackgroundColour: &options.RGBA{R: 15, G: 15, B: 20, A: 1},
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
+		Menu:              appMenu,
+		HideWindowOnClose: true,
+		BackgroundColour:  &options.RGBA{R: 15, G: 15, B: 20, A: 1},
+		OnStartup: func(ctx context.Context) {
+			app.startup(ctx)
+			startTrayOnMainThread()
+		},
+		OnShutdown: func(ctx context.Context) {
+			cleanupTray()
+			app.shutdown(ctx)
+		},
 		Bind: []interface{}{
 			app,
 		},
