@@ -245,6 +245,7 @@ func (a *App) StartServer() ServerStatus {
 	a.startedAt = time.Now()
 
 	go a.waitForPort(a.port, "server:started", func() {
+		updateTrayServerState(true)
 		if a.openOnStart {
 			a.openBrowserInternal()
 		}
@@ -273,6 +274,7 @@ func (a *App) StopServer() ServerStatus {
 		}
 	}
 
+	updateTrayServerState(false)
 	wailsRuntime.EventsEmit(a.ctx, "server:stopped", nil)
 	return ServerStatus{Running: false, Port: a.port}
 }
