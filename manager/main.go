@@ -65,6 +65,9 @@ func main() {
 			startTrayOnMainThread()
 		},
 		OnBeforeClose: func(ctx context.Context) (prevent bool) {
+			if forceQuit {
+				return false
+			}
 			wailsRuntime.WindowHide(ctx)
 			hideFromDock()
 			return true
