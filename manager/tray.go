@@ -3,12 +3,26 @@ package main
 
 import (
 	_ "embed"
+	"runtime"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed tray_icon.png
+var trayIconPNG []byte
+
+//go:embed tray_icon.ico
+var trayIconICO []byte
+
 var trayIconBytes []byte
+
+func init() {
+	if runtime.GOOS == "windows" {
+		trayIconBytes = trayIconICO
+	} else {
+		trayIconBytes = trayIconPNG
+	}
+}
 
 var trayApp *App
 var forceQuit bool
