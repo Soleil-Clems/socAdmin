@@ -11,6 +11,7 @@ import (
 var trayIconBytes []byte
 
 var trayApp *App
+var forceQuit bool
 
 func handleTrayClick(itemID int) {
 	if trayApp == nil || trayApp.ctx == nil {
@@ -18,6 +19,7 @@ func handleTrayClick(itemID int) {
 	}
 	switch itemID {
 	case trayShow:
+		showInDock()
 		wailsRuntime.WindowShow(trayApp.ctx)
 	case trayStart:
 		go trayApp.StartServer()
@@ -26,6 +28,8 @@ func handleTrayClick(itemID int) {
 	case trayBrowser:
 		trayApp.OpenBrowser()
 	case trayQuit:
+		forceQuit = true
+		cleanupTray()
 		go trayApp.StopServer()
 		wailsRuntime.Quit(trayApp.ctx)
 	}

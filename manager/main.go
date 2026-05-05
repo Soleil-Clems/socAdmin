@@ -27,8 +27,8 @@ func main() {
 	appMenu := menu.NewMenu()
 
 	quitHandler := func(_ *menu.CallbackData) {
-		go app.StopServer()
-		wailsRuntime.Quit(app.ctx)
+		wailsRuntime.WindowHide(app.ctx)
+		hideFromDock()
 	}
 
 	appNameMenu := appMenu.AddSubmenu("Soca Manager")
@@ -63,6 +63,14 @@ func main() {
 		OnStartup: func(ctx context.Context) {
 			app.startup(ctx)
 			startTrayOnMainThread()
+		},
+		OnBeforeClose: func(ctx context.Context) (prevent bool) {
+			if forceQuit {
+				return false
+			}
+			wailsRuntime.WindowHide(ctx)
+			hideFromDock()
+			return true
 		},
 		OnShutdown: func(ctx context.Context) {
 			cleanupTray()
