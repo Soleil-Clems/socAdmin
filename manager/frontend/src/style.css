@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: oklch(0.21 0.014 260);
+  --color-surface: oklch(0.25 0.016 260);
+  --color-surface-hover: oklch(0.28 0.018 260);
+  --color-surface-active: oklch(0.31 0.02 260);
+  --color-border: oklch(0.33 0.018 260);
+  --color-border-subtle: oklch(0.27 0.013 260);
+
+  --color-text: oklch(0.935 0.007 260);
+  --color-text-secondary: oklch(0.62 0.012 260);
+  --color-text-muted: oklch(0.44 0.01 260);
+
+  --color-brand: oklch(0.56 0.19 12);
+  --color-brand-hover: oklch(0.51 0.20 12);
+  --color-brand-subtle: oklch(0.19 0.055 12);
+
+  --color-green: oklch(0.72 0.18 155);
+  --color-green-subtle: oklch(0.19 0.055 155);
+  --color-red: oklch(0.63 0.20 25);
+  --color-red-subtle: oklch(0.19 0.055 25);
+  --color-amber: oklch(0.75 0.15 75);
+  --color-amber-subtle: oklch(0.21 0.055 75);
+  --color-blue: oklch(0.70 0.14 245);
+  --color-blue-subtle: oklch(0.19 0.055 245);
+
+  /* Default safe areas (Windows / Linux — no traffic lights, no rounded corners) */
+  --titlebar-h: 36px;
+  --traffic-light-w: 0px;
+  --window-radius: 0px;
+
+  /* Content rhythm — fluid so small windows stay compact and large windows
+     actually breathe. clamp(min, preferred, max) scales with viewport width.
+     Values picked to match a desktop app (not a web page): generous bottom
+     padding so content never kisses the window edge, extra horizontal room
+     on wide monitors so cards don't feel adrift in a sea of whitespace. */
+  --content-px: clamp(1.75rem, 3.5vw, 3rem);       /* 28 → 48px */
+  --content-py: clamp(1.75rem, 3vw, 2.5rem);       /* 28 → 40px */
+  --content-pb: clamp(2.25rem, 4vw, 3.25rem);      /* bottom breathing room */
+  --content-max: 62rem;                             /* 992px — roomier on wide windows */
+
+  /* Section rhythm inside tab panes */
+  --section-gap: clamp(1.5rem, 2.25vw, 2rem);       /* 24 → 32px */
+  --card-p: clamp(1.125rem, 1.75vw, 1.5rem);        /* 18 → 24px */
+
+  /* Sidebar */
+  --sidebar-w: 14.5rem;                             /* 232px */
+}
+
+/* Light theme override */
+[data-theme="light"] {
+  --color-bg: oklch(0.97 0.005 260);
+  --color-surface: oklch(1 0 0);
+  --color-surface-hover: oklch(0.95 0.005 260);
+  --color-surface-active: oklch(0.92 0.008 260);
+  --color-border: oklch(0.87 0.008 260);
+  --color-border-subtle: oklch(0.92 0.005 260);
+
+  --color-text: oklch(0.2 0.015 260);
+  --color-text-secondary: oklch(0.45 0.015 260);
+  --color-text-muted: oklch(0.6 0.01 260);
+
+  --color-brand: oklch(0.52 0.2 12);
+  --color-brand-hover: oklch(0.47 0.21 12);
+  --color-brand-subtle: oklch(0.93 0.03 12);
+
+  --color-green: oklch(0.52 0.17 155);
+  --color-green-subtle: oklch(0.93 0.035 155);
+  --color-red: oklch(0.55 0.2 25);
+  --color-red-subtle: oklch(0.95 0.03 25);
+  --color-amber: oklch(0.6 0.15 75);
+  --color-amber-subtle: oklch(0.94 0.04 75);
+  --color-blue: oklch(0.55 0.15 245);
+  --color-blue-subtle: oklch(0.93 0.035 245);
+}
+
+/* macOS safe areas — taller titlebar, traffic light offset, rounded window.
+   Traffic lights live in the top-left at ~78px wide; the title row respects
+   this via the --traffic-light-w token so interactive elements never end up
+   hidden under the OS chrome. */
+[data-os="darwin"] {
+  --titlebar-h: 52px;
+  --traffic-light-w: 78px;
+  --window-radius: 10px;
+}
+
+/* box-sizing only — margin/padding handled by Tailwind preflight */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: -apple-system, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
+  /* Match macOS window corner radius so content doesn't clip outside the window chrome */
+  border-radius: var(--window-radius);
+}
+
+/* macOS title bar drag region — make it draggable */
+.drag-region {
+  --wails-draggable: drag;
+  user-select: none;
+}
+
+/* Buttons within drag region need to opt out of drag */
+.drag-region button,
+.drag-region input,
+.drag-region a {
+  --wails-draggable: no-drag;
+}
+
+/* Smooth transitions for interactive elements */
+button,
+input {
+  transition: all 0.15s ease;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Scrollbar — thin, unobtrusive */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-surface-active);
+}
+
+/* Loading spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  opacity: 0.7;
+}
+
+/* Number input — hide browser spinner arrows */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+

@@ -1,0 +1,71 @@
+services:
+  socadmin:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - socadmin-data:/data
+    environment:
+      - PORT=8080
+      - DATA_DIR=/data
+      # - JWT_SECRET=change-me-to-a-random-string-at-least-32-chars
+      - ADMIN_EMAIL=admin@test.com
+      - ADMIN_PASSWORD=Test1234!@
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=secret
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=secret
+      - MONGO_HOST=mongo
+      - MONGO_PORT=27017
+    depends_on:
+      mysql:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8
+    environment:
+      - MYSQL_ROOT_PASSWORD=secret
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_PASSWORD=secret
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  socadmin-data:
+  mysql-data:
+  pg-data:
+  mongo-data:

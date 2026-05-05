@@ -1,0 +1,157 @@
+name: Release Installers
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: "22"
+  GO_VERSION: "1.24"
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend deps
+        run: cd manager/frontend && npm ci
+
+      - name: Build & package DMG
+        run: |
+          chmod +x build/macos/package.sh
+          VERSION=${GITHUB_REF_NAME#v}
+          ./build/macos/package.sh "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: build/macos/dist/*.dmg
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install NSIS
+        shell: bash
+        run: |
+          choco install nsis -y
+          echo "C:\\Program Files (x86)\\NSIS" >> $GITHUB_PATH
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build socAdmin server binary
+        shell: bash
+        run: |
+          cd frontend && npm ci && npm run build && cd ..
+          CGO_ENABLED=1 go build -ldflags="-s -w" -o bin/socadmin.exe .
+
+      - name: Install frontend deps
+        run: cd manager/frontend && npm ci
+
+      - name: Build & package EXE (amd64 + arm64)
+        shell: bash
+        run: |
+          export PATH="/c/Program Files (x86)/NSIS:$PATH"
+          VERSION=${GITHUB_REF_NAME#v}
+          cd manager
+          # 1) Build amd64 with -nsis to generate wails_tools.nsh with resolved templates
+          wails build -clean -platform windows/amd64 -nsis
+          cp ../bin/socadmin.exe build/bin/socadmin.exe
+          # 2) Remove the amd64-only installer (we'll create a dual-arch one)
+          rm -f build/bin/*amd64-installer.exe
+          # 3) Build arm64 binary (no -clean to preserve amd64 binary)
+          wails build -platform windows/arm64 -o soca-manager-arm64.exe -skipbindings
+          # 4) Re-run NSIS with both binaries for dual-arch installer
+          makensis \
+            "-DARG_WAILS_AMD64_BINARY=..\..\bin\soca-manager.exe" \
+            "-DARG_WAILS_ARM64_BINARY=..\..\bin\soca-manager-arm64.exe" \
+            build/windows/installer/project.nsi
+          mkdir -p ../build/windows/dist
+          cp build/bin/*installer.exe "../build/windows/dist/Soca-Manager-${VERSION}-windows-setup.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: build/windows/dist/*.exe
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev fakeroot zstd
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend deps
+        run: cd manager/frontend && npm ci
+
+      - name: Build & package .deb + Arch
+        run: |
+          chmod +x build/linux/package.sh
+          VERSION=${GITHUB_REF_NAME#v}
+          ./build/linux/package.sh "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            build/linux/dist/*.deb
+            build/linux/dist/*.pkg.tar.zst
+
+  release:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/*.dmg
+            artifacts/*.exe
+            artifacts/*.deb
+            artifacts/*.pkg.tar.zst
