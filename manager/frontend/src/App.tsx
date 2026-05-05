@@ -923,7 +923,7 @@ function DatabasesTab({
                         <div className="flex flex-col items-center gap-1">
                           <div className="flex items-center gap-2">
                             <Spinner />
-                            <span>Installing...</span>
+                            <span>Installing... (may take a few minutes)</span>
                           </div>
                           {installProgress[svc.name] && (
                             <span className="text-[10px] text-text-muted max-w-[180px] truncate">

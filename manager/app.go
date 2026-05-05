@@ -441,7 +441,7 @@ func (a *App) InstallService(name string) {
 		a.installMu.Lock()
 		defer a.installMu.Unlock()
 
-		a.emitEvent("install:progress", fmt.Sprintf("Installing %s...", name))
+		a.emitEvent("install:progress", fmt.Sprintf("Installing %s... This may take a few minutes", name))
 		err := installServiceOS(a, name)
 		if err != nil {
 			a.emitError(fmt.Sprintf("Failed to install %s: %v", name, err))
