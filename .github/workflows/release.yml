@@ -101,7 +101,14 @@ jobs:
           path: build/windows/dist/*.exe
 
   build-linux:
-    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: amd64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -132,7 +139,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-packages
+          name: linux-packages-${{ matrix.arch }}
           path: |
             build/linux/dist/*.deb
             build/linux/dist/*.pkg.tar.zst
