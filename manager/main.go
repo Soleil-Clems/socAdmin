@@ -28,6 +28,7 @@ func main() {
 
 	quitHandler := func(_ *menu.CallbackData) {
 		wailsRuntime.WindowHide(app.ctx)
+		hideFromDock()
 	}
 
 	appNameMenu := appMenu.AddSubmenu("Soca Manager")
@@ -65,6 +66,7 @@ func main() {
 		},
 		OnBeforeClose: func(ctx context.Context) (prevent bool) {
 			wailsRuntime.WindowHide(ctx)
+			hideFromDock()
 			return true
 		},
 		OnShutdown: func(ctx context.Context) {

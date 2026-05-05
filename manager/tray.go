@@ -18,6 +18,7 @@ func handleTrayClick(itemID int) {
 	}
 	switch itemID {
 	case trayShow:
+		showInDock()
 		wailsRuntime.WindowShow(trayApp.ctx)
 	case trayStart:
 		go trayApp.StartServer()
