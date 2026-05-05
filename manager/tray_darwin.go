@@ -97,6 +97,19 @@ void socaSetTooltip(const char *tip) {
 	});
 }
 
+void socaHideFromDock() {
+	dispatch_async(dispatch_get_main_queue(), ^{
+		[NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+	});
+}
+
+void socaShowInDock() {
+	dispatch_async(dispatch_get_main_queue(), ^{
+		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+		[NSApp activateIgnoringOtherApps:YES];
+	});
+}
+
 void socaRemoveTray() {
 	dispatch_async(dispatch_get_main_queue(), ^{
 		if (_statusItem) {
@@ -132,6 +145,14 @@ func startTrayOnMainThread() {
 
 func cleanupTray() {
 	C.socaRemoveTray()
+}
+
+func hideFromDock() {
+	C.socaHideFromDock()
+}
+
+func showInDock() {
+	C.socaShowInDock()
 }
 
 func updateTrayServerState(running bool) {

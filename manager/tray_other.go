@@ -52,6 +52,9 @@ func startTrayOnMainThread() {
 	}()
 }
 
+func hideFromDock() {}
+func showInDock()   {}
+
 func cleanupTray() {
 	systray.Quit()
 }
