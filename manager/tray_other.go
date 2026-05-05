@@ -18,45 +18,50 @@ var (
 	mStop  *systray.MenuItem
 )
 
+var trayEnd func()
+
 func initTray(app *App) {
 	trayApp = app
 }
 
 func startTrayOnMainThread() {
-	go func() {
-		systray.Register(func() {
-			systray.SetIcon(trayIconBytes)
-			systray.SetTooltip("Soca Manager")
+	start, end := systray.RunWithExternalLoop(func() {
+		systray.SetIcon(trayIconBytes)
+		systray.SetTooltip("Soca Manager")
 
-			mShowItem := systray.AddMenuItem("Show Window", "")
-			mShowItem.Click(func() { handleTrayClick(trayShow) })
+		mShowItem := systray.AddMenuItem("Show Window", "")
+		mShowItem.Click(func() { handleTrayClick(trayShow) })
 
-			systray.AddSeparator()
+		systray.AddSeparator()
 
-			mStart = systray.AddMenuItem("Start Server", "")
-			mStart.Click(func() { handleTrayClick(trayStart) })
+		mStart = systray.AddMenuItem("Start Server", "")
+		mStart.Click(func() { handleTrayClick(trayStart) })
 
-			mStop = systray.AddMenuItem("Stop Server", "")
-			mStop.Click(func() { handleTrayClick(trayStop) })
+		mStop = systray.AddMenuItem("Stop Server", "")
+		mStop.Click(func() { handleTrayClick(trayStop) })
 
-			systray.AddSeparator()
+		systray.AddSeparator()
 
-			mBrowserItem := systray.AddMenuItem("Open in Browser", "")
-			mBrowserItem.Click(func() { handleTrayClick(trayBrowser) })
+		mBrowserItem := systray.AddMenuItem("Open in Browser", "")
+		mBrowserItem.Click(func() { handleTrayClick(trayBrowser) })
 
-			systray.AddSeparator()
+		systray.AddSeparator()
 
-			mQuitItem := systray.AddMenuItem("Quit", "")
-			mQuitItem.Click(func() { handleTrayClick(trayQuit) })
-		}, func() {})
-	}()
+		mQuitItem := systray.AddMenuItem("Quit", "")
+		mQuitItem.Click(func() { handleTrayClick(trayQuit) })
+	}, func() {})
+
+	trayEnd = end
+	start()
 }
 
 func hideFromDock() {}
 func showInDock()   {}
 
 func cleanupTray() {
-	systray.Quit()
+	if trayEnd != nil {
+		trayEnd()
+	}
 }
 
 func updateTrayServerState(running bool) {
