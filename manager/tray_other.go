@@ -3,7 +3,12 @@
 
 package main
 
-import "github.com/energye/systray"
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/energye/systray"
+)
 
 const (
 	trayShow    = 0
@@ -20,8 +25,13 @@ var (
 
 var trayEnd func()
 
+var trayIconPath string
+
 func initTray(app *App) {
 	trayApp = app
+	home, _ := os.UserHomeDir()
+	trayIconPath = filepath.Join(home, ".socadmin", "tray-icon.png")
+	os.WriteFile(trayIconPath, trayIconPNG, 0644)
 }
 
 func startTrayOnMainThread() {

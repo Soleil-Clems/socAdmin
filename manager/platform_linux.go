@@ -228,12 +228,14 @@ func (a *App) startMySQLLinux() error {
 func (a *App) stopMySQLLinux() error {
 	for _, svc := range []string{"mysql", "mysqld", "mariadb"} {
 		runSudo("systemctl", "stop", svc)
+		a.waitForPortClosed(a.mysqlPort)
 		if !isPortOpen(a.mysqlPort) {
 			return nil
 		}
 	}
 	if path := findBin("mysqladmin"); path != "" {
 		exec.Command(path, "-u", "root", fmt.Sprintf("--port=%d", a.mysqlPort), "shutdown").CombinedOutput()
+		a.waitForPortClosed(a.mysqlPort)
 		if !isPortOpen(a.mysqlPort) {
 			return nil
 		}
@@ -269,6 +271,7 @@ func (a *App) startPostgresLinux() error {
 
 func (a *App) stopPostgresLinux() error {
 	runSudo("systemctl", "stop", "postgresql")
+	a.waitForPortClosed(a.pgPort)
 	if !isPortOpen(a.pgPort) {
 		return nil
 	}
@@ -276,6 +279,7 @@ func (a *App) stopPostgresLinux() error {
 		dataDir := a.findPgDataDirLinux()
 		if dataDir != "" {
 			exec.Command(path, "stop", "-D", dataDir, "-m", "fast").CombinedOutput()
+			a.waitForPortClosed(a.pgPort)
 			if !isPortOpen(a.pgPort) {
 				return nil
 			}
@@ -327,18 +331,21 @@ func (a *App) startMongoLinux() error {
 
 func (a *App) stopMongoLinux() error {
 	runSudo("systemctl", "stop", "mongod")
+	a.waitForPortClosed(a.mongoPort)
 	if !isPortOpen(a.mongoPort) {
 		return nil
 	}
 	if path := findBin("mongod"); path != "" {
 		dbPath := filepath.Join(a.configDir, "mongo-data")
 		exec.Command(path, "--shutdown", "--dbpath", dbPath).CombinedOutput()
+		a.waitForPortClosed(a.mongoPort)
 		if !isPortOpen(a.mongoPort) {
 			return nil
 		}
 	}
 	if path := findBin("mongosh"); path != "" {
 		exec.Command(path, "--eval", "db.adminCommand({shutdown: 1})", "--quiet").CombinedOutput()
+		a.waitForPortClosed(a.mongoPort)
 		if !isPortOpen(a.mongoPort) {
 			return nil
 		}
