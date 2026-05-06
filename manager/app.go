@@ -350,7 +350,7 @@ func (a *App) StartService(name string) {
 			wailsRuntime.EventsEmit(a.ctx, "service:started", defaultPort)
 			return
 		}
-		a.emitError(fmt.Sprintf("Port %d not reachable after 36s", port))
+		a.emitError(fmt.Sprintf("Port %d not reachable after 60s", port))
 	}()
 }
 
