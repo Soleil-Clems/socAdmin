@@ -3,12 +3,14 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func configureCmdOS(_ *exec.Cmd) {}
@@ -32,7 +34,6 @@ func binaryName() string { return "socadmin" }
 func findPackageManager() string { return linuxPackageManager() }
 
 func findPIDOnPortOS(port int) int {
-	// Try ss first (available on modern Linux)
 	out, err := exec.Command("ss", "-tlnp", fmt.Sprintf("sport = :%d", port)).CombinedOutput()
 	if err == nil {
 		re := regexp.MustCompile(`pid=(\d+)`)
@@ -41,7 +42,6 @@ func findPIDOnPortOS(port int) int {
 			return pid
 		}
 	}
-	// Fallback to fuser
 	out, err = exec.Command("fuser", fmt.Sprintf("%d/tcp", port)).CombinedOutput()
 	if err == nil {
 		pid, _ := strconv.Atoi(strings.TrimSpace(string(out)))
@@ -51,14 +51,12 @@ func findPIDOnPortOS(port int) int {
 }
 
 func detectSourceOS(binPath string) string {
-	// Check dpkg (Debian/Ubuntu)
 	if _, err := exec.LookPath("dpkg"); err == nil {
 		out, err := exec.Command("dpkg", "-S", binPath).CombinedOutput()
 		if err == nil && !strings.Contains(string(out), "not found") {
 			return "apt"
 		}
 	}
-	// Check rpm (Fedora/RHEL)
 	if _, err := exec.LookPath("rpm"); err == nil {
 		out, err := exec.Command("rpm", "-qf", binPath).CombinedOutput()
 		if err == nil && !strings.Contains(string(out), "not owned") {
@@ -91,6 +89,51 @@ func linuxPackageManager() string {
 	return ""
 }
 
+// ─── Privileged command execution ───────────────────────────────
+
+func runCmd(args ...string) error {
+	out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func runSudo(args ...string) error {
+	if err := runCmd(args...); err == nil {
+		return nil
+	}
+	if _, err := exec.LookPath("pkexec"); err == nil {
+		out, err := exec.Command("pkexec", args...).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	sudoArgs := append([]string{"-n"}, args...)
+	out, err := exec.Command("sudo", sudoArgs...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func systemctlAction(action string, services ...string) error {
+	for _, svc := range services {
+		if err := runCmd("systemctl", action, svc); err == nil {
+			return nil
+		}
+	}
+	for _, svc := range services {
+		if err := runSudo("systemctl", action, svc); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("systemctl %s failed for %s", action, strings.Join(services, "/"))
+}
+
+// ─── Install / Uninstall ────────────────────────────────────────
+
 func installServiceOS(a *App, name string) error {
 	pm := linuxPackageManager()
 	if pm == "" {
@@ -113,15 +156,12 @@ func installServiceOS(a *App, name string) error {
 		return runSudo("dnf", "install", "-y", "postgresql-server")
 
 	case "MongoDB":
-		// MongoDB requires adding the repo first
 		if pm == "apt" {
-			// Add MongoDB repo (Ubuntu/Debian)
 			exec.Command("bash", "-c", `wget -qO - https://www.mongodb.org/static/pgp/server-8.0.asc | sudo apt-key add -`).CombinedOutput()
 			exec.Command("bash", "-c", `echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/8.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list`).CombinedOutput()
 			runSudo("apt-get", "update")
 			return runSudo("apt-get", "install", "-y", "mongodb-org")
 		}
-		// Fedora/RHEL
 		return runSudo("dnf", "install", "-y", "mongodb-org")
 
 	default:
@@ -161,22 +201,6 @@ func uninstallServiceOS(a *App, name string) error {
 	}
 }
 
-func runSudo(args ...string) error {
-	// Try pkexec (graphical sudo) first, fallback to sudo
-	if _, err := exec.LookPath("pkexec"); err == nil {
-		out, err := exec.Command("pkexec", args...).CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("%s", string(out))
-		}
-		return nil
-	}
-	out, err := exec.Command("sudo", args...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%s", string(out))
-	}
-	return nil
-}
-
 // ─── Start / Stop ────────────────────────────────────────────────
 
 func startServiceOS(a *App, name string) error {
@@ -206,12 +230,9 @@ func stopServiceOS(a *App, name string) error {
 // ─── MySQL ───────────────────────────────────────────────────────
 
 func (a *App) startMySQLLinux() error {
-	for _, svc := range []string{"mysql", "mysqld", "mariadb"} {
-		if err := runSudo("systemctl", "start", svc); err == nil {
-			return nil
-		}
+	if err := systemctlAction("start", "mysql", "mysqld", "mariadb"); err == nil {
+		return nil
 	}
-	// Direct
 	if path := findBin("mysqld_safe"); path != "" {
 		cmd := exec.Command(path, fmt.Sprintf("--port=%d", a.mysqlPort))
 		cmd.Stdout = os.Stdout
@@ -226,33 +247,23 @@ func (a *App) startMySQLLinux() error {
 }
 
 func (a *App) stopMySQLLinux() error {
-	for _, svc := range []string{"mysql", "mysqld", "mariadb"} {
-		runSudo("systemctl", "stop", svc)
-		a.waitForPortClosed(a.mysqlPort)
-		if !isPortOpen(a.mysqlPort) {
-			return nil
-		}
+	systemctlAction("stop", "mysql", "mysqld", "mariadb")
+	if a.waitForPortClosedTimeout(a.mysqlPort, 10*time.Second) {
+		return nil
 	}
 	if path := findBin("mysqladmin"); path != "" {
 		exec.Command(path, "-u", "root", fmt.Sprintf("--port=%d", a.mysqlPort), "shutdown").CombinedOutput()
-		a.waitForPortClosed(a.mysqlPort)
-		if !isPortOpen(a.mysqlPort) {
+		if a.waitForPortClosedTimeout(a.mysqlPort, 5*time.Second) {
 			return nil
 		}
 	}
-	if pid := findPIDOnPort(a.mysqlPort); pid > 0 {
-		if proc, err := os.FindProcess(pid); err == nil {
-			proc.Kill()
-		}
-		return nil
-	}
-	return fmt.Errorf("could not stop MySQL")
+	return a.killOnPort(a.mysqlPort, "MySQL")
 }
 
 // ─── PostgreSQL ──────────────────────────────────────────────────
 
 func (a *App) startPostgresLinux() error {
-	if err := runSudo("systemctl", "start", "postgresql"); err == nil {
+	if err := systemctlAction("start", "postgresql"); err == nil {
 		return nil
 	}
 	if path := findBin("pg_ctl"); path != "" {
@@ -270,28 +281,20 @@ func (a *App) startPostgresLinux() error {
 }
 
 func (a *App) stopPostgresLinux() error {
-	runSudo("systemctl", "stop", "postgresql")
-	a.waitForPortClosed(a.pgPort)
-	if !isPortOpen(a.pgPort) {
+	systemctlAction("stop", "postgresql")
+	if a.waitForPortClosedTimeout(a.pgPort, 10*time.Second) {
 		return nil
 	}
 	if path := findBin("pg_ctl"); path != "" {
 		dataDir := a.findPgDataDirLinux()
 		if dataDir != "" {
 			exec.Command(path, "stop", "-D", dataDir, "-m", "fast").CombinedOutput()
-			a.waitForPortClosed(a.pgPort)
-			if !isPortOpen(a.pgPort) {
+			if a.waitForPortClosedTimeout(a.pgPort, 5*time.Second) {
 				return nil
 			}
 		}
 	}
-	if pid := findPIDOnPort(a.pgPort); pid > 0 {
-		if proc, err := os.FindProcess(pid); err == nil {
-			proc.Kill()
-		}
-		return nil
-	}
-	return fmt.Errorf("could not stop PostgreSQL")
+	return a.killOnPort(a.pgPort, "PostgreSQL")
 }
 
 func (a *App) findPgDataDirLinux() string {
@@ -313,7 +316,7 @@ func (a *App) findPgDataDirLinux() string {
 // ─── MongoDB ─────────────────────────────────────────────────────
 
 func (a *App) startMongoLinux() error {
-	if err := runSudo("systemctl", "start", "mongod"); err == nil {
+	if err := systemctlAction("start", "mongod"); err == nil {
 		return nil
 	}
 	if path := findBin("mongod"); path != "" {
@@ -330,31 +333,50 @@ func (a *App) startMongoLinux() error {
 }
 
 func (a *App) stopMongoLinux() error {
-	runSudo("systemctl", "stop", "mongod")
-	a.waitForPortClosed(a.mongoPort)
-	if !isPortOpen(a.mongoPort) {
+	systemctlAction("stop", "mongod")
+	if a.waitForPortClosedTimeout(a.mongoPort, 10*time.Second) {
 		return nil
 	}
 	if path := findBin("mongod"); path != "" {
 		dbPath := filepath.Join(a.configDir, "mongo-data")
 		exec.Command(path, "--shutdown", "--dbpath", dbPath).CombinedOutput()
-		a.waitForPortClosed(a.mongoPort)
-		if !isPortOpen(a.mongoPort) {
+		if a.waitForPortClosedTimeout(a.mongoPort, 5*time.Second) {
 			return nil
 		}
 	}
 	if path := findBin("mongosh"); path != "" {
 		exec.Command(path, "--eval", "db.adminCommand({shutdown: 1})", "--quiet").CombinedOutput()
-		a.waitForPortClosed(a.mongoPort)
-		if !isPortOpen(a.mongoPort) {
+		if a.waitForPortClosedTimeout(a.mongoPort, 5*time.Second) {
 			return nil
 		}
 	}
-	if pid := findPIDOnPort(a.mongoPort); pid > 0 {
+	return a.killOnPort(a.mongoPort, "MongoDB")
+}
+
+// ─── Helpers ────────────────────────────────────────────────────
+
+func (a *App) waitForPortClosedTimeout(port int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !isPortOpen(port) {
+			return true
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	return !isPortOpen(port)
+}
+
+func (a *App) killOnPort(port int, name string) error {
+	pid := findPIDOnPort(port)
+	if pid > 0 {
 		if proc, err := os.FindProcess(pid); err == nil {
 			proc.Kill()
+			log.Printf("[service] killed %s (pid %d) on port %d", name, pid, port)
 		}
 		return nil
 	}
-	return fmt.Errorf("could not stop MongoDB")
+	if !isPortOpen(port) {
+		return nil
+	}
+	return fmt.Errorf("could not stop %s", name)
 }
