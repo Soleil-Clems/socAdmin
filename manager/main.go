@@ -52,6 +52,8 @@ func main() {
 		Title:     "Soca Manager",
 		Width:     820,
 		Height:    580,
+		MaxWidth:  920,
+		MaxHeight: 640,
 		MinWidth:  700,
 		MinHeight: 500,
 		AssetServer: &assetserver.Options{
