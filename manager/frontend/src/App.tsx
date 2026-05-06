@@ -1,6 +1,9 @@
 // @soleil-clems: Manager UI - Desktop app interface
 import logoDark from "./assets/images/logo-dark.png";
 import logoLight from "./assets/images/logo-light.png";
+import mysqlLogo from "./assets/images/mysql-logo.svg";
+import postgresqlLogo from "./assets/images/postgresql-logo.svg";
+import mongodbLogo from "./assets/images/mongodb-logo.svg";
 import { useEffect, useState, useCallback } from "react";
 import {
   StartServer,
@@ -691,11 +694,11 @@ function DatabasesTab({
 
   const dbStyles: Record<
     string,
-    { bg: string; text: string; letter: string }
+    { bg: string; logo: string }
   > = {
-    MySQL: { bg: "bg-blue-subtle", text: "text-blue", letter: "My" },
-    PostgreSQL: { bg: "bg-amber-subtle", text: "text-amber", letter: "Pg" },
-    MongoDB: { bg: "bg-green-subtle", text: "text-green", letter: "Mg" },
+    MySQL: { bg: "bg-blue-subtle", logo: mysqlLogo },
+    PostgreSQL: { bg: "bg-amber-subtle", logo: postgresqlLogo },
+    MongoDB: { bg: "bg-green-subtle", logo: mongodbLogo },
   };
 
   return (
@@ -748,8 +751,7 @@ function DatabasesTab({
           {installed.map((svc) => {
             const style = dbStyles[svc.name] || {
               bg: "bg-surface-hover",
-              text: "text-text-muted",
-              letter: "?",
+              logo: "",
             };
             const isEditing = editingPort === svc.name;
             const isLoading = loadingServices.has(svc.name);
@@ -761,9 +763,13 @@ function DatabasesTab({
               >
                 <div className="flex items-center gap-4">
                   <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-lg text-[11px] font-bold shrink-0 ${style.bg} ${style.text}`}
+                    className={`flex h-10 w-10 items-center justify-center rounded-lg shrink-0 ${style.bg}`}
                   >
-                    {style.letter}
+                    {style.logo ? (
+                      <img src={style.logo} alt={svc.name} className="h-6 w-6" />
+                    ) : (
+                      <span className="text-[11px] font-bold text-text-muted">?</span>
+                    )}
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -883,8 +889,7 @@ function DatabasesTab({
             {notInstalled.map((svc) => {
               const style = dbStyles[svc.name] || {
                 bg: "bg-surface-hover",
-                text: "text-text-muted",
-                letter: "?",
+                logo: "",
               };
               const isInstalling = installingServices.has(svc.name);
               const anotherInstalling = installingServices.size > 0 && !isInstalling;
@@ -896,9 +901,13 @@ function DatabasesTab({
                 >
                   <div className="flex items-center gap-4">
                     <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-lg text-[11px] font-bold shrink-0 opacity-40 ${style.bg} ${style.text}`}
+                      className={`flex h-10 w-10 items-center justify-center rounded-lg shrink-0 opacity-40 ${style.bg}`}
                     >
-                      {style.letter}
+                      {style.logo ? (
+                        <img src={style.logo} alt={svc.name} className="h-6 w-6" />
+                      ) : (
+                        <span className="text-[11px] font-bold text-text-muted">?</span>
+                      )}
                     </div>
 
                     <div className="flex-1 min-w-0">

@@ -1,5 +1,8 @@
 // @soleil-clems: Frontend - Database connection page
 import { useState, useEffect, useCallback } from "react";
+import mysqlLogo from "@/assets/mysql-logo.svg";
+import postgresqlLogo from "@/assets/postgresql-logo.svg";
+import mongodbLogo from "@/assets/mongodb-logo.svg";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { connectSchema, dbTypes, type ConnectFormData } from "@/schemas/connect.schema";
@@ -26,10 +29,10 @@ const dbLabels: Record<string, string> = {
   mongodb: "MongoDB",
 };
 
-const dbIcons: Record<string, string> = {
-  mysql: "M",
-  postgresql: "P",
-  mongodb: "M",
+const dbLogos: Record<string, string> = {
+  mysql: mysqlLogo,
+  postgresql: postgresqlLogo,
+  mongodb: mongodbLogo,
 };
 
 function isServiceDown(msg: string): boolean {
@@ -240,7 +243,7 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
                     pc.type === "postgresql" ? "bg-db-postgresql/10" :
                     "bg-db-mongodb/10"
                   }`}>
-                    {dbIcons[pc.type] || "?"}
+                    <img src={dbLogos[pc.type]} alt={pc.type} className="w-4 h-4" />
                   </span>
                   {dbLabels[pc.type] || pc.type}
                 </button>
@@ -272,7 +275,7 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
                       conn.type === "postgresql" ? "bg-db-postgresql/10 text-db-postgresql" :
                       "bg-db-mongodb/10 text-db-mongodb"
                     }`}>
-                      {dbIcons[conn.type] || "?"}
+                      <img src={dbLogos[conn.type]} alt={conn.type} className="w-4 h-4" />
                     </span>
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{conn.name}</p>
@@ -341,7 +344,7 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
                       : t === "postgresql" ? "bg-db-postgresql/15"
                       : "bg-db-mongodb/15"
                   }`}>
-                    {dbIcons[t]}
+                    <img src={dbLogos[t]} alt={t} className="w-4 h-4" />
                   </span>
                   {dbLabels[t]}
                 </button>
