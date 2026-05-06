@@ -206,13 +206,10 @@ func stopServiceOS(a *App, name string) error {
 // ─── MySQL ───────────────────────────────────────────────────────
 
 func (a *App) startMySQLLinux() error {
-	// Try systemctl first
 	for _, svc := range []string{"mysql", "mysqld", "mariadb"} {
-		out, err := exec.Command("systemctl", "start", svc).CombinedOutput()
-		if err == nil {
+		if err := runSudo("systemctl", "start", svc); err == nil {
 			return nil
 		}
-		_ = out
 	}
 	// Direct
 	if path := findBin("mysqld_safe"); path != "" {
@@ -230,7 +227,7 @@ func (a *App) startMySQLLinux() error {
 
 func (a *App) stopMySQLLinux() error {
 	for _, svc := range []string{"mysql", "mysqld", "mariadb"} {
-		exec.Command("systemctl", "stop", svc).Run()
+		runSudo("systemctl", "stop", svc)
 		if !isPortOpen(a.mysqlPort) {
 			return nil
 		}
@@ -253,7 +250,7 @@ func (a *App) stopMySQLLinux() error {
 // ─── PostgreSQL ──────────────────────────────────────────────────
 
 func (a *App) startPostgresLinux() error {
-	if err := exec.Command("systemctl", "start", "postgresql").Run(); err == nil {
+	if err := runSudo("systemctl", "start", "postgresql"); err == nil {
 		return nil
 	}
 	if path := findBin("pg_ctl"); path != "" {
@@ -271,7 +268,7 @@ func (a *App) startPostgresLinux() error {
 }
 
 func (a *App) stopPostgresLinux() error {
-	exec.Command("systemctl", "stop", "postgresql").Run()
+	runSudo("systemctl", "stop", "postgresql")
 	if !isPortOpen(a.pgPort) {
 		return nil
 	}
@@ -312,7 +309,7 @@ func (a *App) findPgDataDirLinux() string {
 // ─── MongoDB ─────────────────────────────────────────────────────
 
 func (a *App) startMongoLinux() error {
-	if err := exec.Command("systemctl", "start", "mongod").Run(); err == nil {
+	if err := runSudo("systemctl", "start", "mongod"); err == nil {
 		return nil
 	}
 	if path := findBin("mongod"); path != "" {
@@ -329,7 +326,7 @@ func (a *App) startMongoLinux() error {
 }
 
 func (a *App) stopMongoLinux() error {
-	exec.Command("systemctl", "stop", "mongod").Run()
+	runSudo("systemctl", "stop", "mongod")
 	if !isPortOpen(a.mongoPort) {
 		return nil
 	}
