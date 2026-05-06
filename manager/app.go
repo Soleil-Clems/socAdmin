@@ -379,13 +379,13 @@ func (a *App) setServicePort(name string, port int) {
 }
 
 func (a *App) waitForPortQuiet(port int) bool {
-	for i := 0; i < 60; i++ {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 300*time.Millisecond)
+	for i := 0; i < 120; i++ {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 500*time.Millisecond)
 		if err == nil {
 			conn.Close()
 			return true
 		}
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 	return false
 }
