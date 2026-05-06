@@ -14,7 +14,7 @@ CGO_ENABLED=1 go build -ldflags="-s -w" -o bin/socadmin .
 
 echo "==> Building Soca Manager for Linux..."
 cd "$ROOT_DIR/manager"
-wails build -clean
+wails build -clean -tags webkit2_41
 
 BINARY="$ROOT_DIR/manager/build/bin/${PKG_NAME}"
 if [ ! -f "$BINARY" ]; then
@@ -68,7 +68,7 @@ Section: database
 Priority: optional
 Architecture: ${ARCH}
 Installed-Size: ${INSTALLED_SIZE}
-Depends: libgtk-3-0t64 | libgtk-3-0, libwebkit2gtk-4.1-0 | libwebkit2gtk-4.0-37
+Depends: libgtk-3-0t64 | libgtk-3-0, libwebkit2gtk-4.1-0
 Maintainer: Soleil-Clems <marketing@librasoft.fr>
 Description: ${APP_NAME} — Database administration made simple
  A modern, self-hosted, multi-database administration tool.
