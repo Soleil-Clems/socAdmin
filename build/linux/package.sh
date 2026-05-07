@@ -51,6 +51,10 @@ fi
 mkdir -p "$DEBDIR/usr/share/polkit-1/actions"
 cp "$SCRIPT_DIR/com.socadmin.manager.policy" "$DEBDIR/usr/share/polkit-1/actions/"
 
+mkdir -p "$DEBDIR/etc/sudoers.d"
+cp "$SCRIPT_DIR/soca-manager-sudoers" "$DEBDIR/etc/sudoers.d/soca-manager"
+chmod 440 "$DEBDIR/etc/sudoers.d/soca-manager"
+
 cat > "$DEBDIR/usr/share/applications/${PKG_NAME}.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
@@ -106,6 +110,10 @@ fi
 
 mkdir -p "$ARCHDIR/usr/share/polkit-1/actions"
 cp "$SCRIPT_DIR/com.socadmin.manager.policy" "$ARCHDIR/usr/share/polkit-1/actions/"
+
+mkdir -p "$ARCHDIR/etc/sudoers.d"
+cp "$SCRIPT_DIR/soca-manager-sudoers" "$ARCHDIR/etc/sudoers.d/soca-manager"
+chmod 440 "$ARCHDIR/etc/sudoers.d/soca-manager"
 
 cat > "$ARCHDIR/usr/share/applications/${PKG_NAME}.desktop" <<DESKTOP
 [Desktop Entry]
