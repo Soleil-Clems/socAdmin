@@ -103,6 +103,11 @@ func runSudo(args ...string) error {
 	if err := runCmd(args...); err == nil {
 		return nil
 	}
+	sudoArgs := append([]string{"-n"}, args...)
+	if out, err := exec.Command("sudo", sudoArgs...).CombinedOutput(); err == nil {
+		_ = out
+		return nil
+	}
 	if _, err := exec.LookPath("pkexec"); err == nil {
 		out, err := exec.Command("pkexec", args...).CombinedOutput()
 		if err != nil {
@@ -110,12 +115,7 @@ func runSudo(args ...string) error {
 		}
 		return nil
 	}
-	sudoArgs := append([]string{"-n"}, args...)
-	out, err := exec.Command("sudo", sudoArgs...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
-	}
-	return nil
+	return fmt.Errorf("failed to run: %s", strings.Join(args, " "))
 }
 
 func systemctlAction(action string, services ...string) error {
