@@ -76,7 +76,7 @@ Priority: optional
 Architecture: ${ARCH}
 Installed-Size: ${INSTALLED_SIZE}
 Depends: libgtk-3-0t64 | libgtk-3-0, libwebkit2gtk-4.1-0
-Maintainer: Soleil-Clems <marketing@librasoft.fr>
+Maintainer: Soleil-Clems <ouisolclems@gmail.com>
 Description: ${APP_NAME} — Database administration made simple
  A modern, self-hosted, multi-database administration tool.
  Supports MySQL, PostgreSQL, and MongoDB.
