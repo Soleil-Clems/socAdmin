@@ -4,14 +4,10 @@
 package main
 
 import (
-	"log"
 	"os"
 	"path/filepath"
-	"runtime"
-	"time"
 
 	"github.com/energye/systray"
-	"github.com/godbus/dbus/v5"
 )
 
 const (
@@ -28,23 +24,24 @@ var (
 )
 
 var trayEnd func()
-var trayIconPath string
 
 func initTray(app *App) {
 	trayApp = app
+
 	home, _ := os.UserHomeDir()
 	iconDir := filepath.Join(home, ".socadmin", "icons", "hicolor", "256x256", "apps")
 	os.MkdirAll(iconDir, 0755)
-	trayIconPath = filepath.Join(iconDir, "soca-manager.png")
-	os.WriteFile(trayIconPath, trayIconPNG, 0644)
+	os.WriteFile(filepath.Join(iconDir, "soca-manager.png"), trayIconPNG, 0644)
+
+	themePath := filepath.Join(home, ".socadmin", "icons")
+	systray.SetIconName("soca-manager")
+	systray.SetIconThemePath(themePath)
 }
 
 func startTrayOnMainThread() {
 	start, end := systray.RunWithExternalLoop(func() {
 		systray.SetIcon(trayIconBytes)
 		systray.SetTooltip("Soca Manager")
-
-		go setIconNameViaDbus()
 
 		mShowItem := systray.AddMenuItem("Show Window", "")
 		mShowItem.Click(func() { handleTrayClick(trayShow) })
@@ -70,29 +67,6 @@ func startTrayOnMainThread() {
 
 	trayEnd = end
 	start()
-}
-
-func setIconNameViaDbus() {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	time.Sleep(500 * time.Millisecond)
-
-	conn, err := dbus.SessionBus()
-	if err != nil {
-		log.Printf("[tray] dbus session: %v", err)
-		return
-	}
-
-	home, _ := os.UserHomeDir()
-	themePath := filepath.Join(home, ".socadmin", "icons")
-
-	obj := conn.Object("org.kde.StatusNotifierItem", "/StatusNotifierItem")
-
-	obj.SetProperty("org.kde.StatusNotifierItem.IconThemePath", dbus.MakeVariant(themePath))
-	obj.SetProperty("org.kde.StatusNotifierItem.IconName", dbus.MakeVariant("soca-manager"))
-
-	conn.Emit("/StatusNotifierItem", "org.kde.StatusNotifierItem.NewIcon")
 }
 
 func hideFromDock() {}
