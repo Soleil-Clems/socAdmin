@@ -91,7 +91,18 @@ func linuxPackageManager() string {
 
 // ─── Privileged command execution ───────────────────────────────
 
+func findFullPath(name string) string {
+	for _, dir := range []string{"/usr/bin", "/usr/sbin", "/usr/local/bin", "/bin", "/sbin"} {
+		p := filepath.Join(dir, name)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return name
+}
+
 func runCmd(args ...string) error {
+	args[0] = findFullPath(args[0])
 	out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
@@ -100,16 +111,20 @@ func runCmd(args ...string) error {
 }
 
 func runSudo(args ...string) error {
+	args[0] = findFullPath(args[0])
 	if err := runCmd(args...); err == nil {
 		return nil
 	}
+	sudoBin := findFullPath("sudo")
 	sudoArgs := append([]string{"-n"}, args...)
-	if out, err := exec.Command("sudo", sudoArgs...).CombinedOutput(); err == nil {
-		_ = out
+	out, err := exec.Command(sudoBin, sudoArgs...).CombinedOutput()
+	if err == nil {
 		return nil
 	}
-	if _, err := exec.LookPath("pkexec"); err == nil {
-		out, err := exec.Command("pkexec", args...).CombinedOutput()
+	log.Printf("[sudo] %s %s → %s", sudoBin, strings.Join(sudoArgs, " "), strings.TrimSpace(string(out)))
+	pkexecBin := findFullPath("pkexec")
+	if _, err := os.Stat(pkexecBin); err == nil {
+		out, err := exec.Command(pkexecBin, args...).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
 		}
