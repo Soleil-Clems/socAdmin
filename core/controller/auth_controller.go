@@ -4,7 +4,9 @@ package controller
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
 	"github.com/soleilouisol/socAdmin/core/logger"
@@ -29,15 +31,23 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+func isSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true")
+}
+
 // setAuthCookies writes HttpOnly cookies for access and refresh tokens.
-func setAuthCookies(w http.ResponseWriter, tokens *auth.TokenPair) {
+func setAuthCookies(w http.ResponseWriter, r *http.Request, tokens *auth.TokenPair) {
+	secure := isSecureRequest(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     "access_token",
 		Value:    tokens.AccessToken,
 		Path:     "/",
 		MaxAge:   int(auth.AccessTokenDuration.Seconds()),
 		HttpOnly: true,
-		Secure:   false, // set to true when behind TLS reverse proxy
+		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 	})
 	http.SetCookie(w, &http.Cookie{
@@ -46,7 +56,7 @@ func setAuthCookies(w http.ResponseWriter, tokens *auth.TokenPair) {
 		Path:     "/",
 		MaxAge:   int(auth.RefreshTokenDuration.Seconds()),
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 	})
 }
@@ -95,7 +105,7 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setAuthCookies(w, result.Tokens)
+	setAuthCookies(w, r, result.Tokens)
 	logger.Auth("register", result.User.ID, requestIP(r))
 	jsonResponse(w, http.StatusCreated, map[string]interface{}{
 		"id":    result.User.ID,
@@ -123,7 +133,7 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setAuthCookies(w, tokens)
+	setAuthCookies(w, r, tokens)
 	logger.Auth("login", user.ID, requestIP(r))
 	jsonResponse(w, http.StatusOK, map[string]string{"role": user.Role})
 }
@@ -142,7 +152,7 @@ func (c *AuthController) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setAuthCookies(w, tokens)
+	setAuthCookies(w, r, tokens)
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "refreshed"})
 }
 

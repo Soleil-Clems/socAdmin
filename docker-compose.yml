@@ -11,6 +11,8 @@ services:
       # - JWT_SECRET=change-me-to-a-random-string-at-least-32-chars
       - ADMIN_EMAIL=admin@test.com
       - ADMIN_PASSWORD=Test1234!@
+      - REGISTRATION_ENABLED=true
+      - ALLOW_PRIVATE_NETWORKS=true
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
       - MYSQL_USER=root
