@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"net"
 
 	"github.com/soleilouisol/socAdmin/core/connector"
 	"github.com/soleilouisol/socAdmin/core/logger"
@@ -2182,23 +2182,42 @@ func sanitizeErrorMessage(msg string) string {
 	return msg
 }
 
-// isBlockedHost returns true for hosts that should never be used as DB targets
-// (cloud metadata endpoints, link-local addresses, loopback when inappropriate).
 func isBlockedHost(host string) bool {
 	ip := net.ParseIP(host)
 	if ip == nil {
-		// Hostname — block known metadata hostnames
 		lower := strings.ToLower(host)
-		return lower == "metadata.google.internal" ||
+		if lower == "metadata.google.internal" ||
 			lower == "metadata.google" ||
-			strings.HasSuffix(lower, ".internal")
+			strings.HasSuffix(lower, ".metadata.google.internal") {
+			return true
+		}
+		return false
 	}
-	// Block link-local 169.254.0.0/16 (AWS/GCP/Azure metadata)
+	// Always block cloud metadata 169.254.0.0/16
+	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 169 && ip4[1] == 254 {
+		return true
+	}
+	if ip.IsLinkLocalUnicast() {
+		return true
+	}
+	if os.Getenv("ALLOW_PRIVATE_NETWORKS") != "" {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsUnspecified() {
+		return true
+	}
 	if ip4 := ip.To4(); ip4 != nil {
-		return ip4[0] == 169 && ip4[1] == 254
+		if ip4[0] == 10 {
+			return true
+		}
+		if ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31 {
+			return true
+		}
+		if ip4[0] == 192 && ip4[1] == 168 {
+			return true
+		}
 	}
-	// Block IPv6 link-local (fe80::/10)
-	return ip.IsLinkLocalUnicast()
+	return false
 }
 
 // ── Triggers ─────────────────────────────────────────────────────────────

@@ -1,6 +1,9 @@
 services:
   socadmin:
     image: socadmin:latest
+    read_only: true
+    tmpfs:
+      - /tmp
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
     volumes:
@@ -11,6 +14,9 @@ services:
       - JWT_SECRET=${JWT_SECRET:?Set a random string of at least 32 characters}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-ChangeMe123!@}
+      - REGISTRATION_ENABLED=${REGISTRATION_ENABLED:-false}
+      - SECURE_COOKIES=${SECURE_COOKIES:-true}
+      - ALLOW_PRIVATE_NETWORKS=${ALLOW_PRIVATE_NETWORKS:-}
       - MYSQL_HOST=${MYSQL_HOST:-}
       - MYSQL_PORT=${MYSQL_PORT:-3306}
       - MYSQL_USER=${MYSQL_USER:-}

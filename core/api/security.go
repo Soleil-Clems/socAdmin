@@ -4,6 +4,7 @@ package api
 import (
 	"net/http"
 	"os"
+	"strings"
 )
 
 // SecurityHeaders adds HTTP security headers to all responses
@@ -34,8 +35,7 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		// Content Security Policy
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
 
-		// Prevent caching of API responses
-		if len(r.URL.Path) > 4 && r.URL.Path[:5] == "/api/" {
+		if strings.Contains(r.URL.Path, "/api/") {
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("Pragma", "no-cache")
 		}

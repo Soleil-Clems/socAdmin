@@ -1,0 +1,45 @@
+#!/bin/bash
+# Soca Manager privileged helper — runs as root via pkexec
+set -euo pipefail
+
+case "${1:-}" in
+    start-mysql)      systemctl start mysql 2>/dev/null || systemctl start mysqld 2>/dev/null || systemctl start mariadb ;;
+    stop-mysql)       systemctl stop mysql 2>/dev/null || systemctl stop mysqld 2>/dev/null || systemctl stop mariadb ;;
+    start-postgresql) systemctl start postgresql ;;
+    stop-postgresql)  systemctl stop postgresql ;;
+    start-mongod)     systemctl start mongod ;;
+    stop-mongod)      systemctl stop mongod ;;
+
+    install-mysql)
+        if command -v apt-get &>/dev/null; then apt-get install -y mysql-server
+        elif command -v dnf &>/dev/null; then dnf install -y mysql-server
+        else echo "No package manager found"; exit 1; fi ;;
+    remove-mysql)
+        if command -v apt-get &>/dev/null; then apt-get remove -y mysql-server
+        elif command -v dnf &>/dev/null; then dnf remove -y mysql-server
+        else echo "No package manager found"; exit 1; fi ;;
+
+    install-postgresql)
+        if command -v apt-get &>/dev/null; then apt-get install -y postgresql
+        elif command -v dnf &>/dev/null; then dnf install -y postgresql-server
+        else echo "No package manager found"; exit 1; fi ;;
+    remove-postgresql)
+        if command -v apt-get &>/dev/null; then apt-get remove -y postgresql
+        elif command -v dnf &>/dev/null; then dnf remove -y postgresql-server
+        else echo "No package manager found"; exit 1; fi ;;
+
+    install-mongodb)
+        if command -v apt-get &>/dev/null; then
+            wget -qO - https://www.mongodb.org/static/pgp/server-8.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg 2>/dev/null || true
+            echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/8.0 multiverse" > /etc/apt/sources.list.d/mongodb-org-8.0.list
+            apt-get update
+            apt-get install -y mongodb-org
+        elif command -v dnf &>/dev/null; then dnf install -y mongodb-org
+        else echo "No package manager found"; exit 1; fi ;;
+    remove-mongodb)
+        if command -v apt-get &>/dev/null; then apt-get remove -y mongodb-org
+        elif command -v dnf &>/dev/null; then dnf remove -y mongodb-org
+        else echo "No package manager found"; exit 1; fi ;;
+
+    *) echo "Unknown command: ${1:-}"; exit 1 ;;
+esac

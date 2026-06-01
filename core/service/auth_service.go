@@ -3,6 +3,8 @@ package service
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
@@ -27,7 +29,23 @@ type RegisterResult struct {
 	Tokens *auth.TokenPair
 }
 
+func registrationEnabled() bool {
+	val := os.Getenv("REGISTRATION_ENABLED")
+	if val == "" {
+		return true
+	}
+	return strings.EqualFold(val, "true") || val == "1"
+}
+
 func (s *AuthService) Register(email, password string) (*RegisterResult, error) {
+	count, err := s.repo.UserCount()
+	if err != nil {
+		return nil, err
+	}
+	if count > 0 && !registrationEnabled() {
+		return nil, fmt.Errorf("registration is disabled")
+	}
+
 	existing, err := s.repo.FindByEmail(email)
 	if err != nil {
 		return nil, err
@@ -41,10 +59,8 @@ func (s *AuthService) Register(email, password string) (*RegisterResult, error) 
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// First user ever registered becomes admin
 	role := auth.RoleReadonly
-	count, err := s.repo.UserCount()
-	if err == nil && count == 0 {
+	if count == 0 {
 		role = auth.RoleAdmin
 	}
 
