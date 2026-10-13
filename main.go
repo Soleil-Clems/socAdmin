@@ -163,13 +163,14 @@ func main() {
 
 	// Serve API routes under /{prefix}/api/, everything else is the React SPA
 	apiPathPrefix := "/" + apiPrefix + "/api"
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if len(r.URL.Path) >= len(apiPathPrefix) && r.URL.Path[:len(apiPathPrefix)] == apiPathPrefix {
 			apiHandler.ServeHTTP(w, r)
 			return
 		}
 		frontend.ServeHTTP(w, r)
 	})
+	handler := api.SecurityHeaders(mux)
 
 	port := 8080
 	if envPort := os.Getenv("PORT"); envPort != "" {

@@ -193,10 +193,10 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 
 	mux.Handle(p+"/", auth.AuthMiddleware(protected))
 
-	// Middleware chain: IP whitelist → rate limiter → CSRF → security headers
+	// Middleware chain: IP whitelist → rate limiter → CSRF
+	// SecurityHeaders is applied globally in main.go (covers both API + SPA)
 	rateLimiter := NewRateLimiter(200, time.Minute) // 200 req/min per IP
 	var handler http.Handler = mux
-	handler = SecurityHeaders(handler)
 	handler = CSRFProtection(apiPrefix)(handler)
 	handler = rateLimiter.Middleware(handler)
 	handler = whitelist.Middleware(handler)
