@@ -119,7 +119,7 @@ func (c *ConnectionController) UseSavedConnection(w http.ResponseWriter, r *http
 	}
 
 	// Connect
-	if err := c.dbService.Connect(conn.Host, conn.Port, conn.DbUser, password, conn.DbType); err != nil {
+	if err := c.dbService.Connect(claims.UserID, conn.Host, conn.Port, conn.DbUser, password, conn.DbType); err != nil {
 		logger.Connect(claims.UserID, requestIP(r), conn.DbType, conn.Host, conn.Port, false)
 		jsonError(w, http.StatusBadGateway, err.Error())
 		return
