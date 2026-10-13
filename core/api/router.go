@@ -175,6 +175,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 
 	// App users management — admin only
 	protected.HandleFunc("GET "+p+"/users/app", auth.RequireAdmin(authController.ListAppUsers))
+	protected.HandleFunc("POST "+p+"/users/app", auth.RequireAdmin(authController.CreateAppUser))
 	protected.HandleFunc("PUT "+p+"/users/app/{id}/role", auth.RequireAdmin(authController.UpdateAppUserRole))
 	protected.HandleFunc("DELETE "+p+"/users/app/{id}", auth.RequireAdmin(authController.DeleteAppUser))
 

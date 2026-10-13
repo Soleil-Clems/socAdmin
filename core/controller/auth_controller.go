@@ -231,6 +231,50 @@ func (c *AuthController) DeleteAppUser(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+type CreateAppUserRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Role     string `json:"role"`
+}
+
+func (c *AuthController) CreateAppUser(w http.ResponseWriter, r *http.Request) {
+	var req CreateAppUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Email == "" || req.Password == "" {
+		jsonError(w, http.StatusBadRequest, "email and password are required")
+		return
+	}
+	if req.Role == "" {
+		req.Role = auth.RoleReadonly
+	}
+	if req.Role != auth.RoleAdmin && req.Role != auth.RoleReadonly {
+		jsonError(w, http.StatusBadRequest, "role must be admin or readonly")
+		return
+	}
+
+	if err := auth.ValidatePassword(req.Password); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	user, err := c.authService.CreateUser(req.Email, req.Password, req.Role)
+	if err != nil {
+		jsonError(w, http.StatusConflict, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "user_create", req.Email)
+	jsonResponse(w, http.StatusCreated, map[string]interface{}{
+		"id":    user.ID,
+		"email": user.Email,
+		"role":  user.Role,
+	})
+}
+
 // Logout revokes the caller's refresh token so it can no longer be used.
 func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("refresh_token"); err == nil && cookie.Value != "" {

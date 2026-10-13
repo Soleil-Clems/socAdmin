@@ -138,6 +138,23 @@ func (s *AuthService) RevokeRefreshToken(token string) {
 	s.repo.RevokeRefreshToken(token)
 }
 
+func (s *AuthService) CreateUser(email, password, role string) (*auth.User, error) {
+	existing, err := s.repo.FindByEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, fmt.Errorf("email already registered")
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	return s.repo.CreateUser(email, string(hashed), role)
+}
+
 func (s *AuthService) ListUsers() ([]auth.User, error) {
 	return s.repo.ListUsers()
 }

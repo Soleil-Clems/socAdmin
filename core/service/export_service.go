@@ -15,8 +15,12 @@ import (
 // ── Database-level exports ──────────────────────────────────────────
 
 // ExportDatabaseSQL exports all tables as CREATE + INSERT SQL
-func (s *DatabaseService) ExportDatabaseSQL(w io.Writer, database string) error {
-	tables, err := s.conn.ListTables(database)
+func (s *DatabaseService) ExportDatabaseSQL(userID int64, w io.Writer, database string) error {
+	c, err := s.getConn(userID)
+	if err != nil {
+		return err
+	}
+	tables, err := c.ListTables(database)
 	if err != nil {
 		return err
 	}
@@ -25,7 +29,7 @@ func (s *DatabaseService) ExportDatabaseSQL(w io.Writer, database string) error 
 	fmt.Fprintf(w, "-- Tables: %d\n\n", len(tables))
 
 	for _, table := range tables {
-		if err := s.ExportSQL(w, database, table); err != nil {
+		if err := s.ExportSQL(userID, w, database, table); err != nil {
 			fmt.Fprintf(w, "-- ERROR exporting table %s: %s\n\n", table, err.Error())
 			continue
 		}
@@ -36,15 +40,19 @@ func (s *DatabaseService) ExportDatabaseSQL(w io.Writer, database string) error 
 }
 
 // ExportDatabaseJSON exports all tables as a JSON object { "table_name": [...rows] }
-func (s *DatabaseService) ExportDatabaseJSON(w io.Writer, database string) error {
-	tables, err := s.conn.ListTables(database)
+func (s *DatabaseService) ExportDatabaseJSON(userID int64, w io.Writer, database string) error {
+	c, err := s.getConn(userID)
+	if err != nil {
+		return err
+	}
+	tables, err := c.ListTables(database)
 	if err != nil {
 		return err
 	}
 
 	data := make(map[string]interface{})
 	for _, table := range tables {
-		result, err := s.conn.GetRows(database, table, 100000, 0)
+		result, err := c.GetRows(database, table, 100000, 0)
 		if err != nil {
 			data[table] = map[string]string{"error": err.Error()}
 			continue
@@ -58,8 +66,12 @@ func (s *DatabaseService) ExportDatabaseJSON(w io.Writer, database string) error
 }
 
 // ExportDatabaseCSV exports all tables as CSV blocks separated by headers
-func (s *DatabaseService) ExportDatabaseCSV(w io.Writer, database string) error {
-	tables, err := s.conn.ListTables(database)
+func (s *DatabaseService) ExportDatabaseCSV(userID int64, w io.Writer, database string) error {
+	c, err := s.getConn(userID)
+	if err != nil {
+		return err
+	}
+	tables, err := c.ListTables(database)
 	if err != nil {
 		return err
 	}
@@ -69,7 +81,7 @@ func (s *DatabaseService) ExportDatabaseCSV(w io.Writer, database string) error 
 			fmt.Fprintln(w)
 		}
 		fmt.Fprintf(w, "# Table: %s\n", table)
-		if err := s.ExportCSV(w, database, table); err != nil {
+		if err := s.ExportCSV(userID, w, database, table); err != nil {
 			fmt.Fprintf(w, "# ERROR: %s\n", err.Error())
 		}
 	}
@@ -78,15 +90,19 @@ func (s *DatabaseService) ExportDatabaseCSV(w io.Writer, database string) error 
 }
 
 // ExportDatabaseYAML exports all tables as YAML
-func (s *DatabaseService) ExportDatabaseYAML(w io.Writer, database string) error {
-	tables, err := s.conn.ListTables(database)
+func (s *DatabaseService) ExportDatabaseYAML(userID int64, w io.Writer, database string) error {
+	c, err := s.getConn(userID)
+	if err != nil {
+		return err
+	}
+	tables, err := c.ListTables(database)
 	if err != nil {
 		return err
 	}
 
 	data := make(map[string]interface{})
 	for _, table := range tables {
-		result, err := s.conn.GetRows(database, table, 100000, 0)
+		result, err := c.GetRows(database, table, 100000, 0)
 		if err != nil {
 			data[table] = map[string]string{"error": err.Error()}
 			continue
@@ -100,8 +116,12 @@ func (s *DatabaseService) ExportDatabaseYAML(w io.Writer, database string) error
 // ── Table-level exports ─────────────────────────────────────────────
 
 // ExportCSV writes table data as CSV
-func (s *DatabaseService) ExportCSV(w io.Writer, database, table string) error {
-	result, err := s.conn.GetRows(database, table, 100000, 0)
+func (s *DatabaseService) ExportCSV(userID int64, w io.Writer, database, table string) error {
+	c, err := s.getConn(userID)
+	if err != nil {
+		return err
+	}
+	result, err := c.GetRows(database, table, 100000, 0)
 	if err != nil {
 		return err
 	}
@@ -132,8 +152,12 @@ func (s *DatabaseService) ExportCSV(w io.Writer, database, table string) error {
 }
 
 // ExportJSON writes table data as a JSON array
-func (s *DatabaseService) ExportJSON(w io.Writer, database, table string) error {
-	result, err := s.conn.GetRows(database, table, 100000, 0)
+func (s *DatabaseService) ExportJSON(userID int64, w io.Writer, database, table string) error {
+	c, err := s.getConn(userID)
+	if err != nil {
+		return err
+	}
+	result, err := c.GetRows(database, table, 100000, 0)
 	if err != nil {
 		return err
 	}
@@ -144,8 +168,12 @@ func (s *DatabaseService) ExportJSON(w io.Writer, database, table string) error 
 }
 
 // ExportYAML writes table data as YAML
-func (s *DatabaseService) ExportYAML(w io.Writer, database, table string) error {
-	result, err := s.conn.GetRows(database, table, 100000, 0)
+func (s *DatabaseService) ExportYAML(userID int64, w io.Writer, database, table string) error {
+	c, err := s.getConn(userID)
+	if err != nil {
+		return err
+	}
+	result, err := c.GetRows(database, table, 100000, 0)
 	if err != nil {
 		return err
 	}
@@ -154,27 +182,17 @@ func (s *DatabaseService) ExportYAML(w io.Writer, database, table string) error 
 }
 
 // sanitizeColumnExtra strips MySQL information_schema noise from the EXTRA
-// column so what remains is valid CREATE TABLE syntax. EXTRA can contain:
-//
-//	auto_increment                          → keep
-//	on update CURRENT_TIMESTAMP             → keep
-//	DEFAULT_GENERATED                       → drop (it's a flag meaning "has a DEFAULT")
-//	DEFAULT_GENERATED on update CURRENT_TIMESTAMP → keep just the "on update ..." part
-//	VIRTUAL GENERATED / STORED GENERATED    → drop (we don't replay generated exprs)
-//	INVISIBLE                               → drop (MySQL 8 only, non-standard)
+// column so what remains is valid CREATE TABLE syntax.
 func sanitizeColumnExtra(extra string) string {
 	if extra == "" {
 		return ""
 	}
-	// Strip the pure-metadata DEFAULT_GENERATED prefix so "DEFAULT_GENERATED
-	// on update CURRENT_TIMESTAMP" becomes "on update CURRENT_TIMESTAMP".
 	cleaned := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(extra), "DEFAULT_GENERATED"))
 	lower := strings.ToLower(cleaned)
 	switch {
 	case lower == "" || lower == "default_generated":
 		return ""
 	case strings.Contains(lower, "generated"):
-		// Computed columns — too complex to replay reliably, skip.
 		return ""
 	case strings.Contains(lower, "invisible"):
 		return ""
@@ -182,21 +200,14 @@ func sanitizeColumnExtra(extra string) string {
 	return cleaned
 }
 
-// formatSQLDefault quotes a default value coming from DescribeTable so it
-// is valid inside a CREATE TABLE DEFAULT clause. MySQL returns function
-// defaults like CURRENT_TIMESTAMP or NOW() unquoted; literal defaults
-// ('foo', 0, '2024-01-01') should be quoted. We detect functions by
-// checking for trailing parens or a known keyword list.
 func formatSQLDefault(def, colType string) string {
 	if def == "" {
 		return "''"
 	}
 	upper := strings.ToUpper(strings.TrimSpace(def))
-	// NULL and numeric-looking defaults need no quoting
 	if upper == "NULL" {
 		return "NULL"
 	}
-	// Known MySQL default-function names
 	functions := []string{
 		"CURRENT_TIMESTAMP", "CURRENT_DATE", "CURRENT_TIME",
 		"NOW", "UTC_TIMESTAMP", "UTC_DATE", "UTC_TIME", "UUID",
@@ -206,19 +217,15 @@ func formatSQLDefault(def, colType string) string {
 			return def
 		}
 	}
-	// If the column type is numeric and the default parses as a number,
-	// leave it unquoted.
 	if isNumericType(colType) {
 		if _, err := fmt.Sscanf(def, "%f", new(float64)); err == nil {
 			return def
 		}
 	}
-	// Fall through: treat as a string literal, escape single quotes.
 	escaped := strings.ReplaceAll(def, "'", "''")
 	return "'" + escaped + "'"
 }
 
-// isNumericType returns true for MySQL numeric column types.
 func isNumericType(t string) bool {
 	lower := strings.ToLower(t)
 	prefixes := []string{"int", "tinyint", "smallint", "mediumint", "bigint", "decimal", "numeric", "float", "double", "bit"}
@@ -230,24 +237,24 @@ func isNumericType(t string) bool {
 	return false
 }
 
-// ExportSQL writes table data as CREATE TABLE + INSERT statements, using
-// the SGBD-specific identifier quoting (backticks for MySQL, double
-// quotes for Postgres). MongoDB doesn't go through here — use JSON.
-func (s *DatabaseService) ExportSQL(w io.Writer, database, table string) error {
-	columns, err := s.conn.DescribeTable(database, table)
+// ExportSQL writes table data as CREATE TABLE + INSERT statements.
+func (s *DatabaseService) ExportSQL(userID int64, w io.Writer, database, table string) error {
+	c, err := s.getConn(userID)
+	if err != nil {
+		return err
+	}
+	columns, err := c.DescribeTable(database, table)
 	if err != nil {
 		return err
 	}
 
-	result, err := s.conn.GetRows(database, table, 100000, 0)
+	result, err := c.GetRows(database, table, 100000, 0)
 	if err != nil {
 		return err
 	}
 
-	q := s.conn.QuoteIdentifier
-	// Sniff the connector type once so we can emit SGBD-specific syntax
-	// (SERIAL vs auto_increment, skip nextval defaults, etc).
-	_, isPostgres := s.conn.(*connector.PostgresConnector)
+	q := c.QuoteIdentifier
+	_, isPostgres := c.(*connector.PostgresConnector)
 
 	fmt.Fprintf(w, "-- Export of %s.%s\n\n", database, table)
 
@@ -257,10 +264,6 @@ func (s *DatabaseService) ExportSQL(w io.Writer, database, table string) error {
 		colType := col.Type
 		skipDefault := false
 
-		// Postgres identity columns come back as `integer NOT NULL
-		// DEFAULT nextval(...)` + extra="auto_increment". None of that
-		// is valid in a literal CREATE TABLE — collapse it all to the
-		// SERIAL shorthand Postgres already understands.
 		if isPostgres && strings.EqualFold(col.Extra, "auto_increment") {
 			switch strings.ToLower(colType) {
 			case "smallint":
@@ -272,8 +275,6 @@ func (s *DatabaseService) ExportSQL(w io.Writer, database, table string) error {
 			}
 			skipDefault = true
 		}
-		// Even for non-identity Postgres columns, a nextval default is
-		// always tied to a sequence that doesn't exist in the target DB.
 		if isPostgres && col.Default != nil && strings.Contains(strings.ToLower(*col.Default), "nextval(") {
 			skipDefault = true
 		}
@@ -282,13 +283,9 @@ func (s *DatabaseService) ExportSQL(w io.Writer, database, table string) error {
 		if col.Null == "NO" {
 			def += " NOT NULL"
 		}
-		// DEFAULT must come before AUTO_INCREMENT / ON UPDATE in MySQL's
-		// CREATE TABLE grammar.
 		if !skipDefault && col.Default != nil {
 			def += " DEFAULT " + formatSQLDefault(*col.Default, colType)
 		}
-		// Extra is MySQL-specific. For Postgres we already handled the
-		// auto_increment case above (→ SERIAL) so skip it entirely.
 		if !isPostgres {
 			if extra := sanitizeColumnExtra(col.Extra); extra != "" {
 				def += " " + extra
@@ -321,9 +318,9 @@ func (s *DatabaseService) ExportSQL(w io.Writer, database, table string) error {
 			if val == nil {
 				vals[i] = "NULL"
 			} else {
-				s := fmt.Sprintf("%v", val)
-				s = strings.ReplaceAll(s, "'", "''")
-				vals[i] = "'" + s + "'"
+				sv := fmt.Sprintf("%v", val)
+				sv = strings.ReplaceAll(sv, "'", "''")
+				vals[i] = "'" + sv + "'"
 			}
 		}
 		fmt.Fprintf(w, "INSERT INTO %s (%s) VALUES (%s);\n", q(table), colList, strings.Join(vals, ", "))
