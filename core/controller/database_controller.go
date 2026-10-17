@@ -2182,6 +2182,18 @@ func sanitizeErrorMessage(msg string) string {
 	return msg
 }
 
+var allowPrivateNetworks = detectAllowPrivateNetworks()
+
+func detectAllowPrivateNetworks() bool {
+	if v := os.Getenv("ALLOW_PRIVATE_NETWORKS"); v != "" {
+		return v != "false" && v != "0"
+	}
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return false
+	}
+	return true
+}
+
 func isBlockedHost(host string) bool {
 	ip := net.ParseIP(host)
 	if ip == nil {
@@ -2200,7 +2212,7 @@ func isBlockedHost(host string) bool {
 	if ip.IsLinkLocalUnicast() {
 		return true
 	}
-	if os.Getenv("ALLOW_PRIVATE_NETWORKS") != "" {
+	if allowPrivateNetworks {
 		return false
 	}
 	if ip.IsLoopback() || ip.IsUnspecified() {
