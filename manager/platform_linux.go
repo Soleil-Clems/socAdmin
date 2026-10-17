@@ -91,6 +91,8 @@ func linuxPackageManager() string {
 
 // ─── Privileged command execution ───────────────────────────────
 
+const helperPath = "/usr/lib/soca-manager/soca-helper"
+
 func findFullPath(name string) string {
 	for _, dir := range []string{"/usr/bin", "/usr/sbin", "/usr/local/bin", "/bin", "/sbin"} {
 		p := filepath.Join(dir, name)
@@ -101,116 +103,53 @@ func findFullPath(name string) string {
 	return name
 }
 
-func runCmd(args ...string) error {
-	args[0] = findFullPath(args[0])
-	out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+func runHelper(command string) error {
+	if _, err := os.Stat(helperPath); err != nil {
+		return fmt.Errorf("soca-helper not found at %s — reinstall the package", helperPath)
+	}
+
+	sudoBin := findFullPath("sudo")
+	out, err := exec.Command(sudoBin, "-n", helperPath, command).CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	log.Printf("[helper] sudo -n failed: %s", strings.TrimSpace(string(out)))
+
+	pkexecBin := findFullPath("pkexec")
+	out, err = exec.Command(pkexecBin, helperPath, command).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
 	}
 	return nil
 }
 
-func runSudo(args ...string) error {
-	args[0] = findFullPath(args[0])
-	if err := runCmd(args...); err == nil {
-		return nil
-	}
-	sudoBin := findFullPath("sudo")
-	sudoArgs := append([]string{"-n"}, args...)
-	out, err := exec.Command(sudoBin, sudoArgs...).CombinedOutput()
-	if err == nil {
-		return nil
-	}
-	log.Printf("[sudo] %s %s → %s", sudoBin, strings.Join(sudoArgs, " "), strings.TrimSpace(string(out)))
-	pkexecBin := findFullPath("pkexec")
-	if _, err := os.Stat(pkexecBin); err == nil {
-		out, err := exec.Command(pkexecBin, args...).CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("%s", strings.TrimSpace(string(out)))
-		}
-		return nil
-	}
-	return fmt.Errorf("failed to run: %s", strings.Join(args, " "))
-}
-
-func systemctlAction(action string, services ...string) error {
-	for _, svc := range services {
-		if err := runCmd("systemctl", action, svc); err == nil {
-			return nil
-		}
-	}
-	for _, svc := range services {
-		if err := runSudo("systemctl", action, svc); err == nil {
-			return nil
-		}
-	}
-	return fmt.Errorf("systemctl %s failed for %s", action, strings.Join(services, "/"))
-}
-
 // ─── Install / Uninstall ────────────────────────────────────────
 
 func installServiceOS(a *App, name string) error {
-	pm := linuxPackageManager()
-	if pm == "" {
-		return fmt.Errorf("no supported package manager found (apt-get or dnf)")
-	}
-
 	a.emitEvent("install:progress", fmt.Sprintf("Installing %s...", name))
 
 	switch name {
 	case "MySQL":
-		if pm == "apt" {
-			return runSudo("apt-get", "install", "-y", "mysql-server")
-		}
-		return runSudo("dnf", "install", "-y", "mysql-server")
-
+		return runHelper("install-mysql")
 	case "PostgreSQL":
-		if pm == "apt" {
-			return runSudo("apt-get", "install", "-y", "postgresql")
-		}
-		return runSudo("dnf", "install", "-y", "postgresql-server")
-
+		return runHelper("install-postgresql")
 	case "MongoDB":
-		if pm == "apt" {
-			exec.Command("bash", "-c", `wget -qO - https://www.mongodb.org/static/pgp/server-8.0.asc | sudo apt-key add -`).CombinedOutput()
-			exec.Command("bash", "-c", `echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu $(lsb_release -cs)/mongodb-org/8.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list`).CombinedOutput()
-			runSudo("apt-get", "update")
-			return runSudo("apt-get", "install", "-y", "mongodb-org")
-		}
-		return runSudo("dnf", "install", "-y", "mongodb-org")
-
+		return runHelper("install-mongodb")
 	default:
 		return fmt.Errorf("unknown service: %s", name)
 	}
 }
 
 func uninstallServiceOS(a *App, name string) error {
-	pm := linuxPackageManager()
-	if pm == "" {
-		return fmt.Errorf("no supported package manager found")
-	}
-
 	a.emitEvent("uninstall:progress", fmt.Sprintf("Uninstalling %s...", name))
 
 	switch name {
 	case "MySQL":
-		if pm == "apt" {
-			return runSudo("apt-get", "remove", "-y", "mysql-server")
-		}
-		return runSudo("dnf", "remove", "-y", "mysql-server")
-
+		return runHelper("remove-mysql")
 	case "PostgreSQL":
-		if pm == "apt" {
-			return runSudo("apt-get", "remove", "-y", "postgresql")
-		}
-		return runSudo("dnf", "remove", "-y", "postgresql-server")
-
+		return runHelper("remove-postgresql")
 	case "MongoDB":
-		if pm == "apt" {
-			return runSudo("apt-get", "remove", "-y", "mongodb-org")
-		}
-		return runSudo("dnf", "remove", "-y", "mongodb-org")
-
+		return runHelper("remove-mongodb")
 	default:
 		return fmt.Errorf("unknown service: %s", name)
 	}
@@ -245,7 +184,7 @@ func stopServiceOS(a *App, name string) error {
 // ─── MySQL ───────────────────────────────────────────────────────
 
 func (a *App) startMySQLLinux() error {
-	if err := systemctlAction("start", "mysql", "mysqld", "mariadb"); err == nil {
+	if err := runHelper("start-mysql"); err == nil {
 		return nil
 	}
 	if path := findBin("mysqld_safe"); path != "" {
@@ -262,7 +201,7 @@ func (a *App) startMySQLLinux() error {
 }
 
 func (a *App) stopMySQLLinux() error {
-	systemctlAction("stop", "mysql", "mysqld", "mariadb")
+	runHelper("stop-mysql")
 	if a.waitForPortClosedTimeout(a.mysqlPort, 10*time.Second) {
 		return nil
 	}
@@ -278,7 +217,7 @@ func (a *App) stopMySQLLinux() error {
 // ─── PostgreSQL ──────────────────────────────────────────────────
 
 func (a *App) startPostgresLinux() error {
-	if err := systemctlAction("start", "postgresql"); err == nil {
+	if err := runHelper("start-postgresql"); err == nil {
 		return nil
 	}
 	if path := findBin("pg_ctl"); path != "" {
@@ -296,7 +235,7 @@ func (a *App) startPostgresLinux() error {
 }
 
 func (a *App) stopPostgresLinux() error {
-	systemctlAction("stop", "postgresql")
+	runHelper("stop-postgresql")
 	if a.waitForPortClosedTimeout(a.pgPort, 10*time.Second) {
 		return nil
 	}
@@ -331,7 +270,7 @@ func (a *App) findPgDataDirLinux() string {
 // ─── MongoDB ─────────────────────────────────────────────────────
 
 func (a *App) startMongoLinux() error {
-	if err := systemctlAction("start", "mongod"); err == nil {
+	if err := runHelper("start-mongod"); err == nil {
 		return nil
 	}
 	if path := findBin("mongod"); path != "" {
@@ -348,7 +287,7 @@ func (a *App) startMongoLinux() error {
 }
 
 func (a *App) stopMongoLinux() error {
-	systemctlAction("stop", "mongod")
+	runHelper("stop-mongod")
 	if a.waitForPortClosedTimeout(a.mongoPort, 10*time.Second) {
 		return nil
 	}

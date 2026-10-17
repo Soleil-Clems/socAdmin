@@ -92,34 +92,35 @@ func TestContainsCI(t *testing.T) {
 
 func TestDatabaseService_NotConnected(t *testing.T) {
 	svc := NewDatabaseService()
+	var uid int64 = 1
 
-	if svc.IsConnected() {
+	if svc.IsConnected(uid) {
 		t.Error("new service should not be connected")
 	}
-	if svc.GetType() != "" {
+	if svc.GetType(uid) != "" {
 		t.Error("type should be empty")
 	}
-	if svc.GetConnectionInfo() != nil {
+	if svc.GetConnectionInfo(uid) != nil {
 		t.Error("connection info should be nil")
 	}
 
-	_, err := svc.ListDatabases()
+	_, err := svc.ListDatabases(uid)
 	if err == nil {
 		t.Error("ListDatabases should fail when not connected")
 	}
-	_, err = svc.ListTables("test")
+	_, err = svc.ListTables(uid, "test")
 	if err == nil {
 		t.Error("ListTables should fail when not connected")
 	}
-	_, err = svc.ExecuteQuery("test", "SELECT 1")
+	_, err = svc.ExecuteQuery(uid, "test", "SELECT 1")
 	if err == nil {
 		t.Error("ExecuteQuery should fail when not connected")
 	}
-	err = svc.CreateDatabase("test")
+	err = svc.CreateDatabase(uid, "test")
 	if err == nil {
 		t.Error("CreateDatabase should fail when not connected")
 	}
-	err = svc.DropDatabase("test")
+	err = svc.DropDatabase(uid, "test")
 	if err == nil {
 		t.Error("DropDatabase should fail when not connected")
 	}
@@ -127,7 +128,7 @@ func TestDatabaseService_NotConnected(t *testing.T) {
 
 func TestDatabaseService_ConnectUnsupportedType(t *testing.T) {
 	svc := NewDatabaseService()
-	err := svc.Connect("localhost", 3306, "root", "", "redis")
+	err := svc.Connect(1, "localhost", 3306, "root", "", "redis")
 	if err == nil {
 		t.Error("should reject unsupported database type")
 	}
@@ -153,7 +154,7 @@ func TestDatabaseService_Preconfigured(t *testing.T) {
 
 func TestDatabaseService_Disconnect_WhenNotConnected(t *testing.T) {
 	svc := NewDatabaseService()
-	err := svc.Disconnect()
+	err := svc.Disconnect(1)
 	if err != nil {
 		t.Errorf("Disconnect() on unconnected service should not error: %v", err)
 	}

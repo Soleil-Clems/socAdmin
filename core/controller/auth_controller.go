@@ -4,7 +4,9 @@ package controller
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/soleilouisol/socAdmin/core/auth"
 	"github.com/soleilouisol/socAdmin/core/logger"
@@ -29,15 +31,23 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+func isSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(os.Getenv("SECURE_COOKIES"), "true")
+}
+
 // setAuthCookies writes HttpOnly cookies for access and refresh tokens.
-func setAuthCookies(w http.ResponseWriter, tokens *auth.TokenPair) {
+func setAuthCookies(w http.ResponseWriter, r *http.Request, tokens *auth.TokenPair) {
+	secure := isSecureRequest(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     "access_token",
 		Value:    tokens.AccessToken,
 		Path:     "/",
 		MaxAge:   int(auth.AccessTokenDuration.Seconds()),
 		HttpOnly: true,
-		Secure:   false, // set to true when behind TLS reverse proxy
+		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 	})
 	http.SetCookie(w, &http.Cookie{
@@ -46,7 +56,7 @@ func setAuthCookies(w http.ResponseWriter, tokens *auth.TokenPair) {
 		Path:     "/",
 		MaxAge:   int(auth.RefreshTokenDuration.Seconds()),
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 	})
 }
@@ -95,7 +105,7 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setAuthCookies(w, result.Tokens)
+	setAuthCookies(w, r, result.Tokens)
 	logger.Auth("register", result.User.ID, requestIP(r))
 	jsonResponse(w, http.StatusCreated, map[string]interface{}{
 		"id":    result.User.ID,
@@ -123,7 +133,7 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setAuthCookies(w, tokens)
+	setAuthCookies(w, r, tokens)
 	logger.Auth("login", user.ID, requestIP(r))
 	jsonResponse(w, http.StatusOK, map[string]string{"role": user.Role})
 }
@@ -142,7 +152,7 @@ func (c *AuthController) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setAuthCookies(w, tokens)
+	setAuthCookies(w, r, tokens)
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "refreshed"})
 }
 
@@ -219,6 +229,50 @@ func (c *AuthController) DeleteAppUser(w http.ResponseWriter, r *http.Request) {
 
 	logger.Admin(callerID, requestIP(r), "user_delete", strconv.FormatInt(id, 10))
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+type CreateAppUserRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Role     string `json:"role"`
+}
+
+func (c *AuthController) CreateAppUser(w http.ResponseWriter, r *http.Request) {
+	var req CreateAppUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Email == "" || req.Password == "" {
+		jsonError(w, http.StatusBadRequest, "email and password are required")
+		return
+	}
+	if req.Role == "" {
+		req.Role = auth.RoleReadonly
+	}
+	if req.Role != auth.RoleAdmin && req.Role != auth.RoleReadonly {
+		jsonError(w, http.StatusBadRequest, "role must be admin or readonly")
+		return
+	}
+
+	if err := auth.ValidatePassword(req.Password); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	user, err := c.authService.CreateUser(req.Email, req.Password, req.Role)
+	if err != nil {
+		jsonError(w, http.StatusConflict, err.Error())
+		return
+	}
+
+	logger.Admin(requestUserID(r), requestIP(r), "user_create", req.Email)
+	jsonResponse(w, http.StatusCreated, map[string]interface{}{
+		"id":    user.ID,
+		"email": user.Email,
+		"role":  user.Role,
+	})
 }
 
 // Logout revokes the caller's refresh token so it can no longer be used.

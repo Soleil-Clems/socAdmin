@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"net"
 
 	"github.com/soleilouisol/socAdmin/core/connector"
 	"github.com/soleilouisol/socAdmin/core/logger"
@@ -62,7 +62,7 @@ type CreateTableRequest struct {
 }
 
 func (c *DatabaseController) ConnectionStatus(w http.ResponseWriter, r *http.Request) {
-	info := c.dbService.GetConnectionInfo()
+	info := c.dbService.GetConnectionInfo(requestUserID(r))
 	if info == nil {
 		jsonResponse(w, http.StatusOK, map[string]interface{}{
 			"connected": false,
@@ -96,7 +96,7 @@ func (c *DatabaseController) Connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := c.dbService.Connect(req.Host, req.Port, req.User, req.Password, dbType); err != nil {
+	if err := c.dbService.Connect(requestUserID(r), req.Host, req.Port, req.User, req.Password, dbType); err != nil {
 		logger.Connect(requestUserID(r), requestIP(r), dbType, req.Host, req.Port, false)
 		jsonError(w, http.StatusBadGateway, err.Error())
 		return
@@ -107,7 +107,7 @@ func (c *DatabaseController) Connect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *DatabaseController) Disconnect(w http.ResponseWriter, r *http.Request) {
-	if err := c.dbService.Disconnect(); err != nil {
+	if err := c.dbService.Disconnect(requestUserID(r)); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -136,7 +136,7 @@ func (c *DatabaseController) ListPreconfigured(w http.ResponseWriter, r *http.Re
 }
 
 func (c *DatabaseController) ListDatabases(w http.ResponseWriter, r *http.Request) {
-	databases, err := c.dbService.ListDatabases()
+	databases, err := c.dbService.ListDatabases(requestUserID(r))
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -146,7 +146,7 @@ func (c *DatabaseController) ListDatabases(w http.ResponseWriter, r *http.Reques
 }
 
 func (c *DatabaseController) ListDatabasesWithStats(w http.ResponseWriter, r *http.Request) {
-	infos, err := c.dbService.ListDatabasesWithStats()
+	infos, err := c.dbService.ListDatabasesWithStats(requestUserID(r))
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -162,7 +162,7 @@ func (c *DatabaseController) GetSchema(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	schema, err := c.dbService.GetSchema(db)
+	schema, err := c.dbService.GetSchema(requestUserID(r), db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -192,7 +192,7 @@ func (c *DatabaseController) SearchGlobal(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	results, err := c.dbService.SearchGlobal(db, q, limit)
+	results, err := c.dbService.SearchGlobal(requestUserID(r), db, q, limit)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -216,7 +216,7 @@ func (c *DatabaseController) CreateDatabase(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := c.dbService.CreateDatabase(req.Name); err != nil {
+	if err := c.dbService.CreateDatabase(requestUserID(r), req.Name); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -231,7 +231,7 @@ func (c *DatabaseController) DropDatabase(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := c.dbService.DropDatabase(db); err != nil {
+	if err := c.dbService.DropDatabase(requestUserID(r), db); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -263,7 +263,7 @@ func (c *DatabaseController) CreateTable(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	if err := c.dbService.CreateTable(db, req.Name, req.Columns); err != nil {
+	if err := c.dbService.CreateTable(requestUserID(r), db, req.Name, req.Columns); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -277,7 +277,7 @@ func (c *DatabaseController) ListTables(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	tables, err := c.dbService.ListTables(db)
+	tables, err := c.dbService.ListTables(requestUserID(r), db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -293,7 +293,7 @@ func (c *DatabaseController) DescribeTable(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	columns, err := c.dbService.DescribeTable(db, table)
+	columns, err := c.dbService.DescribeTable(requestUserID(r), db, table)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -322,7 +322,7 @@ func (c *DatabaseController) GetRows(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := c.dbService.GetRows(db, table, limit, offset)
+	result, err := c.dbService.GetRows(requestUserID(r), db, table, limit, offset)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -354,7 +354,7 @@ func (c *DatabaseController) ExecuteQuery(w http.ResponseWriter, r *http.Request
 			jsonError(w, http.StatusBadRequest, "database is required for multi-statement scripts")
 			return
 		}
-		_, err := c.dbService.ExecuteScript(req.Database, req.Query)
+		_, err := c.dbService.ExecuteScript(requestUserID(r), req.Database, req.Query)
 		duration := time.Since(start)
 		if err != nil {
 			logger.Query(requestUserID(r), requestIP(r), req.Database, duration, 0, true)
@@ -369,7 +369,7 @@ func (c *DatabaseController) ExecuteQuery(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	result, err := c.dbService.ExecuteQuery(req.Database, req.Query)
+	result, err := c.dbService.ExecuteQuery(requestUserID(r), req.Database, req.Query)
 	duration := time.Since(start)
 
 	if err != nil {
@@ -393,7 +393,7 @@ func (c *DatabaseController) DropTable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := c.dbService.DropTable(db, table); err != nil {
+	if err := c.dbService.DropTable(requestUserID(r), db, table); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -430,7 +430,7 @@ func (c *DatabaseController) AlterColumn(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	if err := c.dbService.AlterColumn(db, table, op); err != nil {
+	if err := c.dbService.AlterColumn(requestUserID(r), db, table, op); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -446,7 +446,7 @@ func (c *DatabaseController) TruncateTable(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := c.dbService.TruncateTable(db, table); err != nil {
+	if err := c.dbService.TruncateTable(requestUserID(r), db, table); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -465,7 +465,7 @@ func (c *DatabaseController) InsertRow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := c.dbService.InsertRow(db, table, req.Data); err != nil {
+	if err := c.dbService.InsertRow(requestUserID(r), db, table, req.Data); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -483,7 +483,7 @@ func (c *DatabaseController) UpdateRow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := c.dbService.UpdateRow(db, table, req.PrimaryKey, req.Data); err != nil {
+	if err := c.dbService.UpdateRow(requestUserID(r), db, table, req.PrimaryKey, req.Data); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -501,7 +501,7 @@ func (c *DatabaseController) DeleteRow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := c.dbService.DeleteRow(db, table, req.PrimaryKey); err != nil {
+	if err := c.dbService.DeleteRow(requestUserID(r), db, table, req.PrimaryKey); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -520,25 +520,25 @@ func (c *DatabaseController) ExportTable(w http.ResponseWriter, r *http.Request)
 	case "csv":
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.csv"`, table))
-		if err := c.dbService.ExportCSV(w, db, table); err != nil {
+		if err := c.dbService.ExportCSV(requestUserID(r), w, db, table); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	case "json":
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.json"`, table))
-		if err := c.dbService.ExportJSON(w, db, table); err != nil {
+		if err := c.dbService.ExportJSON(requestUserID(r), w, db, table); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	case "sql":
 		w.Header().Set("Content-Type", "application/sql")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.sql"`, table))
-		if err := c.dbService.ExportSQL(w, db, table); err != nil {
+		if err := c.dbService.ExportSQL(requestUserID(r), w, db, table); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	case "yaml":
 		w.Header().Set("Content-Type", "application/x-yaml")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.yaml"`, table))
-		if err := c.dbService.ExportYAML(w, db, table); err != nil {
+		if err := c.dbService.ExportYAML(requestUserID(r), w, db, table); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	default:
@@ -559,25 +559,25 @@ func (c *DatabaseController) ExportDatabase(w http.ResponseWriter, r *http.Reque
 	case "sql":
 		w.Header().Set("Content-Type", "application/sql")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.sql"`, db))
-		if err := c.dbService.ExportDatabaseSQL(w, db); err != nil {
+		if err := c.dbService.ExportDatabaseSQL(requestUserID(r), w, db); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	case "json":
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.json"`, db))
-		if err := c.dbService.ExportDatabaseJSON(w, db); err != nil {
+		if err := c.dbService.ExportDatabaseJSON(requestUserID(r), w, db); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	case "csv":
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.csv"`, db))
-		if err := c.dbService.ExportDatabaseCSV(w, db); err != nil {
+		if err := c.dbService.ExportDatabaseCSV(requestUserID(r), w, db); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	case "yaml":
 		w.Header().Set("Content-Type", "application/x-yaml")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.yaml"`, db))
-		if err := c.dbService.ExportDatabaseYAML(w, db); err != nil {
+		if err := c.dbService.ExportDatabaseYAML(requestUserID(r), w, db); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	default:
@@ -586,7 +586,7 @@ func (c *DatabaseController) ExportDatabase(w http.ResponseWriter, r *http.Reque
 }
 
 func (c *DatabaseController) ListUsers(w http.ResponseWriter, r *http.Request) {
-	result, err := c.dbService.ListUsers()
+	result, err := c.dbService.ListUsers(requestUserID(r))
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -614,7 +614,7 @@ func (c *DatabaseController) ChangeDBUserPassword(w http.ResponseWriter, r *http
 
 	logger.Admin(requestUserID(r), requestIP(r), "CHANGE_DB_PASSWORD", req.Username+"@"+req.Host)
 
-	if err := c.dbService.ChangeDBUserPassword(req.Username, req.Host, req.NewPassword); err != nil {
+	if err := c.dbService.ChangeDBUserPassword(requestUserID(r), req.Username, req.Host, req.NewPassword); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -622,7 +622,7 @@ func (c *DatabaseController) ChangeDBUserPassword(w http.ResponseWriter, r *http
 }
 
 func (c *DatabaseController) ServerStatus(w http.ResponseWriter, r *http.Request) {
-	result, err := c.dbService.ServerStatus()
+	result, err := c.dbService.ServerStatus(requestUserID(r))
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -658,7 +658,7 @@ func (c *DatabaseController) ImportSQL(w http.ResponseWriter, r *http.Request) {
 	// and delimiters correctly — way more reliable than our regex-based
 	// splitSQL. On failure we return the raw driver error so the user
 	// sees exactly which statement broke.
-	if _, err := c.dbService.ExecuteScript(db, sql); err != nil {
+	if _, err := c.dbService.ExecuteScript(requestUserID(r), db, sql); err != nil {
 		logger.Import(requestUserID(r), requestIP(r), db, "", "sql", 0)
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
@@ -710,7 +710,7 @@ func (c *DatabaseController) ImportCSV(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		if err := c.dbService.InsertRow(db, table, data); err != nil {
+		if err := c.dbService.InsertRow(requestUserID(r), db, table, data); err != nil {
 			errors = append(errors, fmt.Sprintf("row %d: %s", i+2, err.Error()))
 		} else {
 			inserted++
@@ -741,7 +741,7 @@ func (c *DatabaseController) ImportJSON(w http.ResponseWriter, r *http.Request) 
 	var errors []string
 
 	for i, row := range rows {
-		if err := c.dbService.InsertRow(db, table, row); err != nil {
+		if err := c.dbService.InsertRow(requestUserID(r), db, table, row); err != nil {
 			errors = append(errors, fmt.Sprintf("row %d: %s", i+1, err.Error()))
 		} else {
 			inserted++
@@ -890,7 +890,7 @@ func (c *DatabaseController) MongoFind(w http.ResponseWriter, r *http.Request) {
 		req.Skip = 0
 	}
 
-	result, total, err := c.dbService.MongoFind(db, table, req.Filter, req.Sort, req.Projection, req.Limit, req.Skip)
+	result, total, err := c.dbService.MongoFind(requestUserID(r), db, table, req.Filter, req.Sort, req.Projection, req.Limit, req.Skip)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -907,7 +907,7 @@ func (c *DatabaseController) MongoCount(w http.ResponseWriter, r *http.Request) 
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
-	count, err := c.dbService.MongoCount(db, table)
+	count, err := c.dbService.MongoCount(requestUserID(r), db, table)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -920,7 +920,7 @@ func (c *DatabaseController) MongoListIndexes(w http.ResponseWriter, r *http.Req
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
-	indexes, err := c.dbService.MongoListIndexes(db, table)
+	indexes, err := c.dbService.MongoListIndexes(requestUserID(r), db, table)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -970,7 +970,7 @@ func (c *DatabaseController) MongoCreateIndex(w http.ResponseWriter, r *http.Req
 		DefaultLanguage: req.DefaultLanguage,
 		TextWeights:     req.TextWeights,
 	}
-	if err := c.dbService.MongoCreateIndexFull(db, table, req.Keys, opts); err != nil {
+	if err := c.dbService.MongoCreateIndexFull(requestUserID(r), db, table, req.Keys, opts); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -998,7 +998,7 @@ func (c *DatabaseController) MongoSetIndexHidden(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if err := c.dbService.MongoSetIndexHidden(db, table, req.Name, req.Hidden); err != nil {
+	if err := c.dbService.MongoSetIndexHidden(requestUserID(r), db, table, req.Name, req.Hidden); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1029,7 +1029,7 @@ func (c *DatabaseController) MongoDropIndex(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := c.dbService.MongoDropIndex(db, table, req.Name); err != nil {
+	if err := c.dbService.MongoDropIndex(requestUserID(r), db, table, req.Name); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1041,7 +1041,7 @@ func (c *DatabaseController) MongoCollectionStats(w http.ResponseWriter, r *http
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
-	stats, err := c.dbService.MongoCollectionStats(db, table)
+	stats, err := c.dbService.MongoCollectionStats(requestUserID(r), db, table)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1065,7 +1065,7 @@ func (c *DatabaseController) MongoExplain(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	plan, err := c.dbService.MongoExplain(db, table, req.Filter, req.Sort)
+	plan, err := c.dbService.MongoExplain(requestUserID(r), db, table, req.Filter, req.Sort)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1090,7 +1090,7 @@ func (c *DatabaseController) MongoInsertMany(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	inserted, err := c.dbService.MongoInsertMany(db, table, docs)
+	inserted, err := c.dbService.MongoInsertMany(requestUserID(r), db, table, docs)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1118,7 +1118,7 @@ func (c *DatabaseController) MongoUpdateMany(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	matched, modified, err := c.dbService.MongoUpdateMany(db, table, req.Filter, req.Update)
+	matched, modified, err := c.dbService.MongoUpdateMany(requestUserID(r), db, table, req.Filter, req.Update)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1148,7 +1148,7 @@ func (c *DatabaseController) MongoDeleteMany(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	deleted, err := c.dbService.MongoDeleteMany(db, table, req.Filter)
+	deleted, err := c.dbService.MongoDeleteMany(requestUserID(r), db, table, req.Filter)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1179,7 +1179,7 @@ func (c *DatabaseController) MongoDistinct(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	values, err := c.dbService.MongoDistinct(db, table, req.Field, req.Filter)
+	values, err := c.dbService.MongoDistinct(requestUserID(r), db, table, req.Field, req.Filter)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1215,7 +1215,7 @@ func (c *DatabaseController) MongoCreateUser(w http.ResponseWriter, r *http.Requ
 		req.Database = "admin"
 	}
 
-	if err := c.dbService.MongoCreateUser(req.Database, req.Username, req.Password, req.Roles); err != nil {
+	if err := c.dbService.MongoCreateUser(requestUserID(r), req.Database, req.Username, req.Password, req.Roles); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1243,7 +1243,7 @@ func (c *DatabaseController) MongoDropUser(w http.ResponseWriter, r *http.Reques
 		req.Database = "admin"
 	}
 
-	if err := c.dbService.MongoDropUser(req.Database, req.Username); err != nil {
+	if err := c.dbService.MongoDropUser(requestUserID(r), req.Database, req.Username); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1272,7 +1272,7 @@ func (c *DatabaseController) MongoUpdateUserRoles(w http.ResponseWriter, r *http
 		req.Database = "admin"
 	}
 
-	if err := c.dbService.MongoUpdateUserRoles(req.Database, req.Username, req.Roles); err != nil {
+	if err := c.dbService.MongoUpdateUserRoles(requestUserID(r), req.Database, req.Username, req.Roles); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1287,7 +1287,7 @@ func (c *DatabaseController) MongoListRoles(w http.ResponseWriter, r *http.Reque
 		db = "admin"
 	}
 
-	roles, err := c.dbService.MongoListRoles(db)
+	roles, err := c.dbService.MongoListRoles(requestUserID(r), db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1299,7 +1299,7 @@ func (c *DatabaseController) MongoListRoles(w http.ResponseWriter, r *http.Reque
 // ── currentOp / killOp ──
 
 func (c *DatabaseController) MongoCurrentOp(w http.ResponseWriter, r *http.Request) {
-	ops, err := c.dbService.MongoCurrentOp()
+	ops, err := c.dbService.MongoCurrentOp(requestUserID(r))
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1322,7 +1322,7 @@ func (c *DatabaseController) MongoKillOp(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := c.dbService.MongoKillOp(req.OpID); err != nil {
+	if err := c.dbService.MongoKillOp(requestUserID(r), req.OpID); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1352,7 +1352,7 @@ func (c *DatabaseController) MongoCreateView(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := c.dbService.MongoCreateView(db, req.Name, req.Source, req.Pipeline); err != nil {
+	if err := c.dbService.MongoCreateView(requestUserID(r), db, req.Name, req.Source, req.Pipeline); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1364,7 +1364,7 @@ func (c *DatabaseController) MongoCreateView(w http.ResponseWriter, r *http.Requ
 func (c *DatabaseController) MongoListViews(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 
-	views, err := c.dbService.MongoListViews(db)
+	views, err := c.dbService.MongoListViews(requestUserID(r), db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1382,7 +1382,7 @@ func (c *DatabaseController) MongoGetValidation(w http.ResponseWriter, r *http.R
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
-	rules, err := c.dbService.MongoGetValidation(db, table)
+	rules, err := c.dbService.MongoGetValidation(requestUserID(r), db, table)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1406,7 +1406,7 @@ func (c *DatabaseController) MongoSetValidation(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if err := c.dbService.MongoSetValidation(db, table, req.Validator, req.ValidationLevel, req.ValidationAction); err != nil {
+	if err := c.dbService.MongoSetValidation(requestUserID(r), db, table, req.Validator, req.ValidationLevel, req.ValidationAction); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1435,7 +1435,7 @@ func (c *DatabaseController) MongoRenameCollection(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if err := c.dbService.MongoRenameCollection(db, table, req.NewName); err != nil {
+	if err := c.dbService.MongoRenameCollection(requestUserID(r), db, table, req.NewName); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1449,7 +1449,7 @@ func (c *DatabaseController) MongoRenameCollection(w http.ResponseWriter, r *htt
 func (c *DatabaseController) MongoGetProfilingLevel(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 
-	data, err := c.dbService.MongoGetProfilingLevel(db)
+	data, err := c.dbService.MongoGetProfilingLevel(requestUserID(r), db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1475,7 +1475,7 @@ func (c *DatabaseController) MongoSetProfilingLevel(w http.ResponseWriter, r *ht
 		return
 	}
 
-	if err := c.dbService.MongoSetProfilingLevel(db, req.Level, req.SlowMs); err != nil {
+	if err := c.dbService.MongoSetProfilingLevel(requestUserID(r), db, req.Level, req.SlowMs); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1494,7 +1494,7 @@ func (c *DatabaseController) MongoGetProfileData(w http.ResponseWriter, r *http.
 		}
 	}
 
-	data, err := c.dbService.MongoGetProfileData(db, limit)
+	data, err := c.dbService.MongoGetProfileData(requestUserID(r), db, limit)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1510,7 +1510,7 @@ func (c *DatabaseController) MongoGetProfileData(w http.ResponseWriter, r *http.
 func (c *DatabaseController) MongoDatabaseStats(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 
-	stats, err := c.dbService.MongoDatabaseStats(db)
+	stats, err := c.dbService.MongoDatabaseStats(requestUserID(r), db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1543,7 +1543,7 @@ func (c *DatabaseController) MongoCreateCappedCollection(w http.ResponseWriter, 
 		return
 	}
 
-	if err := c.dbService.MongoCreateCappedCollection(db, req.Name, req.SizeBytes, req.MaxDocs); err != nil {
+	if err := c.dbService.MongoCreateCappedCollection(requestUserID(r), db, req.Name, req.SizeBytes, req.MaxDocs); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1556,7 +1556,7 @@ func (c *DatabaseController) MongoIsCollectionCapped(w http.ResponseWriter, r *h
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
-	capped, err := c.dbService.MongoIsCollectionCapped(db, table)
+	capped, err := c.dbService.MongoIsCollectionCapped(requestUserID(r), db, table)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1570,7 +1570,7 @@ func (c *DatabaseController) MongoCompactCollection(w http.ResponseWriter, r *ht
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
-	if err := c.dbService.MongoCompactCollection(db, table); err != nil {
+	if err := c.dbService.MongoCompactCollection(requestUserID(r), db, table); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1599,7 +1599,7 @@ func (c *DatabaseController) MongoDuplicateCollection(w http.ResponseWriter, r *
 		return
 	}
 
-	if err := c.dbService.MongoDuplicateCollection(db, table, req.Target); err != nil {
+	if err := c.dbService.MongoDuplicateCollection(requestUserID(r), db, table, req.Target); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1616,7 +1616,7 @@ func (c *DatabaseController) MongoGetServerLog(w http.ResponseWriter, r *http.Re
 		logType = "global"
 	}
 
-	lines, err := c.dbService.MongoGetServerLog(logType)
+	lines, err := c.dbService.MongoGetServerLog(requestUserID(r), logType)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1651,7 +1651,7 @@ func (c *DatabaseController) MongoConvertToCapped(w http.ResponseWriter, r *http
 		return
 	}
 
-	if err := c.dbService.MongoConvertToCapped(db, table, req.SizeBytes); err != nil {
+	if err := c.dbService.MongoConvertToCapped(requestUserID(r), db, table, req.SizeBytes); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1665,7 +1665,7 @@ func (c *DatabaseController) MongoConvertToCapped(w http.ResponseWriter, r *http
 func (c *DatabaseController) MongoListCollectionsWithMeta(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 
-	metas, err := c.dbService.MongoListCollectionsWithMeta(db)
+	metas, err := c.dbService.MongoListCollectionsWithMeta(requestUserID(r), db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1679,7 +1679,7 @@ func (c *DatabaseController) MongoListCollectionsWithMeta(w http.ResponseWriter,
 // ── Replica Set Info ──
 
 func (c *DatabaseController) MongoReplicaSetStatus(w http.ResponseWriter, r *http.Request) {
-	status, err := c.dbService.MongoReplicaSetStatus()
+	status, err := c.dbService.MongoReplicaSetStatus(requestUserID(r))
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1705,7 +1705,7 @@ func (c *DatabaseController) MongoSampleDocuments(w http.ResponseWriter, r *http
 		}
 	}
 
-	result, err := c.dbService.MongoSampleDocuments(db, table, n)
+	result, err := c.dbService.MongoSampleDocuments(requestUserID(r), db, table, n)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1719,7 +1719,7 @@ func (c *DatabaseController) MongoListRolesDetailed(w http.ResponseWriter, r *ht
 	db := r.PathValue("db")
 	showBuiltin := r.URL.Query().Get("builtin") == "1"
 
-	roles, err := c.dbService.MongoListRolesDetailed(db, showBuiltin)
+	roles, err := c.dbService.MongoListRolesDetailed(requestUserID(r), db, showBuiltin)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1746,7 +1746,7 @@ func (c *DatabaseController) MongoCreateCustomRole(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if err := c.dbService.MongoCreateCustomRole(db, req.Name, req.Privileges, req.InheritedRoles); err != nil {
+	if err := c.dbService.MongoCreateCustomRole(requestUserID(r), db, req.Name, req.Privileges, req.InheritedRoles); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1763,7 +1763,7 @@ func (c *DatabaseController) MongoUpdateCustomRole(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if err := c.dbService.MongoUpdateCustomRole(db, roleName, req.Privileges, req.InheritedRoles); err != nil {
+	if err := c.dbService.MongoUpdateCustomRole(requestUserID(r), db, roleName, req.Privileges, req.InheritedRoles); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1774,7 +1774,7 @@ func (c *DatabaseController) MongoDropCustomRole(w http.ResponseWriter, r *http.
 	db := r.PathValue("db")
 	roleName := r.PathValue("role")
 
-	if err := c.dbService.MongoDropCustomRole(db, roleName); err != nil {
+	if err := c.dbService.MongoDropCustomRole(requestUserID(r), db, roleName); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1786,7 +1786,7 @@ func (c *DatabaseController) MongoDropCustomRole(w http.ResponseWriter, r *http.
 func (c *DatabaseController) MongoListGridFSBuckets(w http.ResponseWriter, r *http.Request) {
 	db := r.PathValue("db")
 
-	buckets, err := c.dbService.MongoListGridFSBuckets(db)
+	buckets, err := c.dbService.MongoListGridFSBuckets(requestUserID(r), db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1808,7 +1808,7 @@ func (c *DatabaseController) MongoListGridFSFiles(w http.ResponseWriter, r *http
 		}
 	}
 
-	files, err := c.dbService.MongoListGridFSFiles(db, bucket, limit)
+	files, err := c.dbService.MongoListGridFSFiles(requestUserID(r), db, bucket, limit)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1843,7 +1843,7 @@ func (c *DatabaseController) MongoUploadGridFSFile(w http.ResponseWriter, r *htt
 		return
 	}
 
-	id, err := c.dbService.MongoUploadGridFSFile(db, bucket, header.Filename, data)
+	id, err := c.dbService.MongoUploadGridFSFile(requestUserID(r), db, bucket, header.Filename, data)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1860,7 +1860,7 @@ func (c *DatabaseController) MongoDownloadGridFSFile(w http.ResponseWriter, r *h
 	bucket := r.PathValue("bucket")
 	fileID := r.PathValue("id")
 
-	data, filename, err := c.dbService.MongoDownloadGridFSFile(db, bucket, fileID)
+	data, filename, err := c.dbService.MongoDownloadGridFSFile(requestUserID(r), db, bucket, fileID)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1877,7 +1877,7 @@ func (c *DatabaseController) MongoDeleteGridFSFile(w http.ResponseWriter, r *htt
 	bucket := r.PathValue("bucket")
 	fileID := r.PathValue("id")
 
-	if err := c.dbService.MongoDeleteGridFSFile(db, bucket, fileID); err != nil {
+	if err := c.dbService.MongoDeleteGridFSFile(requestUserID(r), db, bucket, fileID); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1900,7 +1900,7 @@ func (c *DatabaseController) MongoRunAggregation(w http.ResponseWriter, r *http.
 		return
 	}
 
-	result, err := c.dbService.MongoRunAggregation(db, table, req.Pipeline)
+	result, err := c.dbService.MongoRunAggregation(requestUserID(r), db, table, req.Pipeline)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1914,7 +1914,7 @@ func (c *DatabaseController) MongoIndexUsageStats(w http.ResponseWriter, r *http
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
-	stats, err := c.dbService.MongoIndexUsageStats(db, table)
+	stats, err := c.dbService.MongoIndexUsageStats(requestUserID(r), db, table)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1935,7 +1935,7 @@ func (c *DatabaseController) MongoFieldTypeAnalysis(w http.ResponseWriter, r *ht
 		}
 	}
 
-	analysis, err := c.dbService.MongoFieldTypeAnalysis(db, table, sampleSize)
+	analysis, err := c.dbService.MongoFieldTypeAnalysis(requestUserID(r), db, table, sampleSize)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1946,7 +1946,7 @@ func (c *DatabaseController) MongoFieldTypeAnalysis(w http.ResponseWriter, r *ht
 // ── Top Stats ──
 
 func (c *DatabaseController) MongoTopStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := c.dbService.MongoTopStats()
+	stats, err := c.dbService.MongoTopStats(requestUserID(r))
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1985,7 +1985,7 @@ func (c *DatabaseController) MongoCreateTimeSeriesCollection(w http.ResponseWrit
 		return
 	}
 
-	if err := c.dbService.MongoCreateTimeSeriesCollection(db, req.Name, req.TimeField, req.MetaField, req.Granularity, req.ExpireAfterSeconds); err != nil {
+	if err := c.dbService.MongoCreateTimeSeriesCollection(requestUserID(r), db, req.Name, req.TimeField, req.MetaField, req.Granularity, req.ExpireAfterSeconds); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -1998,7 +1998,7 @@ func (c *DatabaseController) MongoGetTimeSeriesInfo(w http.ResponseWriter, r *ht
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
-	info, err := c.dbService.MongoGetTimeSeriesInfo(db, table)
+	info, err := c.dbService.MongoGetTimeSeriesInfo(requestUserID(r), db, table)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -2013,7 +2013,7 @@ func (c *DatabaseController) MongoGetTimeSeriesInfo(w http.ResponseWriter, r *ht
 // ── Sharding ──
 
 func (c *DatabaseController) MongoGetClusterShardingInfo(w http.ResponseWriter, r *http.Request) {
-	info, err := c.dbService.MongoGetClusterShardingInfo()
+	info, err := c.dbService.MongoGetClusterShardingInfo(requestUserID(r), )
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -2025,7 +2025,7 @@ func (c *DatabaseController) MongoGetCollectionShardingInfo(w http.ResponseWrite
 	db := r.PathValue("db")
 	table := r.PathValue("table")
 
-	info, err := c.dbService.MongoGetCollectionShardingInfo(db, table)
+	info, err := c.dbService.MongoGetCollectionShardingInfo(requestUserID(r), db, table)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -2049,7 +2049,7 @@ func (c *DatabaseController) BackupDatabase(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	format := c.dbService.BackupFormat()
+	format := c.dbService.BackupFormat(requestUserID(r), )
 	filename := fmt.Sprintf("%s-%s%s", db, time.Now().Format("20060102-150405"), format.Extension)
 
 	logger.Admin(requestUserID(r), requestIP(r), "backup", db)
@@ -2060,7 +2060,7 @@ func (c *DatabaseController) BackupDatabase(w http.ResponseWriter, r *http.Reque
 	// the dump streams in.
 	w.Header().Set("X-Accel-Buffering", "no")
 
-	if err := c.dbService.BackupDatabase(db, w); err != nil {
+	if err := c.dbService.BackupDatabase(requestUserID(r), db, w); err != nil {
 		// At this point we've likely already written the response headers,
 		// so we can't switch to JSON. Surface the error in the body — the
 		// frontend will detect a corrupt download via the trailing error
@@ -2095,7 +2095,7 @@ func (c *DatabaseController) RestoreDatabase(w http.ResponseWriter, r *http.Requ
 
 	logger.Admin(requestUserID(r), requestIP(r), "restore", db)
 
-	if err := c.dbService.RestoreDatabase(db, file); err != nil {
+	if err := c.dbService.RestoreDatabase(requestUserID(r), db, file); err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -2126,7 +2126,7 @@ func (c *DatabaseController) MongoWatchSSE(w http.ResponseWriter, r *http.Reques
 
 	go func() {
 		defer close(events)
-		if err := c.dbService.MongoWatchCollection(ctx, db, table, events); err != nil {
+		if err := c.dbService.MongoWatchCollection(requestUserID(r), ctx, db, table, events); err != nil {
 			// context cancelled is expected when client disconnects
 			if ctx.Err() == nil {
 				// Send error event
@@ -2182,23 +2182,54 @@ func sanitizeErrorMessage(msg string) string {
 	return msg
 }
 
-// isBlockedHost returns true for hosts that should never be used as DB targets
-// (cloud metadata endpoints, link-local addresses, loopback when inappropriate).
+var allowPrivateNetworks = detectAllowPrivateNetworks()
+
+func detectAllowPrivateNetworks() bool {
+	if v := os.Getenv("ALLOW_PRIVATE_NETWORKS"); v != "" {
+		return v != "false" && v != "0"
+	}
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return false
+	}
+	return true
+}
+
 func isBlockedHost(host string) bool {
 	ip := net.ParseIP(host)
 	if ip == nil {
-		// Hostname — block known metadata hostnames
 		lower := strings.ToLower(host)
-		return lower == "metadata.google.internal" ||
+		if lower == "metadata.google.internal" ||
 			lower == "metadata.google" ||
-			strings.HasSuffix(lower, ".internal")
+			strings.HasSuffix(lower, ".metadata.google.internal") {
+			return true
+		}
+		return false
 	}
-	// Block link-local 169.254.0.0/16 (AWS/GCP/Azure metadata)
+	// Always block cloud metadata 169.254.0.0/16
+	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 169 && ip4[1] == 254 {
+		return true
+	}
+	if ip.IsLinkLocalUnicast() {
+		return true
+	}
+	if allowPrivateNetworks {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsUnspecified() {
+		return true
+	}
 	if ip4 := ip.To4(); ip4 != nil {
-		return ip4[0] == 169 && ip4[1] == 254
+		if ip4[0] == 10 {
+			return true
+		}
+		if ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31 {
+			return true
+		}
+		if ip4[0] == 192 && ip4[1] == 168 {
+			return true
+		}
 	}
-	// Block IPv6 link-local (fe80::/10)
-	return ip.IsLinkLocalUnicast()
+	return false
 }
 
 // ── Triggers ─────────────────────────────────────────────────────────────
@@ -2208,7 +2239,7 @@ func (c *DatabaseController) ListTriggers(w http.ResponseWriter, r *http.Request
 	if !validatePathIdent(w, db, "database") {
 		return
 	}
-	triggers, err := c.dbService.ListTriggers(db)
+	triggers, err := c.dbService.ListTriggers(requestUserID(r), db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
 		return
@@ -2238,7 +2269,7 @@ func (c *DatabaseController) DropTrigger(w http.ResponseWriter, r *http.Request)
 	if req.Table != "" && !validatePathIdent(w, req.Table, "table") {
 		return
 	}
-	if err := c.dbService.DropTrigger(db, req.Name, req.Table); err != nil {
+	if err := c.dbService.DropTrigger(requestUserID(r), db, req.Name, req.Table); err != nil {
 		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
 		return
 	}
@@ -2252,7 +2283,7 @@ func (c *DatabaseController) ListRoutines(w http.ResponseWriter, r *http.Request
 	if !validatePathIdent(w, db, "database") {
 		return
 	}
-	routines, err := c.dbService.ListRoutines(db)
+	routines, err := c.dbService.ListRoutines(requestUserID(r), db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
 		return
@@ -2283,7 +2314,7 @@ func (c *DatabaseController) DropRoutine(w http.ResponseWriter, r *http.Request)
 		jsonError(w, http.StatusBadRequest, "type must be PROCEDURE or FUNCTION")
 		return
 	}
-	if err := c.dbService.DropRoutine(db, req.Name, req.Type); err != nil {
+	if err := c.dbService.DropRoutine(requestUserID(r), db, req.Name, req.Type); err != nil {
 		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
 		return
 	}
@@ -2297,7 +2328,7 @@ func (c *DatabaseController) ListSchemas(w http.ResponseWriter, r *http.Request)
 	if !validatePathIdent(w, db, "database") {
 		return
 	}
-	schemas, err := c.dbService.ListSchemas(db)
+	schemas, err := c.dbService.ListSchemas(requestUserID(r), db)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
 		return
@@ -2314,7 +2345,7 @@ func (c *DatabaseController) ListTablesInSchema(w http.ResponseWriter, r *http.R
 	if !validatePathIdent(w, db, "database") || !validatePathIdent(w, schema, "schema") {
 		return
 	}
-	tables, err := c.dbService.ListTablesInSchema(db, schema)
+	tables, err := c.dbService.ListTablesInSchema(requestUserID(r), db, schema)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
 		return
@@ -2348,7 +2379,7 @@ func (c *DatabaseController) MaintenanceTable(w http.ResponseWriter, r *http.Req
 		jsonError(w, http.StatusBadRequest, "invalid maintenance operation")
 		return
 	}
-	result, err := c.dbService.MaintenanceTable(db, table, req.Operation)
+	result, err := c.dbService.MaintenanceTable(requestUserID(r), db, table, req.Operation)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, sanitizeErrorMessage(err.Error()))
 		return

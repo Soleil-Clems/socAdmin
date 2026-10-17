@@ -48,6 +48,10 @@ if [ -f "$ICON_SRC" ]; then
     cp "$ICON_SRC" "$DEBDIR/usr/share/icons/hicolor/256x256/apps/${PKG_NAME}.png"
 fi
 
+mkdir -p "$DEBDIR/usr/lib/soca-manager"
+cp "$SCRIPT_DIR/soca-helper" "$DEBDIR/usr/lib/soca-manager/soca-helper"
+chmod 755 "$DEBDIR/usr/lib/soca-manager/soca-helper"
+
 mkdir -p "$DEBDIR/usr/share/polkit-1/actions"
 cp "$SCRIPT_DIR/com.socadmin.manager.policy" "$DEBDIR/usr/share/polkit-1/actions/"
 
@@ -107,6 +111,10 @@ chmod 755 "$ARCHDIR/usr/bin/socadmin"
 if [ -f "$ICON_SRC" ]; then
     cp "$ICON_SRC" "$ARCHDIR/usr/share/icons/hicolor/256x256/apps/${PKG_NAME}.png"
 fi
+
+mkdir -p "$ARCHDIR/usr/lib/soca-manager"
+cp "$SCRIPT_DIR/soca-helper" "$ARCHDIR/usr/lib/soca-manager/soca-helper"
+chmod 755 "$ARCHDIR/usr/lib/soca-manager/soca-helper"
 
 mkdir -p "$ARCHDIR/usr/share/polkit-1/actions"
 cp "$SCRIPT_DIR/com.socadmin.manager.policy" "$ARCHDIR/usr/share/polkit-1/actions/"
