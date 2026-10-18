@@ -55,7 +55,8 @@ check:
 
 # --- Tests ---
 test:
-	go test ./... -count=1
+	go test $$(go list ./... | grep -v node_modules) -count=1
+	cd frontend && npx vitest run
 
 # --- Manager : build l'app desktop Wails ---
 manager:
