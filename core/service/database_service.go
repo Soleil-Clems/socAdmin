@@ -5,13 +5,18 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/soleilouisol/socAdmin/core/backup"
 	"github.com/soleilouisol/socAdmin/core/connector"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
+
+const sessionTimeout = 30 * time.Minute
+const cleanupInterval = 5 * time.Minute
 
 func toBsonMSlice(roles []map[string]interface{}) []bson.M {
 	out := make([]bson.M, len(roles))
@@ -31,22 +36,65 @@ type PreconfiguredDB struct {
 }
 
 type userSession struct {
-	conn   connector.Connector
-	dbType string
-	host   string
-	port   int
-	user   string
+	conn         connector.Connector
+	dbType       string
+	host         string
+	port         int
+	user         string
+	lastActivity time.Time
 }
 
 type DatabaseService struct {
 	mu            sync.RWMutex
 	sessions      map[int64]*userSession
 	preconfigured []PreconfiguredDB
+	stopCleanup   chan struct{}
 }
 
 func NewDatabaseService() *DatabaseService {
 	return &DatabaseService{
-		sessions: make(map[int64]*userSession),
+		sessions:    make(map[int64]*userSession),
+		stopCleanup: make(chan struct{}),
+	}
+}
+
+func (s *DatabaseService) StartCleanup() {
+	go func() {
+		ticker := time.NewTicker(cleanupInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				s.cleanupStaleSessions()
+			case <-s.stopCleanup:
+				return
+			}
+		}
+	}()
+}
+
+func (s *DatabaseService) Shutdown() {
+	close(s.stopCleanup)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for uid, sess := range s.sessions {
+		sess.conn.Close()
+		delete(s.sessions, uid)
+	}
+}
+
+func (s *DatabaseService) cleanupStaleSessions() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	for uid, sess := range s.sessions {
+		if now.Sub(sess.lastActivity) > sessionTimeout {
+			log.Printf("session cleanup: closing idle DB session for user %d (inactive %s)", uid, now.Sub(sess.lastActivity).Round(time.Second))
+			sess.conn.Close()
+			delete(s.sessions, uid)
+		}
 	}
 }
 
@@ -92,11 +140,12 @@ func (s *DatabaseService) Connect(userID int64, host string, port int, user, pas
 	}
 
 	s.sessions[userID] = &userSession{
-		conn:   conn,
-		dbType: dbType,
-		host:   host,
-		port:   port,
-		user:   user,
+		conn:         conn,
+		dbType:       dbType,
+		host:         host,
+		port:         port,
+		user:         user,
+		lastActivity: time.Now(),
 	}
 	return nil
 }
@@ -139,9 +188,12 @@ func (s *DatabaseService) GetConnectionInfo(userID int64) *ConnectionInfo {
 }
 
 func (s *DatabaseService) getSession(userID int64) (*userSession, error) {
-	s.mu.RLock()
+	s.mu.Lock()
 	sess := s.sessions[userID]
-	s.mu.RUnlock()
+	if sess != nil {
+		sess.lastActivity = time.Now()
+	}
+	s.mu.Unlock()
 	if sess == nil {
 		return nil, fmt.Errorf("not connected")
 	}

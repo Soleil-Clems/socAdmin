@@ -115,6 +115,8 @@ func main() {
 
 	// Create database service (shared between auto-connect and router)
 	dbService := service.NewDatabaseService()
+	dbService.StartCleanup()
+	defer dbService.Shutdown()
 
 	// Pre-configured database connections from env vars (Docker/phpMyAdmin-style).
 	// Supports all 3 types simultaneously: MYSQL_HOST, POSTGRES_HOST, MONGO_HOST, etc.
