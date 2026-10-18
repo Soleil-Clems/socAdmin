@@ -53,6 +53,10 @@ check:
 	cd frontend && npx tsc -b
 	cd manager && go vet ./...
 
+# --- Tests ---
+test:
+	go test ./... -count=1
+
 # --- Manager : build l'app desktop Wails ---
 manager:
 	@echo "Building socAdmin Manager..."
@@ -101,4 +105,4 @@ push:
 	git commit -m "$(m)"
 	git push
 
-.PHONY: all start stop reload build install check clean status push manager manager-dev package-macos package-windows package-linux package-all
+.PHONY: all start stop reload build install check test clean status push manager manager-dev package-macos package-windows package-linux package-all
