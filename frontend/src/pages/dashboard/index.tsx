@@ -1,5 +1,6 @@
 // @soleil-clems: Dashboard - Main layout & tab navigation
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Sidebar from "@/components/layout/sidebar";
 import TableView from "@/pages/dashboard/table-view";
 import DocumentView from "@/pages/dashboard/document-view";
@@ -28,15 +29,20 @@ import ChangeStreamsView from "@/pages/dashboard/change-streams-view";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { useConnectionStore } from "@/stores/connection.store";
+import { useHotkeys } from "@/hooks/use-hotkeys";
+import { databaseRequest } from "@/requests/database.request";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const tabClass =
   "h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs font-medium px-3";
 
 export default function DashboardPage() {
-  const { selectedDb, selectedTable, showAllDatabases } = useNavigationStore();
+  const { selectedDb, selectedTable, showAllDatabases, setShowAllDatabases } = useNavigationStore();
+  const resetNav = useNavigationStore((s) => s.reset);
   const isAdmin = useAuthStore((s) => s.isAdmin);
+  const disconnect = useConnectionStore((s) => s.disconnect);
   const isMongo = useConnectionStore((s) => s.dbType) === "mongodb";
+  const queryClient = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // Key resets the tab state to "data" whenever DB or table changes
   const tabKey = `${selectedDb}::${selectedTable}`;
@@ -46,6 +52,26 @@ export default function DashboardPage() {
     setLastTabKey(tabKey);
     setActiveTab("data");
   }
+
+  const handleDisconnect = useCallback(() => {
+    databaseRequest.disconnect().catch(() => {});
+    resetNav();
+    disconnect();
+  }, [resetNav, disconnect]);
+
+  const hotkeys = useMemo(() => [
+    { key: "k", ctrl: true, handler: () => setActiveTab("search") },
+    { key: "e", ctrl: true, handler: () => { if (isAdmin) setActiveTab("query"); } },
+    { key: "b", ctrl: true, handler: () => setSidebarOpen((v) => !v) },
+    { key: "r", ctrl: true, shift: true, handler: () => queryClient.invalidateQueries() },
+    { key: "d", ctrl: true, shift: true, handler: handleDisconnect },
+    { key: "Escape", handler: () => {
+      if (selectedTable) setShowAllDatabases(false);
+      else setShowAllDatabases(true);
+    }},
+  ], [isAdmin, queryClient, handleDisconnect, selectedTable, setShowAllDatabases]);
+
+  useHotkeys(hotkeys);
 
   // Global tabs when showing all databases
   if (showAllDatabases || !selectedDb) {
