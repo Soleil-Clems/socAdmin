@@ -1,7 +1,18 @@
 // @soleil-clems: Dashboard - Main layout & tab navigation
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Sidebar from "@/components/layout/sidebar";
+
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const handler = (e: MediaQueryListEvent) => setMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return mobile;
+}
 import TableView from "@/pages/dashboard/table-view";
 import DocumentView from "@/pages/dashboard/document-view";
 import StructureView from "@/pages/dashboard/structure-view";
@@ -34,7 +45,7 @@ import { databaseRequest } from "@/requests/database.request";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const tabClass =
-  "h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs font-medium px-3";
+  "h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs font-medium px-2 md:px-3 shrink-0";
 
 export default function DashboardPage() {
   const { selectedDb, selectedTable, showAllDatabases, setShowAllDatabases } = useNavigationStore();
@@ -43,7 +54,8 @@ export default function DashboardPage() {
   const disconnect = useConnectionStore((s) => s.disconnect);
   const isMongo = useConnectionStore((s) => s.dbType) === "mongodb";
   const queryClient = useQueryClient();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   // Key resets the tab state to "data" whenever DB or table changes
   const tabKey = `${selectedDb}::${selectedTable}`;
   const [activeTab, setActiveTab] = useState("data");
@@ -73,11 +85,26 @@ export default function DashboardPage() {
 
   useHotkeys(hotkeys);
 
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+
+  const sidebarEl = sidebarOpen && (
+    isMobile ? (
+      <>
+        <div className="fixed inset-0 bg-black/50 z-40" onClick={closeSidebar} />
+        <div className="fixed inset-y-0 left-0 z-50 w-56">
+          <Sidebar onClose={closeSidebar} />
+        </div>
+      </>
+    ) : (
+      <Sidebar />
+    )
+  );
+
   // Global tabs when showing all databases
   if (showAllDatabases || !selectedDb) {
     return (
       <div className="flex h-screen bg-background">
-        {sidebarOpen && <Sidebar />}
+        {sidebarEl}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
           <Tabs key="global" defaultValue="databases" className="flex-1 flex flex-col overflow-hidden min-h-0">
             <div className="border-b border-border bg-card px-1 flex items-center">
@@ -85,9 +112,9 @@ export default function DashboardPage() {
                 className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 rounded"
                 onClick={() => setSidebarOpen(!sidebarOpen)}
               >
-                {sidebarOpen ? "◀" : "▶"}
+                {sidebarOpen && !isMobile ? "◀" : "☰"}
               </button>
-              <TabsList className="h-9 bg-transparent border-0 p-0 gap-0">
+              <TabsList className="h-9 bg-transparent border-0 p-0 gap-0 overflow-x-auto scrollbar-none">
                 <TabsTrigger value="databases" className={tabClass}>Databases</TabsTrigger>
                 <TabsTrigger value="users" className={tabClass}>Users</TabsTrigger>
                 <TabsTrigger value="status" className={tabClass}>Status</TabsTrigger>
@@ -135,7 +162,7 @@ export default function DashboardPage() {
     
   return (
     <div className="flex h-screen bg-background">
-      {sidebarOpen && <Sidebar />}
+      {sidebarEl}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
         <Tabs key="db" value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden min-h-0">
           <div className="border-b border-border bg-card px-1 flex items-center">
@@ -143,9 +170,9 @@ export default function DashboardPage() {
               className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 rounded"
               onClick={() => setSidebarOpen(!sidebarOpen)}
             >
-              {sidebarOpen ? "◀" : "▶"}
+              {sidebarOpen && !isMobile ? "◀" : "☰"}
             </button>
-            <TabsList className="h-9 bg-transparent border-0 p-0 gap-0">
+            <TabsList className="h-9 bg-transparent border-0 p-0 gap-0 overflow-x-auto scrollbar-none">
               <TabsTrigger value="data" className={tabClass}>
                 {selectedTable ? (isMongo ? "Documents" : "Browse") : (isMongo ? "Collections" : "Tables")}
               </TabsTrigger>

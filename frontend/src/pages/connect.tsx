@@ -186,8 +186,8 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
   const hasSaved = filteredSavedConnections && filteredSavedConnections.length > 0;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-6 relative">
-      <div className="absolute top-4 right-4 flex items-center gap-1">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-6 sm:p-6 relative">
+      <div className="absolute top-3 right-3 sm:top-4 sm:right-4 flex items-center gap-1">
         {onOpenAdmin && (
           <Button
             variant="ghost"
@@ -216,7 +216,7 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
               Pre-configured
             </p>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {preconfigured.map((pc) => (
                 <button
                   key={pc.type}
@@ -229,7 +229,7 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
                     setValue("password", "");
                     connectMutation.reset();
                   }}
-                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium transition-colors border ${
+                  className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium transition-colors border ${
                     selectedType === pc.type
                       ? "bg-primary text-primary-foreground border-primary"
                       : pc.type === "mysql" ? "border-db-mysql/30 bg-db-mysql/5 hover:bg-db-mysql/10 text-db-mysql" :
@@ -287,7 +287,7 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); deleteSavedMutation.mutate(conn.id); }}
-                    className="text-[11px] text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100 shrink-0 ml-2"
+                    className="text-[11px] text-muted-foreground hover:text-destructive transition-colors sm:opacity-0 sm:group-hover:opacity-100 shrink-0 ml-2"
                   >
                     Delete
                   </button>
@@ -323,13 +323,13 @@ export default function ConnectPage({ onOpenAdmin }: Props = {}) {
           name="type"
           control={control}
           render={({ field }) => (
-            <div className="flex gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {availableTypes.map((t) => (
                 <button
                   key={t}
                   type="button"
                   onClick={() => handleTypeChange(t, field.onChange)}
-                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium transition-colors border ${
+                  className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium transition-colors border ${
                     selectedType === t
                       ? "bg-primary text-primary-foreground border-primary"
                       : t === "mysql" ? "border-db-mysql/30 bg-db-mysql/5 hover:bg-db-mysql/10 text-db-mysql"

@@ -373,9 +373,9 @@ export default function TableView() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Toolbar */}
-      <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
-        <span className="font-semibold text-sm text-foreground">{selectedTable}</span>
-        <span className="text-muted-foreground">
+      <div className="px-3 py-2 border-b border-border bg-card flex flex-wrap items-center gap-2 text-xs">
+        <span className="font-semibold text-sm text-foreground truncate max-w-[120px] md:max-w-none">{selectedTable}</span>
+        <span className="text-muted-foreground hidden sm:inline">
           {selectedDb}
         </span>
         {rowsData?.Rows && (
@@ -389,7 +389,7 @@ export default function TableView() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filter rows..."
-            className="h-7 w-40 text-xs"
+            className="h-7 w-28 md:w-40 text-xs"
           />
           {isAdmin && (
             <Button size="sm" className="h-7 text-xs px-3" onClick={handleInsertOpen}>

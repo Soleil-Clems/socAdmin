@@ -19,27 +19,27 @@ export default function AdminSettingsPage({ onBack }: Props) {
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
-      <div className="border-b border-border bg-card px-4 py-2 flex items-center gap-3">
+      <div className="border-b border-border bg-card px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3">
         <Button
           variant="ghost"
           size="sm"
           onClick={onBack}
-          className="h-7 text-xs px-2 -ml-2"
+          className="h-7 text-xs px-2 -ml-1 sm:-ml-2 shrink-0"
         >
           ← Back
         </Button>
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded bg-primary flex items-center justify-center text-primary-foreground text-[10px] font-bold">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-6 h-6 rounded bg-primary flex items-center justify-center text-primary-foreground text-[10px] font-bold shrink-0">
             sA
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 hidden sm:block">
             <p className="text-sm font-semibold leading-none">socAdmin</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">
               Admin settings
             </p>
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1 shrink-0">
           <ThemeToggle />
           <Button
             variant="ghost"

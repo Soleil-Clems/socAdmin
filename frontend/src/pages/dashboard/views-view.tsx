@@ -102,7 +102,7 @@ export default function ViewsView() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
+      <div className="px-3 py-2 border-b border-border bg-card flex flex-wrap items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">Views</span>
         <span className="text-muted-foreground">
           {selectedDb} · {views?.length ?? 0} views

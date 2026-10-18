@@ -145,6 +145,14 @@
 }
 
 /* Dense table styling for data views */
+@utility scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer components {
   .data-table th,
   .data-table td {

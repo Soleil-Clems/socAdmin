@@ -657,10 +657,10 @@ export default function DocumentView() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Toolbar */}
-      <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
+      <div className="px-3 py-2 border-b border-border bg-card flex flex-wrap items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">{selectedTable}</span>
         <span className="text-muted-foreground">{selectedDb}</span>
-        <span className="text-muted-foreground">
+        <span className="text-muted-foreground hidden sm:inline">
           · {totalDocs.toLocaleString()} docs
           {stats && (
             <>
@@ -670,7 +670,7 @@ export default function DocumentView() {
             </>
           )}
         </span>
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <Button
             size="sm"
             variant="outline"
@@ -940,7 +940,7 @@ export default function DocumentView() {
       )}
 
       {/* Pagination */}
-      <div className="px-3 py-1.5 border-t border-border bg-card flex items-center justify-between text-xs">
+      <div className="px-3 py-1.5 border-t border-border bg-card flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">Docs/page</span>
           <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(0); }}>

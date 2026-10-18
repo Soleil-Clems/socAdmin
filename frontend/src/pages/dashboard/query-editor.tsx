@@ -502,6 +502,7 @@ export default function QueryEditor() {
                   {result.Rows?.length ?? 0} rows returned
                 </p>
               )}
+              <div className="min-w-full w-fit">
               <table className="w-full data-table">
                 <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
                   <tr className="border-b border-border">
@@ -536,6 +537,7 @@ export default function QueryEditor() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           </ScrollArea>
         )}

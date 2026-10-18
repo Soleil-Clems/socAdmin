@@ -33,6 +33,7 @@ function SchemaSection({
   onToggle,
   selectedTable,
   onSelectTable,
+  onClose,
 }: {
   db: string;
   schema: string;
@@ -40,6 +41,7 @@ function SchemaSection({
   onToggle: () => void;
   selectedTable: string;
   onSelectTable: (t: string) => void;
+  onClose?: () => void;
 }) {
   const { data: tables, isLoading } = useQuery<string[]>({
     queryKey: ["schema-tables", db, schema],
@@ -68,7 +70,7 @@ function SchemaSection({
           {tables?.map((table) => (
             <button
               key={table}
-              onClick={() => onSelectTable(table)}
+              onClick={() => { onSelectTable(table); onClose?.(); }}
               className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors truncate ${
                 selectedTable === table
                   ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
@@ -87,7 +89,7 @@ function SchemaSection({
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const { host, port, user, dbType, disconnect } = useConnectionStore();
   const logout = useAuthStore((s) => s.logout);
   const isAdmin = useAuthStore((s) => s.isAdmin);
@@ -127,8 +129,13 @@ export default function Sidebar() {
     });
   };
 
+  const handleNav = (fn: () => void) => {
+    fn();
+    onClose?.();
+  };
+
   return (
-    <aside className="w-56 bg-sidebar text-sidebar-foreground flex flex-col h-screen min-h-0 border-r border-sidebar-border overflow-hidden">
+    <aside className="w-56 bg-sidebar text-sidebar-foreground flex flex-col h-screen min-h-0 border-r border-sidebar-border overflow-hidden shrink-0">
       {/* Header */}
       <div className="px-3 py-2.5 border-b border-sidebar-border shrink-0">
         <div className="flex items-center gap-2">
@@ -150,13 +157,18 @@ export default function Sidebar() {
               </p>
             </div>
           </div>
+          {onClose && (
+            <button onClick={onClose} className="md:hidden w-7 h-7 flex items-center justify-center rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 shrink-0">
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
       {/* Databases link */}
       <div className="px-2 pt-2 shrink-0">
         <button
-          onClick={() => setShowAllDatabases(true)}
+          onClick={() => handleNav(() => setShowAllDatabases(true))}
           className={`w-full text-left px-2 py-1.5 rounded text-[13px] font-medium transition-colors ${
             showAllDatabases
               ? "bg-sidebar-accent text-sidebar-accent-foreground"
@@ -198,7 +210,7 @@ export default function Sidebar() {
             <>
               {/* Clickable "Tables" header — returns to DB overview */}
               <button
-                onClick={() => setSelectedTable("")}
+                onClick={() => handleNav(() => setSelectedTable(""))}
                 className={`w-full text-left px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-widest transition-colors mb-1 ${
                   tablesHeaderActive
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
@@ -219,6 +231,7 @@ export default function Sidebar() {
                       onToggle={() => toggleSchema(s)}
                       selectedTable={selectedTable}
                       onSelectTable={setSelectedTable}
+                      onClose={onClose}
                     />
                   ))}
                 </>
@@ -234,7 +247,7 @@ export default function Sidebar() {
                   {tables?.map((table: string) => (
                     <button
                       key={table}
-                      onClick={() => setSelectedTable(table)}
+                      onClick={() => handleNav(() => setSelectedTable(table))}
                       className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors truncate ${
                         selectedTable === table
                           ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"

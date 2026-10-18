@@ -111,7 +111,7 @@ export default function ImportView() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
+      <div className="px-3 py-2 border-b border-border bg-card flex flex-wrap items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">Import</span>
         {selectedDb && <span className="text-muted-foreground">{selectedDb}</span>}
         {selectedTable && <span className="text-muted-foreground">· {selectedTable}</span>}

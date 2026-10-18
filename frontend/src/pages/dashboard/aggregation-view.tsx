@@ -136,9 +136,9 @@ export default function AggregationView() {
         ))}
       </div>
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-col md:flex-row flex-1 min-h-0">
         {/* Pipeline editor */}
-        <div className="w-[40%] min-w-[280px] border-r border-border flex flex-col">
+        <div className="w-full md:w-[40%] md:min-w-[280px] border-b md:border-b-0 md:border-r border-border flex flex-col min-h-[200px] md:min-h-0">
           <div className="px-3 py-1 border-b border-border/50 text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">
             Pipeline (JSON Array)
           </div>
@@ -172,6 +172,7 @@ export default function AggregationView() {
           </div>
           {result && result.Rows && result.Rows.length > 0 ? (
             <ScrollArea className="flex-1 min-h-0">
+              <div className="min-w-full w-fit">
               <table className="w-full data-table text-[12px]">
                 <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm z-10">
                   <tr className="border-b border-border">
@@ -215,6 +216,7 @@ export default function AggregationView() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </ScrollArea>
           ) : result ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
