@@ -1,10 +1,12 @@
 // @soleil-clems: Frontend - Admin settings (accounts & security)
-import AccountsView from "@/pages/dashboard/accounts-view";
-import SecurityView from "@/pages/dashboard/security-view";
+import { lazy, Suspense } from "react";
 import { useAuthStore } from "@/stores/auth.store";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+const AccountsView = lazy(() => import("@/pages/dashboard/accounts-view"));
+const SecurityView = lazy(() => import("@/pages/dashboard/security-view"));
 
 const tabClass =
   "h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none text-xs font-medium px-3";
@@ -64,12 +66,14 @@ export default function AdminSettingsPage({ onBack }: Props) {
             </TabsTrigger>
           </TabsList>
         </div>
+        <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="text-sm text-muted-foreground">Loading...</div></div>}>
         <TabsContent value="accounts" className="flex-1 overflow-hidden m-0">
           <AccountsView />
         </TabsContent>
         <TabsContent value="security" className="flex-1 overflow-hidden m-0">
           <SecurityView />
         </TabsContent>
+        </Suspense>
       </Tabs>
     </div>
   );
