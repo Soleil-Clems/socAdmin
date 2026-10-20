@@ -1,5 +1,5 @@
 // @soleil-clems: Dashboard - Main layout & tab navigation
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Sidebar from "@/components/layout/sidebar";
 
@@ -13,30 +13,38 @@ function useIsMobile() {
   }, []);
   return mobile;
 }
-import TableView from "@/pages/dashboard/table-view";
-import DocumentView from "@/pages/dashboard/document-view";
-import StructureView from "@/pages/dashboard/structure-view";
-import DatabaseView from "@/pages/dashboard/database-view";
-import AllDatabasesView from "@/pages/dashboard/all-databases-view";
-import QueryEditor from "@/pages/dashboard/query-editor";
-import ImportView from "@/pages/dashboard/import-view";
-import ExportView from "@/pages/dashboard/export-view";
-import UsersView from "@/pages/dashboard/users-view";
-import StatusView from "@/pages/dashboard/status-view";
-import SecurityView from "@/pages/dashboard/security-view";
-import AccountsView from "@/pages/dashboard/accounts-view";
-import SearchView from "@/pages/dashboard/search-view";
-import SchemaView from "@/pages/dashboard/schema-view";
-import TriggersView from "@/pages/dashboard/triggers-view";
-import RoutinesView from "@/pages/dashboard/routines-view";
-import IndexesView from "@/pages/dashboard/indexes-view";
-import ViewsView from "@/pages/dashboard/views-view";
-import ProfilerView from "@/pages/dashboard/profiler-view";
-import AggregationView from "@/pages/dashboard/aggregation-view";
-import RolesView from "@/pages/dashboard/roles-view";
-import GridFSView from "@/pages/dashboard/gridfs-view";
-import ShardingView from "@/pages/dashboard/sharding-view";
-import ChangeStreamsView from "@/pages/dashboard/change-streams-view";
+
+const TableView = lazy(() => import("@/pages/dashboard/table-view"));
+const DocumentView = lazy(() => import("@/pages/dashboard/document-view"));
+const StructureView = lazy(() => import("@/pages/dashboard/structure-view"));
+const DatabaseView = lazy(() => import("@/pages/dashboard/database-view"));
+const AllDatabasesView = lazy(() => import("@/pages/dashboard/all-databases-view"));
+const QueryEditor = lazy(() => import("@/pages/dashboard/query-editor"));
+const ImportView = lazy(() => import("@/pages/dashboard/import-view"));
+const ExportView = lazy(() => import("@/pages/dashboard/export-view"));
+const UsersView = lazy(() => import("@/pages/dashboard/users-view"));
+const StatusView = lazy(() => import("@/pages/dashboard/status-view"));
+const SecurityView = lazy(() => import("@/pages/dashboard/security-view"));
+const AccountsView = lazy(() => import("@/pages/dashboard/accounts-view"));
+const SearchView = lazy(() => import("@/pages/dashboard/search-view"));
+const SchemaView = lazy(() => import("@/pages/dashboard/schema-view"));
+const TriggersView = lazy(() => import("@/pages/dashboard/triggers-view"));
+const RoutinesView = lazy(() => import("@/pages/dashboard/routines-view"));
+const IndexesView = lazy(() => import("@/pages/dashboard/indexes-view"));
+const ViewsView = lazy(() => import("@/pages/dashboard/views-view"));
+const ProfilerView = lazy(() => import("@/pages/dashboard/profiler-view"));
+const AggregationView = lazy(() => import("@/pages/dashboard/aggregation-view"));
+const RolesView = lazy(() => import("@/pages/dashboard/roles-view"));
+const GridFSView = lazy(() => import("@/pages/dashboard/gridfs-view"));
+const ShardingView = lazy(() => import("@/pages/dashboard/sharding-view"));
+const ChangeStreamsView = lazy(() => import("@/pages/dashboard/change-streams-view"));
+
+const ViewFallback = () => (
+  <div className="flex items-center justify-center h-full">
+    <div className="text-sm text-muted-foreground">Loading...</div>
+  </div>
+);
+
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useAuthStore } from "@/stores/auth.store";
 import { useConnectionStore } from "@/stores/connection.store";
@@ -129,6 +137,7 @@ export default function DashboardPage() {
                 )}
               </TabsList>
             </div>
+            <Suspense fallback={<ViewFallback />}>
             <TabsContent value="databases" className="flex-1 overflow-hidden m-0 min-h-0">
               <AllDatabasesView />
             </TabsContent>
@@ -153,6 +162,7 @@ export default function DashboardPage() {
                 <SecurityView />
               </TabsContent>
             )}
+            </Suspense>
           </Tabs>
         </div>
       </div>
@@ -227,6 +237,7 @@ export default function DashboardPage() {
               )}
             </TabsList>
           </div>
+          <Suspense fallback={<ViewFallback />}>
           <TabsContent value="data" className="flex-1 overflow-hidden m-0 min-h-0">
             {selectedTable ? (isMongo ? <DocumentView /> : <TableView />) : <DatabaseView />}
           </TabsContent>
@@ -317,6 +328,7 @@ export default function DashboardPage() {
               <SecurityView />
             </TabsContent>
           )}
+          </Suspense>
         </Tabs>
       </div>
     </div>
