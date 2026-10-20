@@ -16,6 +16,7 @@ type RateLimiter struct {
 	requests map[string][]time.Time
 	limit    int           // max requests per window
 	window   time.Duration // sliding window duration
+	stop     chan struct{}
 }
 
 func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
@@ -23,18 +24,27 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 		requests: make(map[string][]time.Time),
 		limit:    limit,
 		window:   window,
+		stop:     make(chan struct{}),
 	}
 
-	// Cleanup old entries every minute
 	go func() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
-		for range ticker.C {
-			rl.cleanup()
+		for {
+			select {
+			case <-ticker.C:
+				rl.cleanup()
+			case <-rl.stop:
+				return
+			}
 		}
 	}()
 
 	return rl
+}
+
+func (rl *RateLimiter) Stop() {
+	close(rl.stop)
 }
 
 // IsAllowed checks whether the given IP is within the rate limit.
