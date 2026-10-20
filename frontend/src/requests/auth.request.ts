@@ -13,6 +13,7 @@ type RegisterPayload = {
 
 type LoginResponse = {
   role: string;
+  email: string;
 };
 
 type RegisterResponse = {
@@ -23,6 +24,7 @@ type RegisterResponse = {
 
 type MeResponse = {
   role: string;
+  email: string;
 };
 
 export const authRequest = {

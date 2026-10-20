@@ -135,7 +135,7 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 
 	setAuthCookies(w, r, tokens)
 	logger.Auth("login", user.ID, requestIP(r))
-	jsonResponse(w, http.StatusOK, map[string]string{"role": user.Role})
+	jsonResponse(w, http.StatusOK, map[string]string{"role": user.Role, "email": user.Email})
 }
 
 func (c *AuthController) Refresh(w http.ResponseWriter, r *http.Request) {

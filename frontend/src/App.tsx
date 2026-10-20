@@ -26,7 +26,7 @@ function App() {
     authRequest
       .me()
       .then((res) => {
-        if (!cancelled && res?.role) setAuthenticated(res.role);
+        if (!cancelled && res?.role) setAuthenticated(res.role, res.email);
       })
       .catch(() => {
         // No valid session — stay on login page

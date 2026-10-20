@@ -5,9 +5,8 @@ import { useDatabases } from "@/hooks/queries/use-databases";
 import { useTables } from "@/hooks/queries/use-tables";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
-import { useAuthStore } from "@/stores/auth.store";
 import { databaseRequest } from "@/requests/database.request";
-import ChangePasswordDialog from "@/components/change-password-dialog";
+import UserMenu from "@/components/user-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -91,9 +90,6 @@ function SchemaSection({
 
 export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const { host, port, user, dbType, disconnect } = useConnectionStore();
-  const logout = useAuthStore((s) => s.logout);
-  const isAdmin = useAuthStore((s) => s.isAdmin);
-  const role = useAuthStore((s) => s.role);
   const {
     selectedDb,
     selectedTable,
@@ -106,7 +102,6 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
 
   const isPostgres = dbType === "postgresql";
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set(["public"]));
-  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const { data: databases, isLoading: dbLoading } = useDatabases();
   const { data: tables, isLoading: tablesLoading } = useTables(selectedDb);
@@ -277,27 +272,7 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
 
       {/* Footer */}
       <div className="p-2 border-t border-sidebar-border space-y-0.5 shrink-0">
-        {role && (
-          <div className="px-2 py-1 flex items-center gap-1.5">
-            <span
-              className={`inline-block w-1.5 h-1.5 rounded-full ${
-                isAdmin ? "bg-emerald-500" : "bg-amber-500"
-              }`}
-            />
-            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/50">
-              {isAdmin ? "Admin" : "Read-only"}
-            </span>
-          </div>
-        )}
         <ThemeToggle className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50" />
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 h-7 text-xs"
-          onClick={() => setShowChangePassword(true)}
-        >
-          Change password
-        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -306,17 +281,8 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
         >
           Disconnect
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 h-7 text-xs"
-          onClick={() => { databaseRequest.disconnect().catch(() => {}); resetNav(); disconnect(); logout(); }}
-        >
-          Logout
-        </Button>
+        <UserMenu />
       </div>
-
-      <ChangePasswordDialog open={showChangePassword} onOpenChange={setShowChangePassword} />
     </aside>
   );
 }
