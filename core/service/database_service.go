@@ -536,7 +536,15 @@ func (s *DatabaseService) SearchGlobal(userID int64, database, query string, lim
 		return nil, err
 	}
 
+	const maxTables = 50
+	const maxTotalMatches = 200
+
+	if len(tables) > maxTables {
+		tables = tables[:maxTables]
+	}
+
 	var results []SearchGlobalResult
+	totalMatches := 0
 
 	for _, table := range tables {
 		cols, err := c.DescribeTable(database, table)
@@ -595,6 +603,10 @@ func (s *DatabaseService) SearchGlobal(userID int64, database, query string, lim
 					Total:   len(matches),
 					Columns: colNames,
 				})
+				totalMatches += len(matches)
+				if totalMatches >= maxTotalMatches {
+					return results, nil
+				}
 			}
 			continue
 		default:
@@ -613,6 +625,10 @@ func (s *DatabaseService) SearchGlobal(userID int64, database, query string, lim
 				Total:   len(result.Rows),
 				Columns: result.Columns,
 			})
+			totalMatches += len(result.Rows)
+			if totalMatches >= maxTotalMatches {
+				return results, nil
+			}
 		}
 	}
 
