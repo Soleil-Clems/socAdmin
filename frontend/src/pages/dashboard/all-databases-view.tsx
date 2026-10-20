@@ -294,6 +294,7 @@ export default function AllDatabasesView() {
             <button
               onClick={() => setRestoreError(null)}
               className="text-destructive-foreground/80 hover:text-destructive-foreground"
+              aria-label="Dismiss error"
             >
               ✕
             </button>

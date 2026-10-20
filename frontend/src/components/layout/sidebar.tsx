@@ -158,7 +158,7 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
             </div>
           </div>
           {onClose && (
-            <button onClick={onClose} className="md:hidden w-7 h-7 flex items-center justify-center rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 shrink-0">
+            <button onClick={onClose} className="md:hidden w-7 h-7 flex items-center justify-center rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 shrink-0" aria-label="Close sidebar">
               ✕
             </button>
           )}

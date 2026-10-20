@@ -188,6 +188,7 @@ function DocumentCard({
         <button
           onClick={() => setExpanded(!expanded)}
           className="text-[11px] text-muted-foreground hover:text-foreground w-4"
+          aria-label={expanded ? "Collapse document" : "Expand document"}
         >
           {expanded ? "▾" : "▸"}
         </button>
@@ -269,6 +270,7 @@ function DocFormEditor({
           <button
             onClick={() => removeField(i)}
             className="text-muted-foreground hover:text-destructive text-sm w-6 h-8 flex items-center justify-center shrink-0"
+            aria-label="Remove field"
           >
             ×
           </button>
@@ -808,6 +810,7 @@ export default function DocumentView() {
                 <button
                   onClick={() => removeFilterRow(idx)}
                   className="text-muted-foreground hover:text-destructive text-sm w-5 h-7 flex items-center justify-center shrink-0"
+                  aria-label="Remove condition"
                 >
                   ×
                 </button>
@@ -1129,7 +1132,7 @@ export default function DocumentView() {
           <div className="bg-card border border-border rounded-lg shadow-lg w-full max-w-md max-h-[60vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
               <span className="text-sm font-semibold">Distinct Values</span>
-              <button onClick={() => setShowDistinct(false)} className="ml-auto text-muted-foreground hover:text-foreground text-sm">×</button>
+              <button onClick={() => setShowDistinct(false)} className="ml-auto text-muted-foreground hover:text-foreground text-sm" aria-label="Close">×</button>
             </div>
             <div className="px-4 py-3 space-y-3">
               <div className="flex items-center gap-2">

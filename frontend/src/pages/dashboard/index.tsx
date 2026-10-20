@@ -119,6 +119,7 @@ export default function DashboardPage() {
               <button
                 className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 rounded"
                 onClick={() => setSidebarOpen(!sidebarOpen)}
+                aria-label="Toggle sidebar"
               >
                 {sidebarOpen && !isMobile ? "◀" : "☰"}
               </button>
@@ -179,6 +180,7 @@ export default function DashboardPage() {
             <button
               className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 rounded"
               onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label="Toggle sidebar"
             >
               {sidebarOpen && !isMobile ? "◀" : "☰"}
             </button>
