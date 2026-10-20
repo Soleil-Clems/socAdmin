@@ -46,12 +46,13 @@ export function useHealthCheck(): HealthState {
   }, []);
 
   useEffect(() => {
-    check();
+    const initialId = setTimeout(check, 0);
     const pollId = setInterval(check, POLL_INTERVAL * 1000);
     const tickId = setInterval(() => {
       setCountdown((c) => (c > 0 ? c - 1 : 0));
     }, 1000);
     return () => {
+      clearTimeout(initialId);
       clearInterval(pollId);
       clearInterval(tickId);
       clearTimeout(timerRef.current);
