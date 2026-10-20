@@ -100,6 +100,9 @@ func main() {
 		if adminPass := os.Getenv("ADMIN_PASSWORD"); adminPass != "" {
 			existing, _ := authRepo.FindByEmail(adminEmail)
 			if existing == nil {
+				if err := auth.ValidateEmail(adminEmail); err != nil {
+					log.Fatalf("Configuration error: ADMIN_EMAIL is invalid — %v.", err)
+				}
 				if err := auth.ValidatePassword(adminPass); err != nil {
 					log.Fatalf("Configuration error: ADMIN_PASSWORD is invalid — %v.\n"+
 						"  Requirements: at least 10 characters, with uppercase, lowercase, digit, and special character.\n"+

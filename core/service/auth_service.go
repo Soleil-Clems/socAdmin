@@ -38,6 +38,13 @@ func registrationEnabled() bool {
 }
 
 func (s *AuthService) Register(email, password string) (*RegisterResult, error) {
+	if err := auth.ValidateEmail(email); err != nil {
+		return nil, err
+	}
+	if err := auth.ValidatePassword(password); err != nil {
+		return nil, err
+	}
+
 	count, err := s.repo.UserCount()
 	if err != nil {
 		return nil, err
@@ -139,6 +146,13 @@ func (s *AuthService) RevokeRefreshToken(token string) {
 }
 
 func (s *AuthService) CreateUser(email, password, role string) (*auth.User, error) {
+	if err := auth.ValidateEmail(email); err != nil {
+		return nil, err
+	}
+	if err := auth.ValidatePassword(password); err != nil {
+		return nil, err
+	}
+
 	existing, err := s.repo.FindByEmail(email)
 	if err != nil {
 		return nil, err
