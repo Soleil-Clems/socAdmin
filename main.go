@@ -173,6 +173,11 @@ func main() {
 	// Serve API routes under /{prefix}/api/, everything else is the React SPA
 	apiPathPrefix := "/" + apiPrefix + "/api"
 	mux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/-/health" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"status":"ok"}`))
+			return
+		}
 		if len(r.URL.Path) >= len(apiPathPrefix) && r.URL.Path[:len(apiPathPrefix)] == apiPathPrefix {
 			apiHandler.ServeHTTP(w, r)
 			return

@@ -40,6 +40,6 @@ USER socadmin
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget -qO- http://localhost:${PORT}/ || exit 1
+    CMD wget -qO- http://localhost:${PORT}/-/health || exit 1
 
 ENTRYPOINT ["socadmin"]
