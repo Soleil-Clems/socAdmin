@@ -2,12 +2,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
+	"time"
 
 	"github.com/soleilouisol/socAdmin/core/api"
 	"github.com/soleilouisol/socAdmin/core/auth"
@@ -186,9 +190,17 @@ func main() {
 	tlsCert := os.Getenv("TLS_CERT")
 	tlsKey := os.Getenv("TLS_KEY")
 
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: handler,
+	}
+
+	// Channel to catch OS signals for graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
 	if tlsCert != "" && tlsKey != "" {
-		// HSTS header is already set in SecurityHeaders middleware.
-		// Start HTTP→HTTPS redirect on port 80 in background.
+		var redirectSrv *http.Server
 		go func() {
 			redirectPort := 80
 			if envRedirectPort := os.Getenv("HTTP_REDIRECT_PORT"); envRedirectPort != "" {
@@ -200,16 +212,49 @@ func main() {
 				target := fmt.Sprintf("https://%s%s", r.Host, r.RequestURI)
 				http.Redirect(w, r, target, http.StatusMovedPermanently)
 			})
+			redirectSrv = &http.Server{
+				Addr:    fmt.Sprintf(":%d", redirectPort),
+				Handler: redirect,
+			}
 			log.Printf("HTTP→HTTPS redirect on :%d", redirectPort)
-			if err := http.ListenAndServe(fmt.Sprintf(":%d", redirectPort), redirect); err != nil {
+			if err := redirectSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Printf("Warning: HTTP redirect listener failed: %v", err)
 			}
 		}()
 
 		fmt.Printf("socAdmin server running on https://localhost:%d (TLS)\n", port)
-		log.Fatal(http.ListenAndServeTLS(fmt.Sprintf(":%d", port), tlsCert, tlsKey, handler))
+		go func() {
+			if err := srv.ListenAndServeTLS(tlsCert, tlsKey); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Server error: %v", err)
+			}
+		}()
+
+		sig := <-quit
+		log.Printf("Received %s, shutting down...", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if redirectSrv != nil {
+			redirectSrv.Shutdown(ctx)
+		}
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Fatalf("Forced shutdown: %v", err)
+		}
 	} else {
 		fmt.Printf("socAdmin server running on http://localhost:%d\n", port)
-		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), handler))
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Server error: %v", err)
+			}
+		}()
+
+		sig := <-quit
+		log.Printf("Received %s, shutting down...", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Fatalf("Forced shutdown: %v", err)
+		}
 	}
+
+	log.Println("Server stopped gracefully")
 }

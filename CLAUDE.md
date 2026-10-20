@@ -167,7 +167,7 @@ socAdmin/
 - **Rôles utilisateurs** : admin, read-only, autres ? Non encore spécifié
 - **Design UI** : moderne inspiré de Supabase / TablePlus / PlanetScale, mais design exact à définir
 - **Roadmap** : MVP vs fonctionnalités secondaires, non encore priorisé
-- **Modèle économique** : open source, freemium, licence ? Non encore décidé
+- **Modèle économique** : gratuit, code source propriétaire (pas open source) — l'outil est libre d'utilisation mais le code n'est pas publié
 
 ---
 
