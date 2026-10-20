@@ -17,7 +17,7 @@ export function useHealthCheck(): HealthState {
   const [status, setStatus] = useState<HealthStatus>("ok");
   const [countdown, setCountdown] = useState(POLL_INTERVAL);
   const wasDown = useRef(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const check = useCallback(async () => {
     try {
