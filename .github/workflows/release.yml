@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number (e.g. 0.1.0) — for test builds only"
+        required: true
+        default: "0.0.0-test"
 
 permissions:
   contents: write
@@ -11,6 +17,7 @@ permissions:
 env:
   NODE_VERSION: "22"
   GO_VERSION: "1.24"
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
 jobs:
   build-macos:
@@ -90,7 +97,7 @@ jobs:
 
       - name: Create and sign DMG
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${VERSION#v}
           OUTPUT_DIR="build/macos/dist"
           mkdir -p "$OUTPUT_DIR"
           DMG_PATH="$OUTPUT_DIR/Soca-Manager-${VERSION}-macos.dmg"
@@ -115,7 +122,7 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${VERSION#v}
           DMG_PATH="build/macos/dist/Soca-Manager-${VERSION}-macos.dmg"
 
           API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
@@ -131,7 +138,7 @@ jobs:
 
       - name: Verify signature
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${VERSION#v}
           DMG_PATH="build/macos/dist/Soca-Manager-${VERSION}-macos.dmg"
           spctl -a -vv --type install "$DMG_PATH"
 
@@ -179,7 +186,7 @@ jobs:
         shell: bash
         run: |
           export PATH="/c/Program Files (x86)/NSIS:$PATH"
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${VERSION#v}
           cd manager
           # 1) Build amd64 with -nsis to generate wails_tools.nsh with resolved templates
           wails build -clean -platform windows/amd64 -nsis
@@ -235,7 +242,7 @@ jobs:
       - name: Build & package .deb + Arch
         run: |
           chmod +x build/linux/package.sh
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${VERSION#v}
           ./build/linux/package.sh "$VERSION"
 
       - uses: actions/upload-artifact@v4
@@ -247,6 +254,7 @@ jobs:
 
   release:
     needs: [build-macos, build-windows, build-linux]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
