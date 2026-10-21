@@ -5,9 +5,8 @@ import { useDatabases } from "@/hooks/queries/use-databases";
 import { useTables } from "@/hooks/queries/use-tables";
 import { useNavigationStore } from "@/stores/navigation.store";
 import { useConnectionStore } from "@/stores/connection.store";
-import { useAuthStore } from "@/stores/auth.store";
 import { databaseRequest } from "@/requests/database.request";
-import ChangePasswordDialog from "@/components/change-password-dialog";
+import UserMenu from "@/components/user-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -33,6 +32,7 @@ function SchemaSection({
   onToggle,
   selectedTable,
   onSelectTable,
+  onClose,
 }: {
   db: string;
   schema: string;
@@ -40,6 +40,7 @@ function SchemaSection({
   onToggle: () => void;
   selectedTable: string;
   onSelectTable: (t: string) => void;
+  onClose?: () => void;
 }) {
   const { data: tables, isLoading } = useQuery<string[]>({
     queryKey: ["schema-tables", db, schema],
@@ -68,7 +69,7 @@ function SchemaSection({
           {tables?.map((table) => (
             <button
               key={table}
-              onClick={() => onSelectTable(table)}
+              onClick={() => { onSelectTable(table); onClose?.(); }}
               className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors truncate ${
                 selectedTable === table
                   ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
@@ -87,11 +88,8 @@ function SchemaSection({
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const { host, port, user, dbType, disconnect } = useConnectionStore();
-  const logout = useAuthStore((s) => s.logout);
-  const isAdmin = useAuthStore((s) => s.isAdmin);
-  const role = useAuthStore((s) => s.role);
   const {
     selectedDb,
     selectedTable,
@@ -104,7 +102,6 @@ export default function Sidebar() {
 
   const isPostgres = dbType === "postgresql";
   const [expandedSchemas, setExpandedSchemas] = useState<Set<string>>(new Set(["public"]));
-  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const { data: databases, isLoading: dbLoading } = useDatabases();
   const { data: tables, isLoading: tablesLoading } = useTables(selectedDb);
@@ -127,8 +124,13 @@ export default function Sidebar() {
     });
   };
 
+  const handleNav = (fn: () => void) => {
+    fn();
+    onClose?.();
+  };
+
   return (
-    <aside className="w-56 bg-sidebar text-sidebar-foreground flex flex-col h-screen min-h-0 border-r border-sidebar-border overflow-hidden">
+    <aside className="w-56 bg-sidebar text-sidebar-foreground flex flex-col h-screen min-h-0 border-r border-sidebar-border overflow-hidden shrink-0">
       {/* Header */}
       <div className="px-3 py-2.5 border-b border-sidebar-border shrink-0">
         <div className="flex items-center gap-2">
@@ -150,13 +152,18 @@ export default function Sidebar() {
               </p>
             </div>
           </div>
+          {onClose && (
+            <button onClick={onClose} className="md:hidden w-7 h-7 flex items-center justify-center rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 shrink-0" aria-label="Close sidebar">
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
       {/* Databases link */}
       <div className="px-2 pt-2 shrink-0">
         <button
-          onClick={() => setShowAllDatabases(true)}
+          onClick={() => handleNav(() => setShowAllDatabases(true))}
           className={`w-full text-left px-2 py-1.5 rounded text-[13px] font-medium transition-colors ${
             showAllDatabases
               ? "bg-sidebar-accent text-sidebar-accent-foreground"
@@ -198,7 +205,7 @@ export default function Sidebar() {
             <>
               {/* Clickable "Tables" header — returns to DB overview */}
               <button
-                onClick={() => setSelectedTable("")}
+                onClick={() => handleNav(() => setSelectedTable(""))}
                 className={`w-full text-left px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-widest transition-colors mb-1 ${
                   tablesHeaderActive
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
@@ -219,6 +226,7 @@ export default function Sidebar() {
                       onToggle={() => toggleSchema(s)}
                       selectedTable={selectedTable}
                       onSelectTable={setSelectedTable}
+                      onClose={onClose}
                     />
                   ))}
                 </>
@@ -234,7 +242,7 @@ export default function Sidebar() {
                   {tables?.map((table: string) => (
                     <button
                       key={table}
-                      onClick={() => setSelectedTable(table)}
+                      onClick={() => handleNav(() => setSelectedTable(table))}
                       className={`w-full text-left px-2 py-1 rounded text-[12px] transition-colors truncate ${
                         selectedTable === table
                           ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
@@ -264,27 +272,7 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="p-2 border-t border-sidebar-border space-y-0.5 shrink-0">
-        {role && (
-          <div className="px-2 py-1 flex items-center gap-1.5">
-            <span
-              className={`inline-block w-1.5 h-1.5 rounded-full ${
-                isAdmin ? "bg-emerald-500" : "bg-amber-500"
-              }`}
-            />
-            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/50">
-              {isAdmin ? "Admin" : "Read-only"}
-            </span>
-          </div>
-        )}
         <ThemeToggle className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50" />
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 h-7 text-xs"
-          onClick={() => setShowChangePassword(true)}
-        >
-          Change password
-        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -293,17 +281,8 @@ export default function Sidebar() {
         >
           Disconnect
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 h-7 text-xs"
-          onClick={() => { databaseRequest.disconnect().catch(() => {}); resetNav(); disconnect(); logout(); }}
-        >
-          Logout
-        </Button>
+        <UserMenu />
       </div>
-
-      <ChangePasswordDialog open={showChangePassword} onOpenChange={setShowChangePassword} />
     </aside>
   );
 }

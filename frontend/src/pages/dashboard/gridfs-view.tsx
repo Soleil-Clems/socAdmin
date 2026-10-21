@@ -108,7 +108,7 @@ export default function GridFSView() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
+      <div className="px-3 py-2 border-b border-border bg-card flex flex-wrap items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">GridFS</span>
         <span className="text-muted-foreground">
           {selectedDb} · {buckets?.length ?? 0} bucket{(buckets?.length ?? 0) > 1 ? "s" : ""}
@@ -159,26 +159,28 @@ export default function GridFSView() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex overflow-hidden min-h-0">
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
           {/* Bucket sidebar */}
-          <div className="w-48 border-r border-border bg-card/50 shrink-0 overflow-y-auto">
-            <div className="px-3 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="md:w-48 border-b md:border-b-0 md:border-r border-border bg-card/50 shrink-0 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto">
+            <div className="hidden md:block px-3 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
               Buckets
             </div>
+            <div className="flex md:flex-col">
             {buckets.map((b) => (
               <button
                 key={b}
                 onClick={() => setSelectedBucket(b)}
-                className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center gap-2 ${
+                className={`text-left px-3 py-1.5 text-xs transition-colors flex items-center gap-2 shrink-0 ${
                   selectedBucket === b
-                    ? "bg-primary/10 text-primary border-l-2 border-primary"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground border-l-2 border-transparent"
+                    ? "bg-primary/10 text-primary md:border-l-2 border-b-2 md:border-b-0 border-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground md:border-l-2 border-b-2 md:border-b-0 border-transparent"
                 }`}
               >
-                <span className="text-[10px]">📁</span>
+                <span className="text-[10px] hidden md:inline">📁</span>
                 <span className="truncate font-mono">{b}</span>
               </button>
             ))}
+            </div>
           </div>
 
           {/* File list */}
@@ -219,7 +221,7 @@ export default function GridFSView() {
                             id: {f.id}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
                           <button
                             onClick={() => handleDownload(f)}
                             className="text-[11px] text-primary hover:bg-primary/10 px-2 py-1 rounded"

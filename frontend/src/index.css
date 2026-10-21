@@ -98,7 +98,7 @@
 
 /* ─── Dark mode ─── */
 .dark {
-    --background: oklch(0.155 0.005 260);
+    --background: oklch(0.19 0.005 260);
     --foreground: oklch(0.93 0.005 260);
     --card: oklch(0.19 0.005 260);
     --card-foreground: oklch(0.93 0.005 260);
@@ -145,6 +145,14 @@
 }
 
 /* Dense table styling for data views */
+@utility scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer components {
   .data-table th,
   .data-table td {

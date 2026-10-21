@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 )
+
+const mysqlQueryTimeout = 30 * time.Second
 
 type MySQLConfig struct {
 	Host     string
@@ -32,6 +35,9 @@ func (c *MySQLConnector) Connect() error {
 	cfg.Net = "tcp"
 	cfg.Addr = fmt.Sprintf("%s:%d", c.config.Host, c.config.Port)
 	cfg.InterpolateParams = true
+	cfg.Timeout = 10 * time.Second
+	cfg.ReadTimeout = mysqlQueryTimeout
+	cfg.WriteTimeout = mysqlQueryTimeout
 
 	db, err := sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
@@ -44,6 +50,8 @@ func (c *MySQLConnector) Connect() error {
 
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxIdleTime(3 * time.Minute)
 
 	c.db = db
 	return nil
@@ -272,6 +280,9 @@ func (c *MySQLConnector) connectToDb(database string) (*sql.DB, error) {
 	cfg.MultiStatements = true
 	cfg.ParseTime = true
 	cfg.InterpolateParams = true
+	cfg.Timeout = 10 * time.Second
+	cfg.ReadTimeout = mysqlQueryTimeout
+	cfg.WriteTimeout = mysqlQueryTimeout
 	db, err := sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
 		return nil, err

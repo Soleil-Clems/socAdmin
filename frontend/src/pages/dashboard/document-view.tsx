@@ -188,6 +188,7 @@ function DocumentCard({
         <button
           onClick={() => setExpanded(!expanded)}
           className="text-[11px] text-muted-foreground hover:text-foreground w-4"
+          aria-label={expanded ? "Collapse document" : "Expand document"}
         >
           {expanded ? "▾" : "▸"}
         </button>
@@ -269,6 +270,7 @@ function DocFormEditor({
           <button
             onClick={() => removeField(i)}
             className="text-muted-foreground hover:text-destructive text-sm w-6 h-8 flex items-center justify-center shrink-0"
+            aria-label="Remove field"
           >
             ×
           </button>
@@ -657,10 +659,10 @@ export default function DocumentView() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Toolbar */}
-      <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
+      <div className="px-3 py-2 border-b border-border bg-card flex flex-wrap items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">{selectedTable}</span>
         <span className="text-muted-foreground">{selectedDb}</span>
-        <span className="text-muted-foreground">
+        <span className="text-muted-foreground hidden sm:inline">
           · {totalDocs.toLocaleString()} docs
           {stats && (
             <>
@@ -670,7 +672,7 @@ export default function DocumentView() {
             </>
           )}
         </span>
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <Button
             size="sm"
             variant="outline"
@@ -808,6 +810,7 @@ export default function DocumentView() {
                 <button
                   onClick={() => removeFilterRow(idx)}
                   className="text-muted-foreground hover:text-destructive text-sm w-5 h-7 flex items-center justify-center shrink-0"
+                  aria-label="Remove condition"
                 >
                   ×
                 </button>
@@ -940,7 +943,7 @@ export default function DocumentView() {
       )}
 
       {/* Pagination */}
-      <div className="px-3 py-1.5 border-t border-border bg-card flex items-center justify-between text-xs">
+      <div className="px-3 py-1.5 border-t border-border bg-card flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">Docs/page</span>
           <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(0); }}>
@@ -1129,7 +1132,7 @@ export default function DocumentView() {
           <div className="bg-card border border-border rounded-lg shadow-lg w-full max-w-md max-h-[60vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
               <span className="text-sm font-semibold">Distinct Values</span>
-              <button onClick={() => setShowDistinct(false)} className="ml-auto text-muted-foreground hover:text-foreground text-sm">×</button>
+              <button onClick={() => setShowDistinct(false)} className="ml-auto text-muted-foreground hover:text-foreground text-sm" aria-label="Close">×</button>
             </div>
             <div className="px-4 py-3 space-y-3">
               <div className="flex items-center gap-2">

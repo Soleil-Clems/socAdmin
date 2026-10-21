@@ -32,8 +32,8 @@ func NewPostgresConnector(config PostgresConfig) *PostgresConnector {
 }
 
 func (c *PostgresConnector) Connect() error {
-	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=postgres sslmode=prefer connect_timeout=5",
-		pgDSNEscape(c.config.Host), c.config.Port, pgDSNEscape(c.config.User))
+	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=postgres sslmode=prefer connect_timeout=5 statement_timeout=%d",
+		pgDSNEscape(c.config.Host), c.config.Port, pgDSNEscape(c.config.User), int(queryTimeout.Milliseconds()))
 	if c.config.Password != "" {
 		dsn += fmt.Sprintf(" password=%s", pgDSNEscape(c.config.Password))
 	}
@@ -50,6 +50,8 @@ func (c *PostgresConnector) Connect() error {
 
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxIdleTime(3 * time.Minute)
 
 	c.db = db
 	return nil
@@ -432,8 +434,8 @@ func (c *PostgresConnector) connectToDb(database string) (*sql.DB, error) {
 	if err := ValidateIdentifier(database); err != nil {
 		return nil, fmt.Errorf("invalid database name: %w", err)
 	}
-	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=prefer connect_timeout=5",
-		pgDSNEscape(c.config.Host), c.config.Port, pgDSNEscape(c.config.User), pgDSNEscape(database))
+	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=prefer connect_timeout=5 statement_timeout=%d",
+		pgDSNEscape(c.config.Host), c.config.Port, pgDSNEscape(c.config.User), pgDSNEscape(database), int(queryTimeout.Milliseconds()))
 	if c.config.Password != "" {
 		dsn += fmt.Sprintf(" password=%s", pgDSNEscape(c.config.Password))
 	}

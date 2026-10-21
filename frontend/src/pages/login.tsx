@@ -32,7 +32,7 @@ export default function LoginPage({ onSwitchToRegister }: Props) {
     setServerError("");
     loginMutation.mutate(data, {
       onSuccess: (res) => {
-        setAuthenticated(res.role);
+        setAuthenticated(res.role, res.email);
       },
       onError: (err) => {
         setServerError(err.message);

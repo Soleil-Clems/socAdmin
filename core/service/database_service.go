@@ -5,13 +5,18 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/soleilouisol/socAdmin/core/backup"
 	"github.com/soleilouisol/socAdmin/core/connector"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
+
+const sessionTimeout = 30 * time.Minute
+const cleanupInterval = 5 * time.Minute
 
 func toBsonMSlice(roles []map[string]interface{}) []bson.M {
 	out := make([]bson.M, len(roles))
@@ -30,18 +35,67 @@ type PreconfiguredDB struct {
 	Password string
 }
 
+type userSession struct {
+	conn         connector.Connector
+	dbType       string
+	host         string
+	port         int
+	user         string
+	lastActivity time.Time
+}
+
 type DatabaseService struct {
 	mu            sync.RWMutex
-	conn          connector.Connector
-	dbType        string
-	host          string
-	port          int
-	user          string
+	sessions      map[int64]*userSession
 	preconfigured []PreconfiguredDB
+	stopCleanup   chan struct{}
 }
 
 func NewDatabaseService() *DatabaseService {
-	return &DatabaseService{}
+	return &DatabaseService{
+		sessions:    make(map[int64]*userSession),
+		stopCleanup: make(chan struct{}),
+	}
+}
+
+func (s *DatabaseService) StartCleanup() {
+	go func() {
+		ticker := time.NewTicker(cleanupInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				s.cleanupStaleSessions()
+			case <-s.stopCleanup:
+				return
+			}
+		}
+	}()
+}
+
+func (s *DatabaseService) Shutdown() {
+	close(s.stopCleanup)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for uid, sess := range s.sessions {
+		sess.conn.Close()
+		delete(s.sessions, uid)
+	}
+}
+
+func (s *DatabaseService) cleanupStaleSessions() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	for uid, sess := range s.sessions {
+		if now.Sub(sess.lastActivity) > sessionTimeout {
+			log.Printf("session cleanup: closing idle DB session for user %d (inactive %s)", uid, now.Sub(sess.lastActivity).Round(time.Second))
+			sess.conn.Close()
+			delete(s.sessions, uid)
+		}
+	}
 }
 
 // SetPreconfigured stores DB configs from env vars.
@@ -54,13 +108,12 @@ func (s *DatabaseService) ListPreconfigured() []PreconfiguredDB {
 	return s.preconfigured
 }
 
-
-func (s *DatabaseService) Connect(host string, port int, user, password, dbType string) error {
+func (s *DatabaseService) Connect(userID int64, host string, port int, user, password, dbType string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.conn != nil {
-		s.conn.Close()
+	if sess := s.sessions[userID]; sess != nil {
+		sess.conn.Close()
 	}
 
 	var conn connector.Connector
@@ -86,24 +139,30 @@ func (s *DatabaseService) Connect(host string, port int, user, password, dbType 
 		return fmt.Errorf("connection failed: %w", err)
 	}
 
-	s.conn = conn
-	s.dbType = dbType
-	s.host = host
-	s.port = port
-	s.user = user
+	s.sessions[userID] = &userSession{
+		conn:         conn,
+		dbType:       dbType,
+		host:         host,
+		port:         port,
+		user:         user,
+		lastActivity: time.Now(),
+	}
 	return nil
 }
 
-func (s *DatabaseService) GetType() string {
+func (s *DatabaseService) GetType(userID int64) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.dbType
+	if sess := s.sessions[userID]; sess != nil {
+		return sess.dbType
+	}
+	return ""
 }
 
-func (s *DatabaseService) IsConnected() bool {
+func (s *DatabaseService) IsConnected(userID int64) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.conn != nil
+	return s.sessions[userID] != nil
 }
 
 type ConnectionInfo struct {
@@ -113,74 +172,70 @@ type ConnectionInfo struct {
 	DbType string `json:"type"`
 }
 
-func (s *DatabaseService) GetConnectionInfo() *ConnectionInfo {
+func (s *DatabaseService) GetConnectionInfo(userID int64) *ConnectionInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.conn == nil {
+	sess := s.sessions[userID]
+	if sess == nil {
 		return nil
 	}
 	return &ConnectionInfo{
-		Host:   s.host,
-		Port:   s.port,
-		User:   s.user,
-		DbType: s.dbType,
+		Host:   sess.host,
+		Port:   sess.port,
+		User:   sess.user,
+		DbType: sess.dbType,
 	}
 }
 
-// getConn safely reads the current connector under read lock.
-func (s *DatabaseService) getConn() (connector.Connector, error) {
-	s.mu.RLock()
-	c := s.conn
-	s.mu.RUnlock()
-	if c == nil {
+func (s *DatabaseService) getSession(userID int64) (*userSession, error) {
+	s.mu.Lock()
+	sess := s.sessions[userID]
+	if sess != nil {
+		sess.lastActivity = time.Now()
+	}
+	s.mu.Unlock()
+	if sess == nil {
 		return nil, fmt.Errorf("not connected")
 	}
-	return c, nil
+	return sess, nil
 }
 
-// getMongoConn safely reads the current connector and asserts it's MongoDB.
-func (s *DatabaseService) getMongoConn() (*connector.MongoConnector, error) {
-	s.mu.RLock()
-	c := s.conn
-	s.mu.RUnlock()
-	if c == nil {
-		return nil, fmt.Errorf("not connected")
+func (s *DatabaseService) getConn(userID int64) (connector.Connector, error) {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return nil, err
 	}
-	mc, ok := c.(*connector.MongoConnector)
+	return sess.conn, nil
+}
+
+func (s *DatabaseService) getMongoConn(userID int64) (*connector.MongoConnector, error) {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return nil, err
+	}
+	mc, ok := sess.conn.(*connector.MongoConnector)
 	if !ok {
 		return nil, fmt.Errorf("not a MongoDB connection")
 	}
 	return mc, nil
 }
 
-// BackupDatabase streams a full dump of dbName to w using the appropriate
-// native binary (mysqldump/pg_dump/mongodump). The caller is responsible
-// for setting HTTP headers before calling.
-func (s *DatabaseService) BackupDatabase(dbName string, w io.Writer) error {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return fmt.Errorf("not connected")
+func (s *DatabaseService) BackupDatabase(userID int64, dbName string, w io.Writer) error {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return err
 	}
-	cfg := c.GetConfig()
-	return backup.Backup(dt, cfg, dbName, w)
+	cfg := sess.conn.GetConfig()
+	return backup.Backup(sess.dbType, cfg, dbName, w)
 }
 
-// RestoreDatabase replays a dump from r into dbName. For SQL dumps the
-// target database must already exist; for MongoDB the archive contains
-// the database name and is restored under dbName via --nsInclude.
-func (s *DatabaseService) RestoreDatabase(dbName string, r io.Reader) error {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return fmt.Errorf("not connected")
+func (s *DatabaseService) RestoreDatabase(userID int64, dbName string, r io.Reader) error {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return err
 	}
-	cfg := c.GetConfig()
-	return backup.Restore(dt, cfg, dbName, r)
+	cfg := sess.conn.GetConfig()
+	return backup.Restore(sess.dbType, cfg, dbName, r)
 }
 
 // BackupBinariesAvailable returns a map[dbType]bool indicating whether
@@ -189,43 +244,37 @@ func (s *DatabaseService) BackupBinariesAvailable() map[string]bool {
 	return backup.CheckBinaries()
 }
 
-// BackupFormat returns the canonical extension and content-type for the
-// current connection's backup format.
-func (s *DatabaseService) BackupFormat() backup.Format {
-	s.mu.RLock()
-	dt := s.dbType
-	s.mu.RUnlock()
-	return backup.FormatFor(dt)
+func (s *DatabaseService) BackupFormat(userID int64) backup.Format {
+	sess, _ := s.getSession(userID)
+	if sess == nil {
+		return backup.FormatFor("")
+	}
+	return backup.FormatFor(sess.dbType)
 }
 
-func (s *DatabaseService) ListDatabases() ([]string, error) {
-	c, err := s.getConn()
+func (s *DatabaseService) ListDatabases(userID int64) ([]string, error) {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return c.ListDatabases()
 }
 
-// ListDatabasesWithStats returns databases with table count and size info.
-func (s *DatabaseService) ListDatabasesWithStats() ([]connector.DatabaseInfo, error) {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return nil, fmt.Errorf("not connected")
+func (s *DatabaseService) ListDatabasesWithStats(userID int64) ([]connector.DatabaseInfo, error) {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return nil, err
 	}
 
-	switch dt {
+	switch sess.dbType {
 	case "mysql":
-		return s.mysqlDatabaseStats()
+		return s.mysqlDatabaseStats(userID)
 	case "postgresql":
-		return s.postgresDatabaseStats()
+		return s.postgresDatabaseStats(userID)
 	case "mongodb":
-		return s.mongoDatabaseStats()
+		return s.mongoDatabaseStats(userID)
 	default:
-		// Fallback: just names, no stats
-		names, err := c.ListDatabases()
+		names, err := sess.conn.ListDatabases()
 		if err != nil {
 			return nil, err
 		}
@@ -237,8 +286,8 @@ func (s *DatabaseService) ListDatabasesWithStats() ([]connector.DatabaseInfo, er
 	}
 }
 
-func (s *DatabaseService) mysqlDatabaseStats() ([]connector.DatabaseInfo, error) {
-	c, err := s.getConn()
+func (s *DatabaseService) mysqlDatabaseStats(userID int64) ([]connector.DatabaseInfo, error) {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -270,8 +319,8 @@ func (s *DatabaseService) mysqlDatabaseStats() ([]connector.DatabaseInfo, error)
 	return infos, nil
 }
 
-func (s *DatabaseService) postgresDatabaseStats() ([]connector.DatabaseInfo, error) {
-	c, err := s.getConn()
+func (s *DatabaseService) postgresDatabaseStats(userID int64) ([]connector.DatabaseInfo, error) {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +339,6 @@ func (s *DatabaseService) postgresDatabaseStats() ([]connector.DatabaseInfo, err
 	for _, row := range result.Rows {
 		name := fmt.Sprintf("%v", row["name"])
 		sb := toInt64(row["size_bytes"])
-		// Table count requires per-DB connection, get it from ListTables
 		tables, _ := c.ListTables(name)
 		infos = append(infos, connector.DatabaseInfo{
 			Name:       name,
@@ -302,8 +350,8 @@ func (s *DatabaseService) postgresDatabaseStats() ([]connector.DatabaseInfo, err
 	return infos, nil
 }
 
-func (s *DatabaseService) mongoDatabaseStats() ([]connector.DatabaseInfo, error) {
-	c, err := s.getConn()
+func (s *DatabaseService) mongoDatabaseStats(userID int64) ([]connector.DatabaseInfo, error) {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -314,7 +362,6 @@ func (s *DatabaseService) mongoDatabaseStats() ([]connector.DatabaseInfo, error)
 	infos := make([]connector.DatabaseInfo, 0, len(names))
 	for _, name := range names {
 		tables, _ := c.ListTables(name)
-		// MongoDB doesn't have a simple size query via the Connector interface
 		infos = append(infos, connector.DatabaseInfo{
 			Name:       name,
 			TableCount: len(tables),
@@ -356,113 +403,112 @@ func formatBytes(b int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
-
-func (s *DatabaseService) CreateDatabase(name string) error {
-	c, err := s.getConn()
+func (s *DatabaseService) CreateDatabase(userID int64, name string) error {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return err
 	}
 	return c.CreateDatabase(name)
 }
 
-func (s *DatabaseService) DropDatabase(name string) error {
-	c, err := s.getConn()
+func (s *DatabaseService) DropDatabase(userID int64, name string) error {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return err
 	}
 	return c.DropDatabase(name)
 }
 
-func (s *DatabaseService) CreateTable(database, table string, columns []connector.TableColumnDef) error {
-	c, err := s.getConn()
+func (s *DatabaseService) CreateTable(userID int64, database, table string, columns []connector.TableColumnDef) error {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return err
 	}
 	return c.CreateTable(database, table, columns)
 }
 
-func (s *DatabaseService) ListTables(database string) ([]string, error) {
-	c, err := s.getConn()
+func (s *DatabaseService) ListTables(userID int64, database string) ([]string, error) {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return c.ListTables(database)
 }
 
-func (s *DatabaseService) DescribeTable(database, table string) ([]connector.Column, error) {
-	c, err := s.getConn()
+func (s *DatabaseService) DescribeTable(userID int64, database, table string) ([]connector.Column, error) {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return c.DescribeTable(database, table)
 }
 
-func (s *DatabaseService) GetRows(database, table string, limit, offset int) (*connector.QueryResult, error) {
-	c, err := s.getConn()
+func (s *DatabaseService) GetRows(userID int64, database, table string, limit, offset int) (*connector.QueryResult, error) {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return c.GetRows(database, table, limit, offset)
 }
 
-func (s *DatabaseService) InsertRow(database, table string, data map[string]interface{}) error {
-	c, err := s.getConn()
+func (s *DatabaseService) InsertRow(userID int64, database, table string, data map[string]interface{}) error {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return err
 	}
 	return c.InsertRow(database, table, data)
 }
 
-func (s *DatabaseService) UpdateRow(database, table string, primaryKey map[string]interface{}, data map[string]interface{}) error {
-	c, err := s.getConn()
+func (s *DatabaseService) UpdateRow(userID int64, database, table string, primaryKey map[string]interface{}, data map[string]interface{}) error {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return err
 	}
 	return c.UpdateRow(database, table, primaryKey, data)
 }
 
-func (s *DatabaseService) DeleteRow(database, table string, primaryKey map[string]interface{}) error {
-	c, err := s.getConn()
+func (s *DatabaseService) DeleteRow(userID int64, database, table string, primaryKey map[string]interface{}) error {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return err
 	}
 	return c.DeleteRow(database, table, primaryKey)
 }
 
-func (s *DatabaseService) ExecuteQuery(database, query string) (*connector.QueryResult, error) {
-	c, err := s.getConn()
+func (s *DatabaseService) ExecuteQuery(userID int64, database, query string) (*connector.QueryResult, error) {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return c.ExecuteQuery(database, query)
 }
 
-func (s *DatabaseService) ExecuteScript(database, script string) (int, error) {
-	c, err := s.getConn()
+func (s *DatabaseService) ExecuteScript(userID int64, database, script string) (int, error) {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return 0, err
 	}
 	return c.ExecuteScript(database, script)
 }
 
-func (s *DatabaseService) DropTable(database, table string) error {
-	c, err := s.getConn()
+func (s *DatabaseService) DropTable(userID int64, database, table string) error {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return err
 	}
 	return c.DropTable(database, table)
 }
 
-func (s *DatabaseService) AlterColumn(database, table string, op connector.AlterColumnOp) error {
-	c, err := s.getConn()
+func (s *DatabaseService) AlterColumn(userID int64, database, table string, op connector.AlterColumnOp) error {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return err
 	}
 	return c.AlterColumn(database, table, op)
 }
 
-func (s *DatabaseService) TruncateTable(database, table string) error {
-	c, err := s.getConn()
+func (s *DatabaseService) TruncateTable(userID int64, database, table string) error {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return err
 	}
@@ -471,28 +517,34 @@ func (s *DatabaseService) TruncateTable(database, table string) error {
 
 // SearchGlobalResult represents search results from one table.
 type SearchGlobalResult struct {
-	Table    string                   `json:"table"`
-	Matches  []map[string]interface{} `json:"matches"`
-	Total    int                      `json:"total"`
-	Columns  []string                 `json:"columns"`
+	Table   string                   `json:"table"`
+	Matches []map[string]interface{} `json:"matches"`
+	Total   int                      `json:"total"`
+	Columns []string                 `json:"columns"`
 }
 
-// SearchGlobal searches for a term across all tables/collections in a database.
-func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]SearchGlobalResult, error) {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return nil, fmt.Errorf("not connected")
+func (s *DatabaseService) SearchGlobal(userID int64, database, query string, limit int) ([]SearchGlobalResult, error) {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return nil, err
 	}
+	c := sess.conn
+	dt := sess.dbType
 
 	tables, err := c.ListTables(database)
 	if err != nil {
 		return nil, err
 	}
 
+	const maxTables = 50
+	const maxTotalMatches = 200
+
+	if len(tables) > maxTables {
+		tables = tables[:maxTables]
+	}
+
 	var results []SearchGlobalResult
+	totalMatches := 0
 
 	for _, table := range tables {
 		cols, err := c.DescribeTable(database, table)
@@ -500,7 +552,6 @@ func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]Sea
 			continue
 		}
 
-		// Build a search query based on SGBD type
 		var searchQuery string
 		colNames := make([]string, len(cols))
 		for i, col := range cols {
@@ -509,7 +560,6 @@ func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]Sea
 
 		switch dt {
 		case "mysql":
-			// CONCAT_WS all columns and LIKE search
 			var castCols []string
 			for _, col := range cols {
 				castCols = append(castCols, fmt.Sprintf("COALESCE(CAST(`%s` AS CHAR),'')", col.Name))
@@ -523,13 +573,11 @@ func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]Sea
 			for _, col := range cols {
 				castCols = append(castCols, fmt.Sprintf(`COALESCE("%s"::text,'')`, col.Name))
 			}
-			// PostgreSQL: ExecuteQuery connects to the specific DB, so just use public."table"
 			searchQuery = fmt.Sprintf(
 				`SELECT * FROM public."%s" WHERE CONCAT_WS(' ',%s) ILIKE '%%%s%%' LIMIT %d`,
 				table, joinStrings(castCols, ","), escapeLike(query), limit,
 			)
 		case "mongodb":
-			// For MongoDB, search via regex on all string fields
 			result, err := c.GetRows(database, table, 100, 0)
 			if err != nil {
 				continue
@@ -555,13 +603,16 @@ func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]Sea
 					Total:   len(matches),
 					Columns: colNames,
 				})
+				totalMatches += len(matches)
+				if totalMatches >= maxTotalMatches {
+					return results, nil
+				}
 			}
 			continue
 		default:
 			continue
 		}
 
-		// Execute SQL search
 		result, err := c.ExecuteQuery(database, searchQuery)
 		if err != nil {
 			continue
@@ -574,6 +625,10 @@ func (s *DatabaseService) SearchGlobal(database, query string, limit int) ([]Sea
 				Total:   len(result.Rows),
 				Columns: result.Columns,
 			})
+			totalMatches += len(result.Rows)
+			if totalMatches >= maxTotalMatches {
+				return results, nil
+			}
 		}
 	}
 
@@ -603,9 +658,8 @@ func containsCI(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-// GetSchema returns the full schema for a database (tables, columns, foreign keys).
-func (s *DatabaseService) GetSchema(database string) ([]connector.TableSchema, error) {
-	c, err := s.getConn()
+func (s *DatabaseService) GetSchema(userID int64, database string) ([]connector.TableSchema, error) {
+	c, err := s.getConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -615,8 +669,7 @@ func (s *DatabaseService) GetSchema(database string) ([]connector.TableSchema, e
 		return nil, err
 	}
 
-	// Get foreign keys map
-	fkMap := s.getForeignKeys(database)
+	fkMap := s.getForeignKeys(userID, database)
 
 	var schema []connector.TableSchema
 	for _, tableName := range tables {
@@ -633,7 +686,6 @@ func (s *DatabaseService) GetSchema(database string) ([]connector.TableSchema, e
 				Nullable:  col.Null == "YES",
 				IsPrimary: strings.Contains(col.Key, "PRI") || strings.Contains(col.Key, "PRIMARY"),
 			}
-			// Check for foreign key
 			fkKey := tableName + "." + col.Name
 			if fk, ok := fkMap[fkKey]; ok {
 				sc.ForeignKey = &fk
@@ -650,15 +702,14 @@ func (s *DatabaseService) GetSchema(database string) ([]connector.TableSchema, e
 	return schema, nil
 }
 
-func (s *DatabaseService) getForeignKeys(database string) map[string]connector.FKInfo {
+func (s *DatabaseService) getForeignKeys(userID int64, database string) map[string]connector.FKInfo {
 	fkMap := make(map[string]connector.FKInfo)
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
+	sess, err := s.getSession(userID)
+	if err != nil {
 		return fkMap
 	}
+	c := sess.conn
+	dt := sess.dbType
 
 	var query string
 	switch dt {
@@ -686,9 +737,9 @@ func (s *DatabaseService) getForeignKeys(database string) map[string]connector.F
 			WHERE tc.constraint_type = 'FOREIGN KEY'
 			AND tc.table_schema = 'public'
 		`)
-		_ = database // PostgreSQL uses schema 'public' by default
+		_ = database
 	default:
-		return fkMap // MongoDB has no foreign keys
+		return fkMap
 	}
 
 	result, err := c.ExecuteQuery(database, query)
@@ -702,7 +753,6 @@ func (s *DatabaseService) getForeignKeys(database string) map[string]connector.F
 		refTable := fmt.Sprintf("%v", row["REFERENCED_TABLE_NAME"])
 		refCol := fmt.Sprintf("%v", row["REFERENCED_COLUMN_NAME"])
 
-		// PostgreSQL uses lowercase column names
 		if tableName == "<nil>" {
 			tableName = fmt.Sprintf("%v", row["table_name"])
 			colName = fmt.Sprintf("%v", row["column_name"])
@@ -721,99 +771,88 @@ func (s *DatabaseService) getForeignKeys(database string) map[string]connector.F
 
 // ── MongoDB-specific methods ──
 
-// MongoFind performs a server-side find with filter, sort, projection, limit, skip.
-func (s *DatabaseService) MongoFind(database, collection, filter, sort, projection string, limit, skip int) (*connector.QueryResult, int64, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoFind(userID int64, database, collection, filter, sort, projection string, limit, skip int) (*connector.QueryResult, int64, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, 0, err
 	}
 	return mc.FindDocuments(database, collection, filter, sort, projection, limit, skip)
 }
 
-// MongoExplain runs explain on a find query.
-func (s *DatabaseService) MongoExplain(database, collection, filter, sort string) (map[string]interface{}, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoExplain(userID int64, database, collection, filter, sort string) (map[string]interface{}, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return mc.ExplainFind(database, collection, filter, sort)
 }
 
-// MongoCount returns total document count for a collection.
-func (s *DatabaseService) MongoCount(database, collection string) (int64, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoCount(userID int64, database, collection string) (int64, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return 0, err
 	}
 	return mc.CountDocuments(database, collection)
 }
 
-// MongoListIndexes returns indexes for a collection.
-func (s *DatabaseService) MongoListIndexes(database, collection string) ([]connector.IndexInfo, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoListIndexes(userID int64, database, collection string) ([]connector.IndexInfo, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return mc.ListIndexes(database, collection)
 }
 
-// MongoCreateIndex creates an index on a collection.
-func (s *DatabaseService) MongoCreateIndex(database, collection, keysJSON string, unique bool, name string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoCreateIndex(userID int64, database, collection, keysJSON string, unique bool, name string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.CreateIndex(database, collection, keysJSON, unique, name)
 }
 
-// MongoCreateIndexAdvanced creates an index with advanced options.
-func (s *DatabaseService) MongoCreateIndexAdvanced(database, collection, keysJSON string, unique, sparse bool, name string, ttlSeconds int, partialFilterJSON string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoCreateIndexAdvanced(userID int64, database, collection, keysJSON string, unique, sparse bool, name string, ttlSeconds int, partialFilterJSON string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.CreateIndexAdvanced(database, collection, keysJSON, unique, sparse, name, ttlSeconds, partialFilterJSON)
 }
 
-// MongoCreateIndexFull creates an index with the full option set.
-func (s *DatabaseService) MongoCreateIndexFull(database, collection, keysJSON string, opts connector.IndexCreateOptions) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoCreateIndexFull(userID int64, database, collection, keysJSON string, opts connector.IndexCreateOptions) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.CreateIndexFull(database, collection, keysJSON, opts)
 }
 
-// MongoSetIndexHidden hides or unhides an existing index.
-func (s *DatabaseService) MongoSetIndexHidden(database, collection, indexName string, hidden bool) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoSetIndexHidden(userID int64, database, collection, indexName string, hidden bool) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.SetIndexHidden(database, collection, indexName, hidden)
 }
 
-// MongoDropIndex drops an index by name.
-func (s *DatabaseService) MongoDropIndex(database, collection, indexName string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoDropIndex(userID int64, database, collection, indexName string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.DropIndex(database, collection, indexName)
 }
 
-// MongoWatchCollection opens a change stream on a collection (SSE).
-func (s *DatabaseService) MongoWatchCollection(ctx context.Context, database, collection string, events chan<- connector.ChangeEvent) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoWatchCollection(userID int64, ctx context.Context, database, collection string, events chan<- connector.ChangeEvent) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.WatchCollection(ctx, database, collection, events)
 }
 
-// MongoCollectionStats returns stats for a MongoDB collection.
-func (s *DatabaseService) MongoCollectionStats(database, collection string) (*connector.CollectionStats, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoCollectionStats(userID int64, database, collection string) (*connector.CollectionStats, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -822,24 +861,24 @@ func (s *DatabaseService) MongoCollectionStats(database, collection string) (*co
 
 // ── Bulk Operations ──
 
-func (s *DatabaseService) MongoInsertMany(database, collection string, docs []map[string]interface{}) (int, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoInsertMany(userID int64, database, collection string, docs []map[string]interface{}) (int, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return 0, err
 	}
 	return mc.InsertMany(database, collection, docs)
 }
 
-func (s *DatabaseService) MongoUpdateMany(database, collection, filter, update string) (int64, int64, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoUpdateMany(userID int64, database, collection, filter, update string) (int64, int64, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return 0, 0, err
 	}
 	return mc.UpdateMany(database, collection, filter, update)
 }
 
-func (s *DatabaseService) MongoDeleteMany(database, collection, filter string) (int64, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoDeleteMany(userID int64, database, collection, filter string) (int64, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return 0, err
 	}
@@ -848,8 +887,8 @@ func (s *DatabaseService) MongoDeleteMany(database, collection, filter string) (
 
 // ── Distinct ──
 
-func (s *DatabaseService) MongoDistinct(database, collection, field, filter string) ([]interface{}, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoDistinct(userID int64, database, collection, field, filter string) ([]interface{}, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -858,32 +897,32 @@ func (s *DatabaseService) MongoDistinct(database, collection, field, filter stri
 
 // ── User Management ──
 
-func (s *DatabaseService) MongoCreateUser(database, username, password string, roles []map[string]interface{}) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoCreateUser(userID int64, database, username, password string, roles []map[string]interface{}) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.MongoCreateUser(database, username, password, toBsonMSlice(roles))
 }
 
-func (s *DatabaseService) MongoDropUser(database, username string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoDropUser(userID int64, database, username string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.MongoDropUser(database, username)
 }
 
-func (s *DatabaseService) MongoUpdateUserRoles(database, username string, roles []map[string]interface{}) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoUpdateUserRoles(userID int64, database, username string, roles []map[string]interface{}) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.MongoUpdateUserRoles(database, username, toBsonMSlice(roles))
 }
 
-func (s *DatabaseService) MongoListRoles(database string) ([]string, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoListRoles(userID int64, database string) ([]string, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -892,16 +931,16 @@ func (s *DatabaseService) MongoListRoles(database string) ([]string, error) {
 
 // ── currentOp / killOp ──
 
-func (s *DatabaseService) MongoCurrentOp() ([]map[string]interface{}, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoCurrentOp(userID int64) ([]map[string]interface{}, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return mc.CurrentOp()
 }
 
-func (s *DatabaseService) MongoKillOp(opid interface{}) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoKillOp(userID int64, opid interface{}) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
@@ -910,16 +949,16 @@ func (s *DatabaseService) MongoKillOp(opid interface{}) error {
 
 // ── MongoDB Views ──
 
-func (s *DatabaseService) MongoCreateView(database, viewName, source, pipelineJSON string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoCreateView(userID int64, database, viewName, source, pipelineJSON string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.CreateView(database, viewName, source, pipelineJSON)
 }
 
-func (s *DatabaseService) MongoListViews(database string) ([]map[string]interface{}, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoListViews(userID int64, database string) ([]map[string]interface{}, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -928,16 +967,16 @@ func (s *DatabaseService) MongoListViews(database string) ([]map[string]interfac
 
 // ── Schema Validation ──
 
-func (s *DatabaseService) MongoGetValidation(database, collection string) (map[string]interface{}, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoGetValidation(userID int64, database, collection string) (map[string]interface{}, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return mc.GetValidationRules(database, collection)
 }
 
-func (s *DatabaseService) MongoSetValidation(database, collection, validatorJSON, level, action string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoSetValidation(userID int64, database, collection, validatorJSON, level, action string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
@@ -946,8 +985,8 @@ func (s *DatabaseService) MongoSetValidation(database, collection, validatorJSON
 
 // ── Rename Collection ──
 
-func (s *DatabaseService) MongoRenameCollection(database, oldName, newName string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoRenameCollection(userID int64, database, oldName, newName string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
@@ -956,24 +995,24 @@ func (s *DatabaseService) MongoRenameCollection(database, oldName, newName strin
 
 // ── Database Profiler ──
 
-func (s *DatabaseService) MongoGetProfilingLevel(database string) (map[string]interface{}, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoGetProfilingLevel(userID int64, database string) (map[string]interface{}, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return mc.GetProfilingLevel(database)
 }
 
-func (s *DatabaseService) MongoSetProfilingLevel(database string, level, slowms int) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoSetProfilingLevel(userID int64, database string, level, slowms int) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.SetProfilingLevel(database, level, slowms)
 }
 
-func (s *DatabaseService) MongoGetProfileData(database string, limit int) ([]map[string]interface{}, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoGetProfileData(userID int64, database string, limit int) ([]map[string]interface{}, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -982,8 +1021,8 @@ func (s *DatabaseService) MongoGetProfileData(database string, limit int) ([]map
 
 // ── Database Stats ──
 
-func (s *DatabaseService) MongoDatabaseStats(database string) (map[string]interface{}, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoDatabaseStats(userID int64, database string) (map[string]interface{}, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -992,16 +1031,16 @@ func (s *DatabaseService) MongoDatabaseStats(database string) (map[string]interf
 
 // ── Capped Collections ──
 
-func (s *DatabaseService) MongoCreateCappedCollection(database, collection string, sizeBytes, maxDocs int64) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoCreateCappedCollection(userID int64, database, collection string, sizeBytes, maxDocs int64) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.CreateCappedCollection(database, collection, sizeBytes, maxDocs)
 }
 
-func (s *DatabaseService) MongoIsCollectionCapped(database, collection string) (bool, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoIsCollectionCapped(userID int64, database, collection string) (bool, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return false, err
 	}
@@ -1010,8 +1049,8 @@ func (s *DatabaseService) MongoIsCollectionCapped(database, collection string) (
 
 // ── Compact Collection ──
 
-func (s *DatabaseService) MongoCompactCollection(database, collection string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoCompactCollection(userID int64, database, collection string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
@@ -1020,8 +1059,8 @@ func (s *DatabaseService) MongoCompactCollection(database, collection string) er
 
 // ── Duplicate Collection ──
 
-func (s *DatabaseService) MongoDuplicateCollection(database, source, target string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoDuplicateCollection(userID int64, database, source, target string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
@@ -1030,8 +1069,8 @@ func (s *DatabaseService) MongoDuplicateCollection(database, source, target stri
 
 // ── Server Log ──
 
-func (s *DatabaseService) MongoGetServerLog(logType string) ([]string, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoGetServerLog(userID int64, logType string) ([]string, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1040,8 +1079,8 @@ func (s *DatabaseService) MongoGetServerLog(logType string) ([]string, error) {
 
 // ── Convert to Capped ──
 
-func (s *DatabaseService) MongoConvertToCapped(database, collection string, sizeBytes int64) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoConvertToCapped(userID int64, database, collection string, sizeBytes int64) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
@@ -1050,8 +1089,8 @@ func (s *DatabaseService) MongoConvertToCapped(database, collection string, size
 
 // ── Collection Metadata ──
 
-func (s *DatabaseService) MongoListCollectionsWithMeta(database string) ([]connector.CollectionMetadata, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoListCollectionsWithMeta(userID int64, database string) ([]connector.CollectionMetadata, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1060,8 +1099,8 @@ func (s *DatabaseService) MongoListCollectionsWithMeta(database string) ([]conne
 
 // ── Replica Set Info ──
 
-func (s *DatabaseService) MongoReplicaSetStatus() (map[string]interface{}, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoReplicaSetStatus(userID int64) (map[string]interface{}, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1070,8 +1109,8 @@ func (s *DatabaseService) MongoReplicaSetStatus() (map[string]interface{}, error
 
 // ── Sample Documents ──
 
-func (s *DatabaseService) MongoSampleDocuments(database, collection string, n int) (*connector.QueryResult, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoSampleDocuments(userID int64, database, collection string, n int) (*connector.QueryResult, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1080,8 +1119,8 @@ func (s *DatabaseService) MongoSampleDocuments(database, collection string, n in
 
 // ── Index Usage Stats ──
 
-func (s *DatabaseService) MongoIndexUsageStats(database, collection string) ([]map[string]interface{}, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoIndexUsageStats(userID int64, database, collection string) ([]map[string]interface{}, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1090,8 +1129,8 @@ func (s *DatabaseService) MongoIndexUsageStats(database, collection string) ([]m
 
 // ── Field Type Analysis ──
 
-func (s *DatabaseService) MongoFieldTypeAnalysis(database, collection string, sampleSize int) ([]map[string]interface{}, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoFieldTypeAnalysis(userID int64, database, collection string, sampleSize int) ([]map[string]interface{}, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1100,16 +1139,16 @@ func (s *DatabaseService) MongoFieldTypeAnalysis(database, collection string, sa
 
 // ── Top Commands ──
 
-func (s *DatabaseService) MongoTopStats() ([]map[string]interface{}, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoTopStats(userID int64) ([]map[string]interface{}, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return mc.TopStats()
 }
 
-func (s *DatabaseService) MongoRunAggregation(database, collection, pipelineJSON string) (*connector.QueryResult, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoRunAggregation(userID int64, database, collection, pipelineJSON string) (*connector.QueryResult, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1118,32 +1157,32 @@ func (s *DatabaseService) MongoRunAggregation(database, collection, pipelineJSON
 
 // ── Custom Roles ──
 
-func (s *DatabaseService) MongoListRolesDetailed(database string, showBuiltin bool) ([]connector.RoleInfo, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoListRolesDetailed(userID int64, database string, showBuiltin bool) ([]connector.RoleInfo, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return mc.ListRolesDetailed(database, showBuiltin)
 }
 
-func (s *DatabaseService) MongoCreateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoCreateCustomRole(userID int64, database, roleName, privilegesJSON, inheritedRolesJSON string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.CreateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON)
 }
 
-func (s *DatabaseService) MongoUpdateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoUpdateCustomRole(userID int64, database, roleName, privilegesJSON, inheritedRolesJSON string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.UpdateCustomRole(database, roleName, privilegesJSON, inheritedRolesJSON)
 }
 
-func (s *DatabaseService) MongoDropCustomRole(database, roleName string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoDropCustomRole(userID int64, database, roleName string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
@@ -1152,40 +1191,40 @@ func (s *DatabaseService) MongoDropCustomRole(database, roleName string) error {
 
 // ── GridFS ──
 
-func (s *DatabaseService) MongoListGridFSBuckets(database string) ([]string, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoListGridFSBuckets(userID int64, database string) ([]string, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return mc.ListGridFSBuckets(database)
 }
 
-func (s *DatabaseService) MongoListGridFSFiles(database, bucket string, limit int) ([]connector.GridFSFileInfo, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoListGridFSFiles(userID int64, database, bucket string, limit int) ([]connector.GridFSFileInfo, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return mc.ListGridFSFiles(database, bucket, limit)
 }
 
-func (s *DatabaseService) MongoUploadGridFSFile(database, bucket, filename string, data []byte) (string, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoUploadGridFSFile(userID int64, database, bucket, filename string, data []byte) (string, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return "", err
 	}
 	return mc.UploadGridFSFile(database, bucket, filename, data)
 }
 
-func (s *DatabaseService) MongoDownloadGridFSFile(database, bucket, fileID string) ([]byte, string, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoDownloadGridFSFile(userID int64, database, bucket, fileID string) ([]byte, string, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, "", err
 	}
 	return mc.DownloadGridFSFile(database, bucket, fileID)
 }
 
-func (s *DatabaseService) MongoDeleteGridFSFile(database, bucket, fileID string) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoDeleteGridFSFile(userID int64, database, bucket, fileID string) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
@@ -1194,16 +1233,16 @@ func (s *DatabaseService) MongoDeleteGridFSFile(database, bucket, fileID string)
 
 // ── Time Series ──
 
-func (s *DatabaseService) MongoCreateTimeSeriesCollection(database, collection, timeField, metaField, granularity string, expireAfterSeconds int64) error {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoCreateTimeSeriesCollection(userID int64, database, collection, timeField, metaField, granularity string, expireAfterSeconds int64) error {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return err
 	}
 	return mc.CreateTimeSeriesCollection(database, collection, timeField, metaField, granularity, expireAfterSeconds)
 }
 
-func (s *DatabaseService) MongoGetTimeSeriesInfo(database, collection string) (*connector.TimeSeriesOptions, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoGetTimeSeriesInfo(userID int64, database, collection string) (*connector.TimeSeriesOptions, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1212,44 +1251,41 @@ func (s *DatabaseService) MongoGetTimeSeriesInfo(database, collection string) (*
 
 // ── Sharding ──
 
-func (s *DatabaseService) MongoGetClusterShardingInfo() (*connector.ShardedClusterInfo, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoGetClusterShardingInfo(userID int64) (*connector.ShardedClusterInfo, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return mc.GetClusterShardingInfo()
 }
 
-func (s *DatabaseService) MongoGetCollectionShardingInfo(database, collection string) (*connector.CollectionShardingInfo, error) {
-	mc, err := s.getMongoConn()
+func (s *DatabaseService) MongoGetCollectionShardingInfo(userID int64, database, collection string) (*connector.CollectionShardingInfo, error) {
+	mc, err := s.getMongoConn(userID)
 	if err != nil {
 		return nil, err
 	}
 	return mc.GetCollectionShardingInfo(database, collection)
 }
 
-func (s *DatabaseService) Disconnect() error {
+func (s *DatabaseService) Disconnect(userID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.conn != nil {
-		err := s.conn.Close()
-		s.conn = nil
-		s.dbType = ""
+	if sess := s.sessions[userID]; sess != nil {
+		err := sess.conn.Close()
+		delete(s.sessions, userID)
 		return err
 	}
 	return nil
 }
 
 // ListUsers returns the database server users
-func (s *DatabaseService) ListUsers() (*connector.QueryResult, error) {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return nil, fmt.Errorf("not connected")
+func (s *DatabaseService) ListUsers(userID int64) (*connector.QueryResult, error) {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return nil, err
 	}
-	switch dt {
+	c := sess.conn
+	switch sess.dbType {
 	case "mysql":
 		return c.ExecuteQuery("", "SELECT User, Host FROM mysql.user ORDER BY User")
 	case "postgresql":
@@ -1266,19 +1302,17 @@ func (s *DatabaseService) ListUsers() (*connector.QueryResult, error) {
 }
 
 // ChangeDBUserPassword changes the password of a database user
-func (s *DatabaseService) ChangeDBUserPassword(username, host, newPassword string) error {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return fmt.Errorf("not connected")
+func (s *DatabaseService) ChangeDBUserPassword(userID int64, username, host, newPassword string) error {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return err
 	}
+	c := sess.conn
 	if newPassword == "" {
 		return fmt.Errorf("password cannot be empty")
 	}
 	escaped := strings.ReplaceAll(newPassword, "'", "''")
-	switch dt {
+	switch sess.dbType {
 	case "mysql":
 		query := fmt.Sprintf("ALTER USER %s@%s IDENTIFIED BY '%s'",
 			c.QuoteIdentifier(username),
@@ -1297,20 +1331,18 @@ func (s *DatabaseService) ChangeDBUserPassword(username, host, newPassword strin
 		_, err := c.ExecuteQuery("", query)
 		return err
 	default:
-		return fmt.Errorf("password change not supported for %s", dt)
+		return fmt.Errorf("password change not supported for %s", sess.dbType)
 	}
 }
 
 // ServerStatus returns key server status information
-func (s *DatabaseService) ServerStatus() (*connector.QueryResult, error) {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return nil, fmt.Errorf("not connected")
+func (s *DatabaseService) ServerStatus(userID int64) (*connector.QueryResult, error) {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return nil, err
 	}
-	switch dt {
+	c := sess.conn
+	switch sess.dbType {
 	case "mysql":
 		return c.ExecuteQuery("", "SHOW GLOBAL STATUS WHERE Variable_name IN ('Uptime','Threads_connected','Questions','Slow_queries','Open_tables','Bytes_received','Bytes_sent','Connections','Aborted_connects','Max_used_connections')")
 	case "postgresql":
@@ -1328,126 +1360,105 @@ func (s *DatabaseService) ServerStatus() (*connector.QueryResult, error) {
 
 // ── Triggers ─────────────────────────────────────────────────────────────
 
-func (s *DatabaseService) ListTriggers(database string) ([]connector.TriggerInfo, error) {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return nil, fmt.Errorf("not connected")
+func (s *DatabaseService) ListTriggers(userID int64, database string) ([]connector.TriggerInfo, error) {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return nil, err
 	}
-	switch dt {
+	switch sess.dbType {
 	case "mysql":
-		return c.(*connector.MySQLConnector).ListTriggers(database)
+		return sess.conn.(*connector.MySQLConnector).ListTriggers(database)
 	case "postgresql":
-		return c.(*connector.PostgresConnector).ListTriggers(database)
+		return sess.conn.(*connector.PostgresConnector).ListTriggers(database)
 	default:
-		return nil, fmt.Errorf("triggers not supported for %s", dt)
+		return nil, fmt.Errorf("triggers not supported for %s", sess.dbType)
 	}
 }
 
-func (s *DatabaseService) DropTrigger(database, name, table string) error {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return fmt.Errorf("not connected")
+func (s *DatabaseService) DropTrigger(userID int64, database, name, table string) error {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return err
 	}
-	switch dt {
+	switch sess.dbType {
 	case "mysql":
-		return c.(*connector.MySQLConnector).DropTrigger(database, name)
+		return sess.conn.(*connector.MySQLConnector).DropTrigger(database, name)
 	case "postgresql":
-		return c.(*connector.PostgresConnector).DropTrigger(database, name, table)
+		return sess.conn.(*connector.PostgresConnector).DropTrigger(database, name, table)
 	default:
-		return fmt.Errorf("triggers not supported for %s", dt)
+		return fmt.Errorf("triggers not supported for %s", sess.dbType)
 	}
 }
 
 // ── Routines ─────────────────────────────────────────────────────────────
 
-func (s *DatabaseService) ListRoutines(database string) ([]connector.RoutineInfo, error) {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return nil, fmt.Errorf("not connected")
+func (s *DatabaseService) ListRoutines(userID int64, database string) ([]connector.RoutineInfo, error) {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return nil, err
 	}
-	switch dt {
+	switch sess.dbType {
 	case "mysql":
-		return c.(*connector.MySQLConnector).ListRoutines(database)
+		return sess.conn.(*connector.MySQLConnector).ListRoutines(database)
 	case "postgresql":
-		return c.(*connector.PostgresConnector).ListRoutines(database)
+		return sess.conn.(*connector.PostgresConnector).ListRoutines(database)
 	default:
-		return nil, fmt.Errorf("routines not supported for %s", dt)
+		return nil, fmt.Errorf("routines not supported for %s", sess.dbType)
 	}
 }
 
-func (s *DatabaseService) DropRoutine(database, name, routineType string) error {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return fmt.Errorf("not connected")
+func (s *DatabaseService) DropRoutine(userID int64, database, name, routineType string) error {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return err
 	}
-	switch dt {
+	switch sess.dbType {
 	case "mysql":
-		return c.(*connector.MySQLConnector).DropRoutine(database, name, routineType)
+		return sess.conn.(*connector.MySQLConnector).DropRoutine(database, name, routineType)
 	case "postgresql":
-		return c.(*connector.PostgresConnector).DropRoutine(database, name, routineType)
+		return sess.conn.(*connector.PostgresConnector).DropRoutine(database, name, routineType)
 	default:
-		return fmt.Errorf("routines not supported for %s", dt)
+		return fmt.Errorf("routines not supported for %s", sess.dbType)
 	}
 }
 
 // ── Schemas (PostgreSQL) ─────────────────────────────────────────────────
 
-func (s *DatabaseService) ListSchemas(database string) ([]string, error) {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return nil, fmt.Errorf("not connected")
+func (s *DatabaseService) ListSchemas(userID int64, database string) ([]string, error) {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return nil, err
 	}
-	if dt != "postgresql" {
-		return nil, fmt.Errorf("schemas not supported for %s", dt)
+	if sess.dbType != "postgresql" {
+		return nil, fmt.Errorf("schemas not supported for %s", sess.dbType)
 	}
-	return c.(*connector.PostgresConnector).ListSchemas(database)
+	return sess.conn.(*connector.PostgresConnector).ListSchemas(database)
 }
 
-func (s *DatabaseService) ListTablesInSchema(database, schema string) ([]string, error) {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return nil, fmt.Errorf("not connected")
+func (s *DatabaseService) ListTablesInSchema(userID int64, database, schema string) ([]string, error) {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return nil, err
 	}
-	if dt != "postgresql" {
-		return nil, fmt.Errorf("schemas not supported for %s", dt)
+	if sess.dbType != "postgresql" {
+		return nil, fmt.Errorf("schemas not supported for %s", sess.dbType)
 	}
-	return c.(*connector.PostgresConnector).ListTablesInSchema(database, schema)
+	return sess.conn.(*connector.PostgresConnector).ListTablesInSchema(database, schema)
 }
 
 // ── Table Maintenance ────────────────────────────────────────────────────
 
-func (s *DatabaseService) MaintenanceTable(database, table, operation string) (string, error) {
-	s.mu.RLock()
-	c := s.conn
-	dt := s.dbType
-	s.mu.RUnlock()
-	if c == nil {
-		return "", fmt.Errorf("not connected")
+func (s *DatabaseService) MaintenanceTable(userID int64, database, table, operation string) (string, error) {
+	sess, err := s.getSession(userID)
+	if err != nil {
+		return "", err
 	}
-	switch dt {
+	switch sess.dbType {
 	case "mysql":
-		return c.(*connector.MySQLConnector).MaintenanceTable(database, table, operation)
+		return sess.conn.(*connector.MySQLConnector).MaintenanceTable(database, table, operation)
 	case "postgresql":
-		return c.(*connector.PostgresConnector).MaintenanceTable(database, table, operation)
+		return sess.conn.(*connector.PostgresConnector).MaintenanceTable(database, table, operation)
 	default:
-		return "", fmt.Errorf("maintenance not supported for %s", dt)
+		return "", fmt.Errorf("maintenance not supported for %s", sess.dbType)
 	}
 }

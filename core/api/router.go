@@ -29,6 +29,12 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 	secController := controller.NewSecurityController(authRepo, whitelist)
 	connController := controller.NewConnectionController(authRepo, dbService, encKey)
 
+	// Health check (public, no auth)
+	mux.HandleFunc("GET "+p+"/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+
 	// Route publique : infos système pour le formulaire de connexion
 	mux.HandleFunc("GET "+p+"/system/info", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -175,6 +181,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 
 	// App users management — admin only
 	protected.HandleFunc("GET "+p+"/users/app", auth.RequireAdmin(authController.ListAppUsers))
+	protected.HandleFunc("POST "+p+"/users/app", auth.RequireAdmin(authController.CreateAppUser))
 	protected.HandleFunc("PUT "+p+"/users/app/{id}/role", auth.RequireAdmin(authController.UpdateAppUserRole))
 	protected.HandleFunc("DELETE "+p+"/users/app/{id}", auth.RequireAdmin(authController.DeleteAppUser))
 
@@ -192,10 +199,11 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 
 	mux.Handle(p+"/", auth.AuthMiddleware(protected))
 
-	// Middleware chain: IP whitelist → rate limiter → CSRF → security headers
+	// Middleware chain: IP whitelist → rate limiter → CSRF → body size limit
+	// SecurityHeaders is applied globally in main.go (covers both API + SPA)
 	rateLimiter := NewRateLimiter(200, time.Minute) // 200 req/min per IP
 	var handler http.Handler = mux
-	handler = SecurityHeaders(handler)
+	handler = MaxBodySize(1<<20)(handler) // 1 MB default for JSON endpoints
 	handler = CSRFProtection(apiPrefix)(handler)
 	handler = rateLimiter.Middleware(handler)
 	handler = whitelist.Middleware(handler)

@@ -1,0 +1,25 @@
+// Soca Manager — auto-authorize database service management via pkexec
+polkit.addRule(function(action, subject) {
+    if (action.id !== "org.freedesktop.policykit.exec") return;
+    if (!subject.local || !subject.active) return;
+
+    var cmd = action.lookup("command_line");
+    if (!cmd) return;
+
+    var allowed = [
+        "systemctl start", "systemctl stop",
+        "apt-get install -y mysql-server", "apt-get remove -y mysql-server",
+        "apt-get install -y postgresql", "apt-get remove -y postgresql",
+        "apt-get install -y mongodb-org", "apt-get remove -y mongodb-org",
+        "apt-get update",
+        "dnf install -y mysql-server", "dnf remove -y mysql-server",
+        "dnf install -y postgresql-server", "dnf remove -y postgresql-server",
+        "dnf install -y mongodb-org", "dnf remove -y mongodb-org"
+    ];
+
+    for (var i = 0; i < allowed.length; i++) {
+        if (cmd.indexOf(allowed[i]) >= 0) {
+            return polkit.Result.YES;
+        }
+    }
+});

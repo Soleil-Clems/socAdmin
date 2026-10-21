@@ -2,12 +2,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
+	"time"
 
 	"github.com/soleilouisol/socAdmin/core/api"
 	"github.com/soleilouisol/socAdmin/core/auth"
@@ -96,6 +100,9 @@ func main() {
 		if adminPass := os.Getenv("ADMIN_PASSWORD"); adminPass != "" {
 			existing, _ := authRepo.FindByEmail(adminEmail)
 			if existing == nil {
+				if err := auth.ValidateEmail(adminEmail); err != nil {
+					log.Fatalf("Configuration error: ADMIN_EMAIL is invalid — %v.", err)
+				}
 				if err := auth.ValidatePassword(adminPass); err != nil {
 					log.Fatalf("Configuration error: ADMIN_PASSWORD is invalid — %v.\n"+
 						"  Requirements: at least 10 characters, with uppercase, lowercase, digit, and special character.\n"+
@@ -115,6 +122,8 @@ func main() {
 
 	// Create database service (shared between auto-connect and router)
 	dbService := service.NewDatabaseService()
+	dbService.StartCleanup()
+	defer dbService.Shutdown()
 
 	// Pre-configured database connections from env vars (Docker/phpMyAdmin-style).
 	// Supports all 3 types simultaneously: MYSQL_HOST, POSTGRES_HOST, MONGO_HOST, etc.
@@ -163,13 +172,19 @@ func main() {
 
 	// Serve API routes under /{prefix}/api/, everything else is the React SPA
 	apiPathPrefix := "/" + apiPrefix + "/api"
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/-/health" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"status":"ok"}`))
+			return
+		}
 		if len(r.URL.Path) >= len(apiPathPrefix) && r.URL.Path[:len(apiPathPrefix)] == apiPathPrefix {
 			apiHandler.ServeHTTP(w, r)
 			return
 		}
 		frontend.ServeHTTP(w, r)
 	})
+	handler := api.SecurityHeaders(mux)
 
 	port := 8080
 	if envPort := os.Getenv("PORT"); envPort != "" {
@@ -183,9 +198,17 @@ func main() {
 	tlsCert := os.Getenv("TLS_CERT")
 	tlsKey := os.Getenv("TLS_KEY")
 
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: handler,
+	}
+
+	// Channel to catch OS signals for graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
 	if tlsCert != "" && tlsKey != "" {
-		// HSTS header is already set in SecurityHeaders middleware.
-		// Start HTTP→HTTPS redirect on port 80 in background.
+		var redirectSrv *http.Server
 		go func() {
 			redirectPort := 80
 			if envRedirectPort := os.Getenv("HTTP_REDIRECT_PORT"); envRedirectPort != "" {
@@ -197,16 +220,49 @@ func main() {
 				target := fmt.Sprintf("https://%s%s", r.Host, r.RequestURI)
 				http.Redirect(w, r, target, http.StatusMovedPermanently)
 			})
+			redirectSrv = &http.Server{
+				Addr:    fmt.Sprintf(":%d", redirectPort),
+				Handler: redirect,
+			}
 			log.Printf("HTTP→HTTPS redirect on :%d", redirectPort)
-			if err := http.ListenAndServe(fmt.Sprintf(":%d", redirectPort), redirect); err != nil {
+			if err := redirectSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Printf("Warning: HTTP redirect listener failed: %v", err)
 			}
 		}()
 
 		fmt.Printf("socAdmin server running on https://localhost:%d (TLS)\n", port)
-		log.Fatal(http.ListenAndServeTLS(fmt.Sprintf(":%d", port), tlsCert, tlsKey, handler))
+		go func() {
+			if err := srv.ListenAndServeTLS(tlsCert, tlsKey); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Server error: %v", err)
+			}
+		}()
+
+		sig := <-quit
+		log.Printf("Received %s, shutting down...", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if redirectSrv != nil {
+			redirectSrv.Shutdown(ctx)
+		}
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Fatalf("Forced shutdown: %v", err)
+		}
 	} else {
 		fmt.Printf("socAdmin server running on http://localhost:%d\n", port)
-		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), handler))
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Server error: %v", err)
+			}
+		}()
+
+		sig := <-quit
+		log.Printf("Received %s, shutting down...", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Fatalf("Forced shutdown: %v", err)
+		}
 	}
+
+	log.Println("Server stopped gracefully")
 }

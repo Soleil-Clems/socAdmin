@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useAuthStore } from "@/stores/auth.store";
 import { useConnectionStore } from "@/stores/connection.store";
 import { authRequest } from "@/requests/auth.request";
+import { HealthBanner } from "@/components/health-banner";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import ConnectPage from "@/pages/connect";
@@ -25,7 +26,7 @@ function App() {
     authRequest
       .me()
       .then((res) => {
-        if (!cancelled && res?.role) setAuthenticated(res.role);
+        if (!cancelled && res?.role) setAuthenticated(res.role, res.email);
       })
       .catch(() => {
         // No valid session — stay on login page
@@ -38,27 +39,55 @@ function App() {
 
   if (verifying) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="text-sm text-muted-foreground">Verifying session...</div>
-      </div>
+      <>
+        <HealthBanner />
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <div className="text-sm text-muted-foreground">Verifying session...</div>
+        </div>
+      </>
     );
   }
 
   if (!isAuthenticated) {
     if (authPage === "register") {
-      return <RegisterPage onSwitchToLogin={() => setAuthPage("login")} />;
+      return (
+        <>
+          <HealthBanner />
+          <RegisterPage onSwitchToLogin={() => setAuthPage("login")} />
+        </>
+      );
     }
-    return <LoginPage onSwitchToRegister={() => setAuthPage("register")} />;
+    return (
+      <>
+        <HealthBanner />
+        <LoginPage onSwitchToRegister={() => setAuthPage("register")} />
+      </>
+    );
   }
 
   if (!isConnected) {
     if (showAdminSettings && isAdmin) {
-      return <AdminSettingsPage onBack={() => setShowAdminSettings(false)} />;
+      return (
+        <>
+          <HealthBanner />
+          <AdminSettingsPage onBack={() => setShowAdminSettings(false)} />
+        </>
+      );
     }
-    return <ConnectPage onOpenAdmin={isAdmin ? () => setShowAdminSettings(true) : undefined} />;
+    return (
+      <>
+        <HealthBanner />
+        <ConnectPage onOpenAdmin={isAdmin ? () => setShowAdminSettings(true) : undefined} />
+      </>
+    );
   }
 
-  return <DashboardPage />;
+  return (
+    <>
+      <HealthBanner />
+      <DashboardPage />
+    </>
+  );
 }
 
 export default App;

@@ -124,12 +124,12 @@ export default function StatusView() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
+      <div className="px-3 py-2 border-b border-border bg-card flex flex-wrap items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">Server Status</span>
         <span className="text-muted-foreground">
           {dbTypeLabel[dbType || ""] || dbType} · {host}:{port}
         </span>
-        <span className="ml-auto flex items-center gap-2">
+        <span className="ml-auto flex flex-wrap items-center gap-2">
           {isMongo && (
             <Button
               size="sm"
@@ -196,6 +196,7 @@ export default function StatusView() {
             </div>
           ) : ops && ops.length > 0 ? (
             <ScrollArea className="max-h-56">
+              <div className="min-w-full w-fit">
               <table className="w-full data-table text-[12px]">
                 <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm z-10">
                   <tr className="border-b border-border">
@@ -250,6 +251,7 @@ export default function StatusView() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </ScrollArea>
           ) : (
             <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">
@@ -320,6 +322,7 @@ export default function StatusView() {
                 <span className="font-medium">{String(rsData.set)}</span>
               </div>
               {Array.isArray(rsData.members) && (
+                <div className="overflow-x-auto">
                 <table className="w-full text-[11px]">
                   <thead>
                     <tr className="border-b border-border">
@@ -351,6 +354,7 @@ export default function StatusView() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           ) : (
@@ -381,6 +385,7 @@ export default function StatusView() {
             </div>
           ) : topData && topData.length > 0 ? (
             <ScrollArea className="max-h-64">
+              <div className="min-w-full w-fit">
               <table className="w-full data-table text-[12px]">
                 <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm z-10">
                   <tr className="border-b border-border">
@@ -413,6 +418,7 @@ export default function StatusView() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </ScrollArea>
           ) : (
             <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">
@@ -434,6 +440,7 @@ export default function StatusView() {
         </div>
       ) : (
         <ScrollArea className="flex-1 min-h-0">
+          <div className="min-w-full w-fit">
           <table className="w-full data-table">
             <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
               <tr className="border-b border-border">
@@ -472,6 +479,7 @@ export default function StatusView() {
               )}
             </tbody>
           </table>
+          </div>
         </ScrollArea>
       )}
     </div>

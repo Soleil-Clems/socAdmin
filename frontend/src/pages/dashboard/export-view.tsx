@@ -77,7 +77,7 @@ export default function ExportView() {
                   Export all {isMongo ? "collections" : "tables"} from <span className="text-primary font-medium">{selectedDb}</span>
                 </p>
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {formats.map((f) => (
                   <button
                     key={f.value}
@@ -103,7 +103,7 @@ export default function ExportView() {
                     Export <span className="text-primary font-medium">{selectedTable}</span> from {selectedDb}
                   </p>
                 </div>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {formats.map((f) => (
                     <button
                       key={f.value}

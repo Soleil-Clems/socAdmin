@@ -69,7 +69,7 @@ export default function ProfilerView() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
+      <div className="px-3 py-2 border-b border-border bg-card flex flex-wrap items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">Database Profiler</span>
         <span className="text-muted-foreground">{selectedDb}</span>
         <Button
@@ -145,6 +145,7 @@ export default function ProfilerView() {
         </div>
       ) : entries && entries.length > 0 ? (
         <ScrollArea className="flex-1 min-h-0">
+          <div className="min-w-full w-fit">
           <table className="w-full data-table text-[12px]">
             <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm z-10">
               <tr className="border-b border-border">
@@ -191,6 +192,7 @@ export default function ProfilerView() {
               ))}
             </tbody>
           </table>
+          </div>
         </ScrollArea>
       ) : (
         <div className="flex-1 flex items-center justify-center">

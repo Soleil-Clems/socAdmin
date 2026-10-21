@@ -112,7 +112,7 @@ export default function SecurityView() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      <div className="px-3 py-2 border-b border-border bg-card flex items-center gap-2 text-xs">
+      <div className="px-3 py-2 border-b border-border bg-card flex flex-wrap items-center gap-2 text-xs">
         <span className="font-semibold text-sm text-foreground">Security Settings</span>
         <span className="text-muted-foreground">IP Whitelist &amp; Access Control</span>
       </div>
@@ -201,7 +201,7 @@ export default function SecurityView() {
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider block mb-2">
               Add IP Address
             </label>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
                 value={newIP}
@@ -210,6 +210,7 @@ export default function SecurityView() {
                 placeholder={`e.g. ${clientIP === "::1" ? "127.0.0.1" : "192.168.1.100"}`}
                 className="flex-1 h-8 px-3 text-sm bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary font-mono"
               />
+              <div className="flex gap-2 shrink-0">
               <button
                 onClick={handleAddIP}
                 disabled={addMutation.isPending || !newIP.trim()}
@@ -227,6 +228,7 @@ export default function SecurityView() {
                   + My IP
                 </button>
               )}
+              </div>
             </div>
             {error && (
               <p className="text-xs text-destructive mt-1">{error}</p>
