@@ -63,7 +63,9 @@ jobs:
           CERT_PATH="$RUNNER_TEMP/devid.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
 
-          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$CERT_PATH"
+
+          /usr/bin/openssl pkcs12 -in "$CERT_PATH" -noout -passin "pass:$APPLE_CERTIFICATE_PASSWORD" && echo "Certificate OK" || { echo "Certificate verification failed"; exit 1; }
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
