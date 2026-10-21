@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number (e.g. 0.1.0) — for test builds only"
+        required: true
+        default: "0.0.0-test"
 
 permissions:
   contents: write
@@ -11,6 +17,7 @@ permissions:
 env:
   NODE_VERSION: "22"
   GO_VERSION: "1.24"
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
 jobs:
   build-macos:
@@ -29,14 +36,115 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Install frontend deps
+      - name: Build socAdmin server binary
+        run: |
+          cd frontend && npm ci && npm run build && cd ..
+          CGO_ENABLED=1 go build -ldflags="-s -w" -o bin/socadmin .
+
+      - name: Install manager frontend deps
         run: cd manager/frontend && npm ci
 
-      - name: Build & package DMG
+      - name: Build Soca Manager .app
+        run: cd manager && wails build -clean
+
+      - name: Embed server binary into .app
         run: |
-          chmod +x build/macos/package.sh
-          VERSION=${GITHUB_REF_NAME#v}
-          ./build/macos/package.sh "$VERSION"
+          APP_PATH="manager/build/bin/Soca Manager.app"
+          mkdir -p "$APP_PATH/Contents/Resources"
+          cp bin/socadmin "$APP_PATH/Contents/Resources/socadmin"
+          chmod +x "$APP_PATH/Contents/Resources/socadmin"
+
+      - name: Setup signing keychain
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/devid.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          curl -sL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$KEYCHAIN_PATH" -T /usr/bin/codesign
+
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
+          echo "SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Sign .app bundle
+        run: |
+          APP_PATH="manager/build/bin/Soca Manager.app"
+
+          find "$APP_PATH/Contents" -type f -name "*.dylib" -exec \
+            codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" {} \;
+
+          codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" \
+            "$APP_PATH/Contents/Resources/socadmin"
+          codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" \
+            "$APP_PATH/Contents/MacOS/Soca Manager"
+          codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" \
+            "$APP_PATH"
+
+          codesign -vvv --deep --strict "$APP_PATH"
+
+      - name: Create and sign DMG
+        run: |
+          VERSION=${VERSION#v}
+          OUTPUT_DIR="build/macos/dist"
+          mkdir -p "$OUTPUT_DIR"
+          DMG_PATH="$OUTPUT_DIR/Soca-Manager-${VERSION}-macos.dmg"
+          APP_PATH="manager/build/bin/Soca Manager.app"
+
+          TEMP_DMG="$OUTPUT_DIR/temp.dmg"
+          MOUNT_DIR="/tmp/socadmin-dmg-mount"
+
+          hdiutil create -size 100m -fs HFS+ -volname "Soca Manager" "$TEMP_DMG" -ov
+          hdiutil attach "$TEMP_DMG" -mountpoint "$MOUNT_DIR"
+          cp -R "$APP_PATH" "$MOUNT_DIR/"
+          ln -s /Applications "$MOUNT_DIR/Applications"
+          hdiutil detach "$MOUNT_DIR"
+          hdiutil convert "$TEMP_DMG" -format UDZO -o "$DMG_PATH"
+          rm -f "$TEMP_DMG"
+
+          codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$DMG_PATH"
+
+      - name: Notarize DMG
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          VERSION=${VERSION#v}
+          DMG_PATH="build/macos/dist/Soca-Manager-${VERSION}-macos.dmg"
+
+          API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          echo "$APPLE_API_KEY_P8" > "$API_KEY_PATH"
+
+          xcrun notarytool submit "$DMG_PATH" \
+            --key "$API_KEY_PATH" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER_ID" \
+            --wait
+
+          xcrun stapler staple "$DMG_PATH"
+
+      - name: Verify signature
+        run: |
+          VERSION=${VERSION#v}
+          DMG_PATH="build/macos/dist/Soca-Manager-${VERSION}-macos.dmg"
+          spctl -a -vv --type install "$DMG_PATH"
+
+      - name: Cleanup keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
 
       - uses: actions/upload-artifact@v4
         with:
@@ -78,7 +186,7 @@ jobs:
         shell: bash
         run: |
           export PATH="/c/Program Files (x86)/NSIS:$PATH"
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${VERSION#v}
           cd manager
           # 1) Build amd64 with -nsis to generate wails_tools.nsh with resolved templates
           wails build -clean -platform windows/amd64 -nsis
@@ -134,7 +242,7 @@ jobs:
       - name: Build & package .deb + Arch
         run: |
           chmod +x build/linux/package.sh
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${VERSION#v}
           ./build/linux/package.sh "$VERSION"
 
       - uses: actions/upload-artifact@v4
@@ -146,6 +254,7 @@ jobs:
 
   release:
     needs: [build-macos, build-windows, build-linux]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

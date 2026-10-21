@@ -1,4 +1,4 @@
-# @soleil-clems: CI - Auto-tag on merge to main
+# @soleil-clems: CI - Auto-tag on merge to main (only when [release] is in the merge commit)
 name: Auto Tag
 
 on:
@@ -11,6 +11,7 @@ permissions:
 jobs:
   tag:
     runs-on: ubuntu-latest
+    if: contains(github.event.head_commit.message, '[release]')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,27 +36,13 @@ jobs:
           MINOR=$(echo "$LATEST" | sed 's/v//' | cut -d. -f2)
           PATCH=$(echo "$LATEST" | sed 's/v//' | cut -d. -f3)
 
-          # Get commits since last tag
-          if [ "$LATEST" = "v0.0.0" ]; then
-            COMMITS=$(git log --oneline --format="%s")
-          else
-            COMMITS=$(git log "${LATEST}..HEAD" --oneline --format="%s")
-          fi
-
-          if [ -z "$COMMITS" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "No new commits since $LATEST"
-            exit 0
-          fi
-
-          echo "Commits since $LATEST:"
-          echo "$COMMITS"
+          MERGE_MSG="${{ github.event.head_commit.message }}"
 
           BUMP="patch"
-          if echo "$COMMITS" | grep -qiE "^feat(\(.+\))?:"; then
+          if echo "$MERGE_MSG" | grep -qiE "\[release:minor\]"; then
             BUMP="minor"
           fi
-          if echo "$COMMITS" | grep -qiE "BREAKING CHANGE|^feat(\(.+\))?!:|^fix(\(.+\))?!:"; then
+          if echo "$MERGE_MSG" | grep -qiE "\[release:major\]"; then
             BUMP="major"
           fi
 
@@ -68,11 +55,9 @@ jobs:
           NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
           echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
           echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
-          echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "Bump: $BUMP → $NEW_TAG"
 
       - name: Create and push tag
-        if: steps.bump.outputs.skip != 'true'
         run: |
           NEW_TAG="${{ steps.bump.outputs.new_tag }}"
           git config user.name "Soleil-Clems"
