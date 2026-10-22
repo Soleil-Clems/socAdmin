@@ -213,7 +213,7 @@ function App() {
           </div>
 
           <div className="shrink-0 border-t border-border-subtle/30 px-5 py-4">
-            {appVersion && (
+            {appVersion && appVersion !== "dev" && (
               <p className="text-[10px] text-text-muted/60 font-medium tracking-wide">
                 v{appVersion.replace(/^v/, "")}
               </p>

@@ -38,7 +38,7 @@ jobs:
 
       - name: Build socAdmin server binary
         run: |
-          cd frontend && npm ci && npm run build && cd ..
+          cd frontend && APP_VERSION=${VERSION} npm ci && APP_VERSION=${VERSION} npm run build && cd ..
           CGO_ENABLED=1 go build -ldflags="-s -w" -o bin/socadmin .
 
       - name: Install manager frontend deps
