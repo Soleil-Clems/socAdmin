@@ -285,7 +285,9 @@ export function AuthBrandPanel() {
         </div>
       </div>
 
-      <p className="relative z-10 text-xs text-white/25">v1.0</p>
+      <p className="relative z-10 text-xs text-white/25">
+        {__APP_VERSION__ !== 'dev' ? `v${__APP_VERSION__.replace(/^v/, '')}` : ' '}
+      </p>
     </div>
   );
 }

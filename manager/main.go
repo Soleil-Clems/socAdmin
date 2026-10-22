@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"embed"
+	"fmt"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
@@ -15,6 +16,8 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
+
+var version = "dev"
 
 //go:embed all:frontend/dist
 var assets embed.FS
@@ -32,15 +35,30 @@ func main() {
 	}
 
 	appNameMenu := appMenu.AddSubmenu("Soca Manager")
-	appNameMenu.AddText("About Soca Manager", nil, nil)
+	appNameMenu.AddText("About Soca Manager", nil, func(_ *menu.CallbackData) {
+		wailsRuntime.MessageDialog(app.ctx, wailsRuntime.MessageDialogOptions{
+			Type:    wailsRuntime.InfoDialog,
+			Title:   "About Soca Manager",
+			Message: fmt.Sprintf("Soca Manager\nDatabase administration made simple.\n\nVersion %s", version),
+		})
+	})
 	appNameMenu.AddSeparator()
 	appNameMenu.AddText("Quit Soca Manager", keys.CmdOrCtrl("q"), quitHandler)
+
+	editMenu := appMenu.AddSubmenu("Edit")
+	editMenu.AddText("Undo", keys.CmdOrCtrl("z"), nil)
+	editMenu.AddText("Redo", keys.Combo("z", keys.ShiftKey, keys.CmdOrCtrlKey), nil)
+	editMenu.AddSeparator()
+	editMenu.AddText("Cut", keys.CmdOrCtrl("x"), nil)
+	editMenu.AddText("Copy", keys.CmdOrCtrl("c"), nil)
+	editMenu.AddText("Paste", keys.CmdOrCtrl("v"), nil)
+	editMenu.AddText("Select All", keys.CmdOrCtrl("a"), nil)
 
 	fileMenu := appMenu.AddSubmenu("File")
 	fileMenu.AddText("Start Server", keys.CmdOrCtrl("s"), func(_ *menu.CallbackData) {
 		app.StartServer()
 	})
-	fileMenu.AddText("Stop Server", keys.CmdOrCtrl("x"), func(_ *menu.CallbackData) {
+	fileMenu.AddText("Stop Server", keys.CmdOrCtrl("shift+x"), func(_ *menu.CallbackData) {
 		app.StopServer()
 	})
 	fileMenu.AddSeparator()
@@ -89,7 +107,7 @@ func main() {
 			},
 			About: &mac.AboutInfo{
 				Title:   "Soca Manager",
-				Message: "Database administration made simple.\nVersion 1.0.0",
+				Message: fmt.Sprintf("Database administration made simple.\nVersion %s", version),
 			},
 			WebviewIsTransparent: true,
 			WindowIsTranslucent:  true,

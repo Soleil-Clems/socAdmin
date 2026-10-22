@@ -22,6 +22,8 @@ import {
   InstallService,
   UninstallService,
   CanInstallServices,
+  GetLogs,
+  GetVersion,
 } from "../wailsjs/go/main/App";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { main } from "../wailsjs/go/models";
@@ -53,6 +55,7 @@ function App() {
   const [tab, setTab] = useState<Tab>("server");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [appVersion, setAppVersion] = useState("");
 
   const refresh = useCallback(async () => {
     const [s, c, svcs] = await Promise.all([
@@ -73,6 +76,7 @@ function App() {
         document.documentElement.setAttribute("data-os", info.os);
       }
     });
+    GetVersion().then(setAppVersion);
 
     const interval = setInterval(async () => {
       const [s, svcs] = await Promise.all([
@@ -209,6 +213,11 @@ function App() {
           </div>
 
           <div className="shrink-0 border-t border-border-subtle/30 px-5 py-4">
+            {appVersion && appVersion !== "dev" && (
+              <p className="text-[10px] text-text-muted/60 font-medium tracking-wide">
+                v{appVersion.replace(/^v/, "")}
+              </p>
+            )}
             {sysInfo.os && (
               <p className="text-[10px] text-text-muted/50 capitalize leading-relaxed tracking-wide">
                 {sysInfo.os} · {sysInfo.arch}
@@ -266,6 +275,15 @@ function ErrorBanner({
   message: string;
   onDismiss: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(message).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   return (
     <div className="mb-7 flex items-start gap-3 rounded-lg bg-red-subtle/70 px-4 py-3 text-[13px] text-red leading-snug">
       <svg
@@ -282,7 +300,23 @@ function ErrorBanner({
         <line x1="12" y1="8" x2="12" y2="12" />
         <line x1="12" y1="16" x2="12.01" y2="16" />
       </svg>
-      <span className="flex-1">{message}</span>
+      <span className="flex-1 select-text">{message}</span>
+      <button
+        onClick={handleCopy}
+        className="shrink-0 text-red/40 hover:text-red transition-colors"
+        title={copied ? "Copied!" : "Copy error"}
+      >
+        {copied ? (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect width="14" height="14" x="8" y="8" rx="2" />
+            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+          </svg>
+        )}
+      </button>
       <button
         onClick={onDismiss}
         className="shrink-0 text-red/40 hover:text-red transition-colors"
@@ -1179,7 +1213,66 @@ function SettingsTab({
           <PortCard label="MongoDB" port={config.mongoPort} />
         </div>
       </section>
+
+      {/* Logs */}
+      <LogsSection />
     </div>
+  );
+}
+
+function LogsSection() {
+  const [copied, setCopied] = useState(false);
+  const [logs, setLogs] = useState<string | null>(null);
+
+  const handleCopy = async () => {
+    const text = await GetLogs();
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleToggle = async () => {
+    if (logs) {
+      setLogs(null);
+    } else {
+      const text = await GetLogs();
+      setLogs(text);
+    }
+  };
+
+  return (
+    <section
+      className="rounded-xl border border-border bg-surface/60"
+      style={{ padding: "var(--card-p)" }}
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-[13px] font-semibold">Logs</h3>
+          <p className="mt-1 text-[12px] text-text-muted">
+            Debug logs for troubleshooting
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleToggle}
+            className="rounded-lg border border-border px-3 py-2 text-[12px] text-text-secondary hover:bg-surface-hover hover:text-text transition-colors"
+          >
+            {logs ? "Hide" : "View"}
+          </button>
+          <button
+            onClick={handleCopy}
+            className="rounded-lg border border-border px-3 py-2 text-[12px] text-text-secondary hover:bg-surface-hover hover:text-text transition-colors"
+          >
+            {copied ? "Copied!" : "Copy logs"}
+          </button>
+        </div>
+      </div>
+      {logs && (
+        <pre className="mt-4 max-h-48 overflow-auto rounded-lg bg-bg p-3 text-[11px] text-text-muted font-mono leading-relaxed border border-border-subtle/50">
+          {logs}
+        </pre>
+      )}
+    </section>
   );
 }
 

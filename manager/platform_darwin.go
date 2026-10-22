@@ -85,28 +85,39 @@ func canInstallServicesOS() bool {
 	return findBrew() != ""
 }
 
+func brewInstallCmd(brew string, args ...string) *exec.Cmd {
+	cmd := exec.Command(brew, args...)
+	cmd.Env = append(os.Environ(), "HOMEBREW_NO_AUTO_UPDATE=1", "HOMEBREW_NO_ENV_HINTS=1")
+	return cmd
+}
+
 func installServiceOS(a *App, name string) error {
 	brew := findBrew()
 	if brew == "" {
 		return fmt.Errorf("Homebrew is not installed. Visit https://brew.sh")
 	}
 
+	// Update Homebrew once before installing (faster than per-formula auto-update)
+	a.emitEvent("install:progress", "Updating Homebrew...")
+	exec.Command(brew, "update", "--quiet").CombinedOutput()
+
 	a.emitEvent("install:progress", fmt.Sprintf("Installing %s...", name))
 
 	switch name {
 	case "MySQL":
-		out, err := exec.Command(brew, "install", "mysql").CombinedOutput()
+		out, err := brewInstallCmd(brew, "install", "mysql").CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("%s", string(out))
 		}
 	case "PostgreSQL":
-		out, err := exec.Command(brew, "install", "postgresql@17").CombinedOutput()
+		out, err := brewInstallCmd(brew, "install", "postgresql@17").CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("%s", string(out))
 		}
 	case "MongoDB":
-		exec.Command(brew, "tap", "mongodb/brew").CombinedOutput()
-		out, err := exec.Command(brew, "install", "mongodb/brew/mongodb-community").CombinedOutput()
+		brewInstallCmd(brew, "tap", "mongodb/brew").CombinedOutput()
+		brewInstallCmd(brew, "trust", "mongodb/brew").CombinedOutput()
+		out, err := brewInstallCmd(brew, "install", "mongodb/brew/mongodb-community").CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("%s", string(out))
 		}

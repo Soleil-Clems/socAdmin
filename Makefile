@@ -2,8 +2,9 @@
 
 export PATH := $(shell go env GOPATH)/bin:$(PATH)
 
-BACK_PORT  = 8080
-FRONT_PORT = 5173
+BACK_PORT    = 8080
+FRONT_PORT   = 5173
+GIT_VERSION := $(shell git describe --tags --exact-match 2>/dev/null || echo "dev")
 
 # --- All : build tout + lance le Manager ---
 all: build manager
@@ -36,7 +37,7 @@ reload: stop
 # --- Build : compile socAdmin (backend + frontend embed) ---
 build:
 	@echo "Building frontend..."
-	cd frontend && npm run build
+	cd frontend && APP_VERSION=$(GIT_VERSION) npm run build
 	@echo "Building backend..."
 	go build -o bin/socadmin .
 	@echo "Build done → bin/socadmin"
@@ -60,8 +61,8 @@ test:
 
 # --- Manager : build l'app desktop Wails ---
 manager:
-	@echo "Building socAdmin Manager..."
-	cd manager && wails build
+	@echo "Building socAdmin Manager ($(GIT_VERSION))..."
+	cd manager && wails build -ldflags "-X main.version=$(GIT_VERSION)"
 	@echo "Manager built → manager/build/bin/"
 
 manager-dev:
@@ -92,6 +93,8 @@ clean:
 	rm -rf frontend/dist/
 	rm -rf manager/build/bin/
 	rm -rf build/*/dist/
+	
+clean-db:	rm ~/.socadmin/socadmin.db
 
 # --- Status ---
 status:

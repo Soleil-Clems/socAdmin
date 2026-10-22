@@ -38,14 +38,14 @@ jobs:
 
       - name: Build socAdmin server binary
         run: |
-          cd frontend && npm ci && npm run build && cd ..
+          cd frontend && APP_VERSION=${VERSION} npm ci && APP_VERSION=${VERSION} npm run build && cd ..
           CGO_ENABLED=1 go build -ldflags="-s -w" -o bin/socadmin .
 
       - name: Install manager frontend deps
         run: cd manager/frontend && npm ci
 
       - name: Build Soca Manager .app
-        run: cd manager && wails build -clean
+        run: cd manager && wails build -clean -ldflags "-X main.version=${VERSION}"
 
       - name: Embed server binary into .app
         run: |
@@ -198,12 +198,12 @@ jobs:
           VERSION=${VERSION#v}
           cd manager
           # 1) Build amd64 with -nsis to generate wails_tools.nsh with resolved templates
-          wails build -clean -platform windows/amd64 -nsis
+          wails build -clean -platform windows/amd64 -nsis -ldflags "-X main.version=v${VERSION}"
           cp ../bin/socadmin.exe build/bin/socadmin.exe
           # 2) Remove the amd64-only installer (we'll create a dual-arch one)
           rm -f build/bin/*amd64-installer.exe
           # 3) Build arm64 binary (no -clean to preserve amd64 binary)
-          wails build -platform windows/arm64 -o soca-manager-arm64.exe -skipbindings
+          wails build -platform windows/arm64 -o soca-manager-arm64.exe -skipbindings -ldflags "-X main.version=v${VERSION}"
           # 4) Re-run NSIS with both binaries for dual-arch installer
           makensis \
             "-DARG_WAILS_AMD64_BINARY=..\..\bin\soca-manager.exe" \
