@@ -98,7 +98,7 @@ jobs:
           codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" \
             "$APP_PATH/Contents/Resources/socadmin"
           codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" \
-            "$APP_PATH/Contents/MacOS/Soca Manager"
+            "$APP_PATH/Contents/MacOS/soca-manager"
           codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" \
             "$APP_PATH"
 
