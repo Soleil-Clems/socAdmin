@@ -499,8 +499,18 @@ func (a *App) startMongoDarwin() error {
 		if err := cmd.Start(); err != nil {
 			return fmt.Errorf("mongod failed: %v", err)
 		}
-		go cmd.Wait()
-		return nil
+		// Wait briefly to detect immediate crash
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case err := <-done:
+			if err != nil {
+				return fmt.Errorf("mongod crashed on startup: %v", err)
+			}
+			return fmt.Errorf("mongod exited immediately")
+		case <-time.After(2 * time.Second):
+			return nil
+		}
 	}
 	return fmt.Errorf("MongoDB not found")
 }
@@ -546,4 +556,139 @@ func (a *App) stopMongoDarwin() error {
 		return nil
 	}
 	return fmt.Errorf("could not stop MongoDB")
+}
+
+// repairMongoFCV fixes a featureCompatibilityVersion mismatch by temporarily
+// installing the old MongoDB version, downgrading FCV to 8.0, then removing it.
+func repairMongoFCV(a *App) error {
+	brew := findBrew()
+	if brew == "" {
+		return fmt.Errorf("Homebrew is required for this repair")
+	}
+
+	oldVersion := detectOldMongoFCV()
+	if oldVersion == "" {
+		return fmt.Errorf("could not detect the incompatible MongoDB version from logs")
+	}
+	formula := "mongodb/brew/mongodb-community@" + oldVersion
+
+	// Use the versioned opt path for the old mongod binary — this path
+	// survives even when brew install overwrites the main symlinks.
+	mongodOld := fmt.Sprintf("/opt/homebrew/opt/mongodb-community@%s/bin/mongod", oldVersion)
+	mongoshOld := fmt.Sprintf("/opt/homebrew/opt/mongodb-community@%s/bin/mongosh", oldVersion)
+	prefix := "/opt/homebrew"
+	if _, err := os.Stat("/opt/homebrew/bin/brew"); err != nil {
+		prefix = "/usr/local"
+		mongodOld = fmt.Sprintf("%s/opt/mongodb-community@%s/bin/mongod", prefix, oldVersion)
+		mongoshOld = fmt.Sprintf("%s/opt/mongodb-community@%s/bin/mongosh", prefix, oldVersion)
+	}
+
+	dbPath := prefix + "/var/mongodb"
+
+	a.emitEvent("install:progress", fmt.Sprintf("Installing MongoDB %s temporarily...", oldVersion))
+	log.Printf("[repair] installing %s", formula)
+	cmd := exec.Command(brew, "install", formula)
+	cmd.Env = append(os.Environ(), "HOMEBREW_NO_AUTO_UPDATE=1", "HOMEBREW_NO_ENV_HINTS=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to install %s: %s", formula, formatInstallError(string(out)))
+	}
+
+	cleanup := func() {
+		log.Printf("[repair] cleaning up %s", formula)
+		exec.Command(brew, "uninstall", "--force", formula).CombinedOutput()
+		// Restore main mongodb-community symlinks broken by the temp install/uninstall
+		exec.Command(brew, "unlink", "mongodb-community").CombinedOutput()
+		exec.Command(brew, "link", "mongodb-community").CombinedOutput()
+		log.Printf("[repair] relinked mongodb-community")
+	}
+
+	if _, err := os.Stat(mongodOld); err != nil {
+		cleanup()
+		return fmt.Errorf("MongoDB %s binary not found at %s", oldVersion, mongodOld)
+	}
+
+	a.emitEvent("install:progress", "Starting old MongoDB version to repair data...")
+	port := 37017
+	log.Printf("[repair] starting mongod %s on port %d with dbpath %s", oldVersion, port, dbPath)
+	mongodCmd := exec.Command(mongodOld, "--dbpath", dbPath, "--port", fmt.Sprintf("%d", port), "--logpath", "/dev/null", "--bind_ip", "127.0.0.1")
+	if err := mongodCmd.Start(); err != nil {
+		cleanup()
+		return fmt.Errorf("failed to start MongoDB %s: %v", oldVersion, err)
+	}
+
+	if !waitPortOpen(port, 30*time.Second) {
+		mongodCmd.Process.Kill()
+		mongodCmd.Wait()
+		cleanup()
+		return fmt.Errorf("MongoDB %s did not start in time", oldVersion)
+	}
+
+	a.emitEvent("install:progress", "Upgrading compatibility version...")
+	// Use the versioned mongosh to avoid symlink issues
+	mongosh := mongoshOld
+	if _, err := os.Stat(mongosh); err != nil {
+		mongosh = findBin("mongosh")
+	}
+	if mongosh == "" {
+		mongodCmd.Process.Kill()
+		mongodCmd.Wait()
+		cleanup()
+		return fmt.Errorf("mongosh not found — cannot run repair command")
+	}
+	log.Printf("[repair] using mongosh at %s", mongosh)
+
+	setFCV := "db.adminCommand({setFeatureCompatibilityVersion: '8.0', confirm: true})"
+	out, err := exec.Command(mongosh, "--port", fmt.Sprintf("%d", port), "--eval", setFCV, "admin", "--quiet").CombinedOutput()
+	log.Printf("[repair] setFCV output: %s err: %v", string(out), err)
+
+	a.emitEvent("install:progress", "Stopping temporary MongoDB...")
+	exec.Command(mongosh, "--port", fmt.Sprintf("%d", port), "--eval", "db.adminCommand({shutdown: 1})", "admin", "--quiet").CombinedOutput()
+	waitPortClosed(port, 10*time.Second)
+	mongodCmd.Wait()
+
+	a.emitEvent("install:progress", "Cleaning up temporary install...")
+	cleanup()
+
+	if err != nil {
+		return fmt.Errorf("failed to set FCV: %s", string(out))
+	}
+
+	a.emitEvent("install:progress", "Repair complete — you can now start MongoDB")
+	a.emitEvent("install:done", "MongoDB")
+	return nil
+}
+
+func detectOldMongoFCV() string {
+	for _, logPath := range []string{
+		"/opt/homebrew/var/log/mongodb/mongo.log",
+		"/usr/local/var/log/mongodb/mongo.log",
+	} {
+		data, err := os.ReadFile(logPath)
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(data), "\n")
+		for i := len(lines) - 1; i >= 0 && i >= len(lines)-500; i-- {
+			line := lines[i]
+			if strings.Contains(line, "featureCompatibilityVersion") && strings.Contains(line, "UPGRADE PROBLEM") {
+				// MongoDB logs are JSON — the version appears as: version: \"8.2\"
+				if idx := strings.Index(line, `version: \"`); idx != -1 {
+					start := idx + len(`version: \"`)
+					end := strings.Index(line[start:], `\"`)
+					if end > 0 {
+						return line[start : start+end]
+					}
+				}
+				// Fallback for plain text logs: version: "8.2"
+				if idx := strings.Index(line, "version: \""); idx != -1 {
+					start := idx + len("version: \"")
+					end := strings.Index(line[start:], "\"")
+					if end > 0 {
+						return line[start : start+end]
+					}
+				}
+			}
+		}
+	}
+	return ""
 }

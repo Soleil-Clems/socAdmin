@@ -16,24 +16,25 @@ function App() {
   const setAuthenticated = useAuthStore((s) => s.setAuthenticated);
   const isConnected = useConnectionStore((s) => s.isConnected);
   const [authPage, setAuthPage] = useState<"login" | "register">("login");
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [showAdminSettings, setShowAdminSettings] = useState(false);
   const [verifying, setVerifying] = useState(true);
 
-  // On mount, call /auth/me to check if HttpOnly cookies contain a valid session.
-  // If valid → set authenticated with role. If not → show login.
   useEffect(() => {
     let cancelled = false;
-    authRequest
-      .me()
-      .then((res) => {
-        if (!cancelled && res?.role) setAuthenticated(res.role, res.email);
-      })
-      .catch(() => {
-        // No valid session — stay on login page
-      })
-      .finally(() => {
-        if (!cancelled) setVerifying(false);
-      });
+    Promise.all([
+      authRequest.me().catch(() => null),
+      authRequest.setupStatus().catch(() => null),
+    ]).then(([me, setup]) => {
+      if (cancelled) return;
+      if (me?.role) {
+        setAuthenticated(me.role, me.email);
+      } else if (setup?.needsSetup) {
+        setNeedsSetup(true);
+        setAuthPage("register");
+      }
+      setVerifying(false);
+    });
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -53,7 +54,7 @@ function App() {
       return (
         <>
           <HealthBanner />
-          <RegisterPage onSwitchToLogin={() => setAuthPage("login")} />
+          <RegisterPage onSwitchToLogin={() => setAuthPage("login")} isSetup={needsSetup} />
         </>
       );
     }

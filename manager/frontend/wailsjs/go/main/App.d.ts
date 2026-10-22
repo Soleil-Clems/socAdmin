@@ -20,6 +20,8 @@ export function InstallService(arg1:string):Promise<void>;
 
 export function OpenBrowser():Promise<void>;
 
+export function RepairMongoDB():Promise<void>;
+
 export function SetAutoStart(arg1:boolean):Promise<void>;
 
 export function SetOpenOnStart(arg1:boolean):Promise<void>;

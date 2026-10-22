@@ -24,6 +24,7 @@ import {
   CanInstallServices,
   GetLogs,
   GetVersion,
+  RepairMongoDB,
 } from "../wailsjs/go/main/App";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { main } from "../wailsjs/go/models";
@@ -242,7 +243,23 @@ function App() {
             className="mx-auto w-full"
             style={{ maxWidth: "var(--content-max)" }}
           >
-            {error && <ErrorBanner message={error} onDismiss={() => setError("")} />}
+            {error && (
+              <ErrorBanner
+                message={error}
+                onDismiss={() => setError("")}
+                action={
+                  error.includes("Repair") ? {
+                    label: "Repair",
+                    onClick: () => {
+                      setError("");
+                      RepairMongoDB()
+                        .then(() => refresh())
+                        .catch((err: Error) => setError(err.message));
+                    },
+                  } : undefined
+                }
+              />
+            )}
 
             {tab === "server" && (
               <ServerTab
@@ -271,9 +288,11 @@ function App() {
 function ErrorBanner({
   message,
   onDismiss,
+  action,
 }: {
   message: string;
   onDismiss: () => void;
+  action?: { label: string; onClick: () => void };
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -300,7 +319,19 @@ function ErrorBanner({
         <line x1="12" y1="8" x2="12" y2="12" />
         <line x1="12" y1="16" x2="12.01" y2="16" />
       </svg>
-      <span className="flex-1 select-text">{message}</span>
+      <span className="flex-1 select-text">
+        {message.split("\n").map((line, i) => (
+          <span key={i}>{i > 0 && <br />}{line}</span>
+        ))}
+      </span>
+      {action && (
+        <button
+          onClick={action.onClick}
+          className="shrink-0 rounded bg-red/20 px-2.5 py-1 text-[11px] font-medium text-red hover:bg-red/30 transition-colors whitespace-nowrap"
+        >
+          {action.label}
+        </button>
+      )}
       <button
         onClick={handleCopy}
         className="shrink-0 text-red/40 hover:text-red transition-colors"

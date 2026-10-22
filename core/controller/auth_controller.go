@@ -81,6 +81,15 @@ func clearAuthCookies(w http.ResponseWriter) {
 	})
 }
 
+func (c *AuthController) SetupStatus(w http.ResponseWriter, r *http.Request) {
+	needsSetup, err := c.authService.NeedsSetup()
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, "failed to check setup status")
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]bool{"needsSetup": needsSetup})
+}
+
 func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

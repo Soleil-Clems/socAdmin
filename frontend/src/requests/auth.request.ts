@@ -28,6 +28,8 @@ type MeResponse = {
 };
 
 export const authRequest = {
+  setupStatus: () => customfetch.get<{ needsSetup: boolean }>("/auth/setup-status"),
+
   login: (data: LoginPayload) => customfetch.post<LoginResponse>("/auth/login", data),
 
   register: (data: RegisterPayload) => customfetch.post<RegisterResponse>("/auth/register", data),
