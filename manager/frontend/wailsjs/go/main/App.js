@@ -38,6 +38,10 @@ export function OpenBrowser() {
   return window['go']['main']['App']['OpenBrowser']();
 }
 
+export function RepairMongoDB() {
+  return window['go']['main']['App']['RepairMongoDB']();
+}
+
 export function SetAutoStart(arg1) {
   return window['go']['main']['App']['SetAutoStart'](arg1);
 }

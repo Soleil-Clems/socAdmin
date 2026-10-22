@@ -336,7 +336,11 @@ func (a *App) StartService(name string) {
 		err := startServiceOS(a, name)
 		if err != nil {
 			log.Printf("[service] Failed to start %s: %v", name, err)
-			a.emitEvent("service:error", fmt.Sprintf("Failed to start %s: %v", name, err))
+			if diag := a.diagnoseStartFailure(name); diag != "" {
+				a.emitError(diag)
+			} else {
+				a.emitError(fmt.Sprintf("Failed to start %s: %v", name, err))
+			}
 			return
 		}
 		port := a.servicePort(name)
@@ -350,8 +354,50 @@ func (a *App) StartService(name string) {
 			wailsRuntime.EventsEmit(a.ctx, "service:started", defaultPort)
 			return
 		}
-		a.emitError(fmt.Sprintf("Port %d not reachable after 60s", port))
+		if diag := a.diagnoseStartFailure(name); diag != "" {
+			a.emitError(diag)
+		} else {
+			a.emitError(fmt.Sprintf("Port %d not reachable after 60s — %s may have crashed on startup", port, name))
+		}
 	}()
+}
+
+func (a *App) diagnoseStartFailure(name string) string {
+	switch name {
+	case "MongoDB":
+		return diagnoseMongoFailure()
+	}
+	return ""
+}
+
+func diagnoseMongoFailure() string {
+	for _, logPath := range []string{
+		"/opt/homebrew/var/log/mongodb/mongo.log",
+		"/usr/local/var/log/mongodb/mongo.log",
+	} {
+		data, err := os.ReadFile(logPath)
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(data), "\n")
+		limit := 500
+		if len(lines) < limit {
+			limit = len(lines)
+		}
+		for i := len(lines) - 1; i >= len(lines)-limit; i-- {
+			line := lines[i]
+			if strings.Contains(line, "featureCompatibilityVersion") && strings.Contains(line, "UPGRADE PROBLEM") {
+				return "MongoDB version mismatch: your data was created with a different MongoDB version.\nClick \"Repair\" to fix this automatically (your data will be preserved)."
+			}
+			if strings.Contains(line, "Address already in use") {
+				return "MongoDB port is already in use by another process."
+			}
+			if strings.Contains(line, "Permission denied") || strings.Contains(line, "permission denied") {
+				return "MongoDB cannot access its data directory — permission denied."
+			}
+		}
+	}
+	return ""
 }
 
 func defaultServicePort(name string) int {
@@ -432,6 +478,15 @@ func (a *App) SetServicePort(name string, port int) error {
 	}
 	a.saveConfig()
 	return nil
+}
+
+// ─── Repair ─────────────────────────────────────────────────────
+
+func (a *App) RepairMongoDB() error {
+	if isPortOpen(a.mongoPort) {
+		return fmt.Errorf("MongoDB is still running — stop it first")
+	}
+	return repairMongoFCV(a)
 }
 
 // ─── Install / Uninstall (delegates to platform) ────────────────
