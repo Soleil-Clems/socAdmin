@@ -106,6 +106,7 @@ func installServiceOS(a *App, name string) error {
 		}
 	case "MongoDB":
 		exec.Command(brew, "tap", "mongodb/brew").CombinedOutput()
+		exec.Command(brew, "trust", "mongodb/brew").CombinedOutput()
 		out, err := exec.Command(brew, "install", "mongodb/brew/mongodb-community").CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("%s", string(out))

@@ -36,11 +36,19 @@ func main() {
 	appNameMenu.AddSeparator()
 	appNameMenu.AddText("Quit Soca Manager", keys.CmdOrCtrl("q"), quitHandler)
 
+	editMenu := appMenu.AddSubmenu("Edit")
+	editMenu.AddText("Undo", keys.CmdOrCtrl("z"), nil)
+	editMenu.AddSeparator()
+	editMenu.AddText("Cut", keys.CmdOrCtrl("x"), nil)
+	editMenu.AddText("Copy", keys.CmdOrCtrl("c"), nil)
+	editMenu.AddText("Paste", keys.CmdOrCtrl("v"), nil)
+	editMenu.AddText("Select All", keys.CmdOrCtrl("a"), nil)
+
 	fileMenu := appMenu.AddSubmenu("File")
 	fileMenu.AddText("Start Server", keys.CmdOrCtrl("s"), func(_ *menu.CallbackData) {
 		app.StartServer()
 	})
-	fileMenu.AddText("Stop Server", keys.CmdOrCtrl("x"), func(_ *menu.CallbackData) {
+	fileMenu.AddText("Stop Server", keys.CmdOrCtrl("shift+x"), func(_ *menu.CallbackData) {
 		app.StopServer()
 	})
 	fileMenu.AddSeparator()
