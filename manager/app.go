@@ -444,7 +444,9 @@ func (a *App) InstallService(name string) {
 		a.emitEvent("install:progress", fmt.Sprintf("Installing %s... This may take a few minutes", name))
 		err := installServiceOS(a, name)
 		if err != nil {
-			a.emitError(fmt.Sprintf("Failed to install %s: %v", name, err))
+			msg := err.Error()
+			log.Printf("[install] %s failed: %s", name, msg)
+			a.emitError(fmt.Sprintf("Failed to install %s: %s", name, formatInstallError(msg)))
 			return
 		}
 		ensurePATH()
@@ -559,6 +561,15 @@ func (a *App) GetSystemInfo() map[string]string {
 	}
 }
 
+func (a *App) GetLogs() string {
+	logPath := filepath.Join(a.configDir, "manager-debug.log")
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		return "No logs available"
+	}
+	return string(data)
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────
 
 func findBin(name string) string {
@@ -656,6 +667,37 @@ func (a *App) waitForPortClosed(port int) {
 		}
 		time.Sleep(300 * time.Millisecond)
 	}
+}
+
+func formatInstallError(raw string) string {
+	lower := strings.ToLower(raw)
+	switch {
+	case strings.Contains(lower, "your xcode") && strings.Contains(lower, "outdated"):
+		return "Your Xcode app is outdated. Update it from the App Store, then try again."
+	case strings.Contains(lower, "xcode") && strings.Contains(lower, "outdated"):
+		return "Your Command Line Tools are outdated. Open Terminal and run:\nsudo xcode-select --install"
+	case strings.Contains(lower, "command line tools"):
+		return "Xcode Command Line Tools are required. Open Terminal and run:\nxcode-select --install"
+	case strings.Contains(lower, "untrusted tap"):
+		return "A Homebrew tap is not trusted. Open Terminal and run:\nbrew trust mongodb/brew"
+	case strings.Contains(lower, "brew: command not found") || strings.Contains(lower, "brew not found"):
+		return "Homebrew is not installed. Visit https://brew.sh to install it."
+	case strings.Contains(lower, "already installed"):
+		return "This service is already installed. Try restarting Soca Manager."
+	case strings.Contains(lower, "network") || strings.Contains(lower, "could not resolve"):
+		return "Network error — check your internet connection and try again."
+	}
+	if len(raw) > 300 {
+		lines := strings.Split(raw, "\n")
+		for i := len(lines) - 1; i >= 0; i-- {
+			l := strings.TrimSpace(lines[i])
+			if strings.HasPrefix(strings.ToLower(l), "error:") {
+				return l
+			}
+		}
+		return lines[len(lines)-1]
+	}
+	return raw
 }
 
 func (a *App) emitError(msg string) {

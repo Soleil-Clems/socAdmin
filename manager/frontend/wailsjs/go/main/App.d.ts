@@ -8,6 +8,8 @@ export function GetAllServices():Promise<Array<main.ServiceStatus>>;
 
 export function GetConfig():Promise<main.AppConfig>;
 
+export function GetLogs():Promise<string>;
+
 export function GetServerStatus():Promise<main.ServerStatus>;
 
 export function GetSystemInfo():Promise<Record<string, string>>;

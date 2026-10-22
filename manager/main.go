@@ -38,6 +38,7 @@ func main() {
 
 	editMenu := appMenu.AddSubmenu("Edit")
 	editMenu.AddText("Undo", keys.CmdOrCtrl("z"), nil)
+	editMenu.AddText("Redo", keys.Combo("z", keys.ShiftKey, keys.CmdOrCtrlKey), nil)
 	editMenu.AddSeparator()
 	editMenu.AddText("Cut", keys.CmdOrCtrl("x"), nil)
 	editMenu.AddText("Copy", keys.CmdOrCtrl("c"), nil)

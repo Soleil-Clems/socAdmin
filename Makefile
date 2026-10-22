@@ -92,7 +92,8 @@ clean:
 	rm -rf frontend/dist/
 	rm -rf manager/build/bin/
 	rm -rf build/*/dist/
-	rm ~/.socadmin/socadmin.db
+	
+clean-db:	rm ~/.socadmin/socadmin.db
 
 # --- Status ---
 status:

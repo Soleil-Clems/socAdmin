@@ -14,6 +14,10 @@ export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
 
+export function GetLogs() {
+  return window['go']['main']['App']['GetLogs']();
+}
+
 export function GetServerStatus() {
   return window['go']['main']['App']['GetServerStatus']();
 }
