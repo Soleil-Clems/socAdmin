@@ -3,7 +3,6 @@ name: CD — Docker Hub
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
 
 permissions:
