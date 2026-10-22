@@ -12,9 +12,10 @@ import { AuthBrandPanel } from "@/components/auth-brand-panel";
 
 type Props = {
   onSwitchToLogin: () => void;
+  isSetup?: boolean;
 };
 
-export default function RegisterPage({ onSwitchToLogin }: Props) {
+export default function RegisterPage({ onSwitchToLogin, isSetup }: Props) {
   const registerMutation = useRegister();
   const [serverError, setServerError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -115,9 +116,13 @@ export default function RegisterPage({ onSwitchToLogin }: Props) {
           </div>
 
           <div>
-            <h2 className="text-xl font-semibold">Create account</h2>
+            <h2 className="text-xl font-semibold">
+              {isSetup ? "Welcome to socAdmin" : "Create account"}
+            </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Set up your socAdmin credentials
+              {isSetup
+                ? "Create your administrator account to get started"
+                : "Set up your socAdmin credentials"}
             </p>
           </div>
 
@@ -178,16 +183,18 @@ export default function RegisterPage({ onSwitchToLogin }: Props) {
               {registerMutation.isPending ? "Creating account..." : "Create account"}
             </Button>
 
-            <p className="text-center text-xs text-muted-foreground">
-              Already have an account?{" "}
-              <button
-                type="button"
-                onClick={onSwitchToLogin}
-                className="text-primary font-medium hover:underline"
-              >
-                Sign in
-              </button>
-            </p>
+            {!isSetup && (
+              <p className="text-center text-xs text-muted-foreground">
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={onSwitchToLogin}
+                  className="text-primary font-medium hover:underline"
+                >
+                  Sign in
+                </button>
+              </p>
+            )}
           </form>
         </div>
       </div>

@@ -94,7 +94,8 @@ clean:
 	rm -rf manager/build/bin/
 	rm -rf build/*/dist/
 	
-clean-db:	rm ~/.socadmin/socadmin.db
+clean-db:	stop
+	rm ~/.socadmin/socadmin.db
 
 # --- Status ---
 status:

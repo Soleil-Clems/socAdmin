@@ -58,6 +58,7 @@ func NewRouter(authRepo *auth.Repository, whitelist *security.IPWhitelist, encKe
 			h(w, r)
 		}
 	}
+	mux.HandleFunc("GET "+p+"/auth/setup-status", authController.SetupStatus)
 	mux.HandleFunc("POST "+p+"/auth/register", withAuthLimit(authController.Register))
 	mux.HandleFunc("POST "+p+"/auth/login", withAuthLimit(authController.Login))
 	mux.HandleFunc("POST "+p+"/auth/refresh", withAuthLimit(authController.Refresh))

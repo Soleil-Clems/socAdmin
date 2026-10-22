@@ -37,6 +37,14 @@ func registrationEnabled() bool {
 	return strings.EqualFold(val, "true") || val == "1"
 }
 
+func (s *AuthService) NeedsSetup() (bool, error) {
+	count, err := s.repo.UserCount()
+	if err != nil {
+		return false, err
+	}
+	return count == 0, nil
+}
+
 func (s *AuthService) Register(email, password string) (*RegisterResult, error) {
 	if err := auth.ValidateEmail(email); err != nil {
 		return nil, err
