@@ -59,9 +59,11 @@ test:
 	cd frontend && npx vitest run
 
 # --- Manager : build l'app desktop Wails ---
+GIT_VERSION := $(shell git describe --tags --always 2>/dev/null || echo "dev")
+
 manager:
-	@echo "Building socAdmin Manager..."
-	cd manager && wails build
+	@echo "Building socAdmin Manager ($(GIT_VERSION))..."
+	cd manager && wails build -ldflags "-X main.version=$(GIT_VERSION)"
 	@echo "Manager built → manager/build/bin/"
 
 manager-dev:

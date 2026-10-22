@@ -483,6 +483,12 @@ func (a *App) CanInstallServices() bool {
 	return canInstallServicesOS()
 }
 
+// ─── Version ─────────────────────────────────────────────────────
+
+func (a *App) GetVersion() string {
+	return version
+}
+
 // ─── Config ──────────────────────────────────────────────────────
 
 func (a *App) GetConfig() AppConfig {
@@ -676,7 +682,9 @@ func formatInstallError(raw string) string {
 		return "Your Xcode app is outdated. Update it from the App Store, then try again."
 	case strings.Contains(lower, "xcode") && strings.Contains(lower, "outdated"):
 		return "Your Command Line Tools are outdated. Open Terminal and run:\nsudo xcode-select --install"
-	case strings.Contains(lower, "command line tools"):
+	case strings.Contains(lower, "xcode license") || strings.Contains(lower, "xcodebuild -license"):
+		return "You need to accept the Xcode license. Open Terminal and run:\nsudo xcodebuild -license accept"
+	case strings.Contains(lower, "no developer tools") || strings.Contains(lower, "command line tools"):
 		return "Xcode Command Line Tools are required. Open Terminal and run:\nxcode-select --install"
 	case strings.Contains(lower, "untrusted tap"):
 		return "A Homebrew tap is not trusted. Open Terminal and run:\nbrew trust mongodb/brew"

@@ -14,6 +14,8 @@ export function GetServerStatus():Promise<main.ServerStatus>;
 
 export function GetSystemInfo():Promise<Record<string, string>>;
 
+export function GetVersion():Promise<string>;
+
 export function InstallService(arg1:string):Promise<void>;
 
 export function OpenBrowser():Promise<void>;

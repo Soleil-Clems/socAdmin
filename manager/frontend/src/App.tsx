@@ -23,6 +23,7 @@ import {
   UninstallService,
   CanInstallServices,
   GetLogs,
+  GetVersion,
 } from "../wailsjs/go/main/App";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { main } from "../wailsjs/go/models";
@@ -54,6 +55,7 @@ function App() {
   const [tab, setTab] = useState<Tab>("server");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [appVersion, setAppVersion] = useState("");
 
   const refresh = useCallback(async () => {
     const [s, c, svcs] = await Promise.all([
@@ -74,6 +76,7 @@ function App() {
         document.documentElement.setAttribute("data-os", info.os);
       }
     });
+    GetVersion().then(setAppVersion);
 
     const interval = setInterval(async () => {
       const [s, svcs] = await Promise.all([
@@ -210,6 +213,11 @@ function App() {
           </div>
 
           <div className="shrink-0 border-t border-border-subtle/30 px-5 py-4">
+            {appVersion && (
+              <p className="text-[10px] text-text-muted/60 font-medium tracking-wide">
+                v{appVersion.replace(/^v/, "")}
+              </p>
+            )}
             {sysInfo.os && (
               <p className="text-[10px] text-text-muted/50 capitalize leading-relaxed tracking-wide">
                 {sysInfo.os} · {sysInfo.arch}

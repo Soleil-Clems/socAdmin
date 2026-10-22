@@ -26,6 +26,10 @@ export function GetSystemInfo() {
   return window['go']['main']['App']['GetSystemInfo']();
 }
 
+export function GetVersion() {
+  return window['go']['main']['App']['GetVersion']();
+}
+
 export function InstallService(arg1) {
   return window['go']['main']['App']['InstallService'](arg1);
 }
