@@ -24,11 +24,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: macos-latest
-            arch: arm64
-          - runner: macos-13
-            arch: amd64
-    runs-on: ${{ matrix.runner }}
+          - arch: arm64
+            goarch: arm64
+          - arch: amd64
+            goarch: amd64
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -46,13 +46,13 @@ jobs:
       - name: Build socAdmin server binary
         run: |
           cd frontend && APP_VERSION=${VERSION} npm ci && APP_VERSION=${VERSION} npm run build && cd ..
-          CGO_ENABLED=1 go build -ldflags="-s -w" -o bin/socadmin .
+          CGO_ENABLED=1 GOARCH=${{ matrix.goarch }} go build -ldflags="-s -w" -o bin/socadmin .
 
       - name: Install manager frontend deps
         run: cd manager/frontend && npm ci
 
       - name: Build Soca Manager .app
-        run: cd manager && wails build -clean -ldflags "-X main.version=${VERSION}"
+        run: cd manager && wails build -clean -platform darwin/${{ matrix.goarch }} -ldflags "-X main.version=${VERSION}"
 
       - name: Embed server binary into .app
         run: |
