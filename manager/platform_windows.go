@@ -794,3 +794,7 @@ func (a *App) setupMySQLAfterInstall() string {
 	}
 	return "MySQL installed. user=root"
 }
+
+func repairMongoFCV(_ *App) error {
+	return fmt.Errorf("automatic MongoDB repair is not yet supported on Windows")
+}

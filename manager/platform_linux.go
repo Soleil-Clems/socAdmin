@@ -334,3 +334,7 @@ func (a *App) killOnPort(port int, name string) error {
 	}
 	return fmt.Errorf("could not stop %s", name)
 }
+
+func repairMongoFCV(_ *App) error {
+	return fmt.Errorf("automatic MongoDB repair is not yet supported on Linux")
+}
