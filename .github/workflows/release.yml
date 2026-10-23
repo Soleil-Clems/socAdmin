@@ -21,7 +21,14 @@ env:
 
 jobs:
   build-macos:
-    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: arm64
+          - runner: macos-13
+            arch: amd64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -109,7 +116,7 @@ jobs:
           VERSION=${VERSION#v}
           OUTPUT_DIR="build/macos/dist"
           mkdir -p "$OUTPUT_DIR"
-          DMG_PATH="$OUTPUT_DIR/Soca-Manager-${VERSION}-macos.dmg"
+          DMG_PATH="$OUTPUT_DIR/Soca-Manager-${VERSION}-macos-${{ matrix.arch }}.dmg"
           APP_PATH="manager/build/bin/Soca Manager.app"
 
           TEMP_DMG="$OUTPUT_DIR/temp.dmg"
@@ -132,7 +139,7 @@ jobs:
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: |
           VERSION=${VERSION#v}
-          DMG_PATH="build/macos/dist/Soca-Manager-${VERSION}-macos.dmg"
+          DMG_PATH="build/macos/dist/Soca-Manager-${VERSION}-macos-${{ matrix.arch }}.dmg"
 
           API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
           echo "$APPLE_API_KEY_P8" > "$API_KEY_PATH"
@@ -148,7 +155,7 @@ jobs:
       - name: Verify signature
         run: |
           VERSION=${VERSION#v}
-          DMG_PATH="build/macos/dist/Soca-Manager-${VERSION}-macos.dmg"
+          DMG_PATH="build/macos/dist/Soca-Manager-${VERSION}-macos-${{ matrix.arch }}.dmg"
           spctl -a -vv --type install "$DMG_PATH"
 
       - name: Cleanup keychain
@@ -157,7 +164,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-dmg
+          name: macos-dmg-${{ matrix.arch }}
           path: build/macos/dist/*.dmg
 
   build-windows:
